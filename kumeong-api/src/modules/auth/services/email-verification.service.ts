@@ -5,7 +5,7 @@ import { Repository, LessThan, IsNull } from 'typeorm';
 import { EmailVerification } from '../entities/email-verification.entity';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
-import { MailerService } from '@nestjs-modules/mailer';
+import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class EmailVerificationService {
@@ -13,15 +13,24 @@ export class EmailVerificationService {
   private readonly cooldownSec = this.cfg.get<number>('EMAIL_COOLDOWN_SEC', 60);
   private readonly maxAttempts = this.cfg.get<number>('EMAIL_MAX_ATTEMPTS', 5);
 
+  // Nodemailer 트랜스포터
+  private readonly tx: nodemailer.Transporter;
+
   constructor(
     @InjectRepository(EmailVerification)
     private readonly repo: Repository<EmailVerification>,
-    private readonly mailer: MailerService,
     private readonly cfg: ConfigService,
-  ) {}
+  ) {
+    this.tx = nodemailer.createTransport({
+      host: this.cfg.get<string>('SMTP_HOST'),
+      port: Number(this.cfg.get('SMTP_PORT')),
+      secure: this.cfg.get('SMTP_SECURE') === 'true' || this.cfg.get('SMTP_SECURE') === true,
+      auth: { user: this.cfg.get('SMTP_USER'), pass: this.cfg.get('SMTP_PASS') },
+    });
+  }
 
   private ensureKku(email: string) {
-    if (!/@kku\.ac\.kr$/i.test(email.trim())) {
+    if (!/^[a-zA-Z0-9._%+-]+@kku\.ac\.kr$/i.test(email.trim())) {
       throw new BadRequestException('학교 이메일(@kku.ac.kr)만 사용할 수 있습니다.');
     }
   }
@@ -31,11 +40,17 @@ export class EmailVerificationService {
   }
 
   private genCode(): string {
-    // 6자리 숫자 (000000~999999 포함, 앞자리 0 보존)
+    // 6자리 숫자 (000000~999999, 앞자리 0 유지)
     return String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
   }
 
-  async send(email: string) {
+  /** (프로브 비활성 버전) 항상 'unknown' 반환 */
+  private async probeExistence(_email: string): Promise<'unknown'> {
+    return 'unknown';
+  }
+
+  async send(emailRaw: string) {
+    const email = emailRaw.trim().toLowerCase();
     this.ensureKku(email);
 
     const now = new Date();
@@ -53,24 +68,23 @@ export class EmailVerificationService {
       }
     }
 
-    const code = this.genCode();
-    const codeHash = this.hash(code);
-    const expireAt = new Date(now.getTime() + this.ttlSec * 1000);
+    // (프로브는 unknown으로만 기록)
+    const probe = await this.probeExistence(email);
 
-    // 기존 레코드 재사용 or 신규
+    // 코드 생성/저장
+    const code = this.genCode();
     const rec = existing ?? this.repo.create({ email });
-    rec.codeHash = codeHash;
-    rec.expireAt = expireAt;
+    rec.codeHash = this.hash(code);
+    rec.expireAt = new Date(now.getTime() + this.ttlSec * 1000);
     rec.remainingAttempts = this.maxAttempts;
     rec.usedAt = null;
     rec.lastSentAt = now;
-
     await this.repo.save(rec);
 
-    // 메일 전송
-    const subject = this.cfg.get<string>('MAIL_SUBJECT') ?? '[KU멍가게] 이메일 인증번호';
+    // 메일 발송
     const from = this.cfg.get<string>('MAIL_FROM') ?? 'no-reply@example.com';
-    await this.mailer.sendMail({
+    const subject = this.cfg.get<string>('MAIL_SUBJECT') ?? '[KU멍가게] 이메일 인증번호';
+    await this.tx.sendMail({
       to: email,
       from,
       subject,
@@ -86,16 +100,18 @@ export class EmailVerificationService {
       `,
     });
 
-    // 개발 편의: 콘솔에 코드 찍기(운영에선 제거)
+    // 개발 편의: 콘솔에 코드 출력(운영에선 제거 권장)
     if (this.cfg.get('NODE_ENV') !== 'production') {
       // eslint-disable-next-line no-console
       console.log(`[DEV] Email code for ${email}: ${code}`);
     }
 
-    return { ok: true, data: { ttlSec: this.ttlSec } };
+    return { ok: true, data: { ttlSec: this.ttlSec, probe } };
   }
 
-  async verify(email: string, code: string) {
+  async verify(emailRaw: string, codeRaw: string) {
+    const email = emailRaw.trim().toLowerCase();
+    const code = codeRaw.trim();
     this.ensureKku(email);
 
     const now = new Date();
@@ -106,8 +122,12 @@ export class EmailVerificationService {
     if (!rec) throw new BadRequestException('인증 요청을 먼저 진행해 주세요.');
 
     if (rec.usedAt) throw new BadRequestException('이미 사용된 코드입니다. 새로 요청해 주세요.');
-    if (rec.expireAt.getTime() < now.getTime()) throw new BadRequestException('코드가 만료되었습니다. 다시 요청해 주세요.');
-    if (rec.remainingAttempts <= 0) throw new BadRequestException('시도 횟수를 초과했습니다. 다시 요청해 주세요.');
+    if (rec.expireAt.getTime() < now.getTime()) {
+      throw new BadRequestException('코드가 만료되었습니다. 다시 요청해 주세요.');
+    }
+    if (rec.remainingAttempts <= 0) {
+      throw new BadRequestException('시도 횟수를 초과했습니다. 다시 요청해 주세요.');
+    }
 
     const ok = rec.codeHash === this.hash(code);
     if (!ok) {
