@@ -12,34 +12,58 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const cfg = app.get(ConfigService);
 
-  // CORS
+  // ========================
+  // 1️⃣ CORS 설정
+  // ========================
   const corsOrigin = cfg.get<string>('CORS_ORIGIN');
+  const allowedOrigins = corsOrigin
+    ? corsOrigin.split(',').map((o) => o.trim())
+    : [
+        'http://localhost:54350', // Flutter 웹 기본 포트
+        'http://127.0.0.1:54350',
+        'http://localhost:57498', // 브라우저에서 확인된 포트
+        'http://127.0.0.1:57498',
+      ];
+
   app.enableCors({
-    origin: corsOrigin ? corsOrigin.split(',').map((s) => s.trim()) : true,
+    origin: allowedOrigins,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 200,
   });
 
-  // Prefix & Versioning
+
+  // ========================
+  // 2️⃣ Prefix & Versioning
+  // ========================
   const apiPrefix = cfg.get<string>('API_PREFIX') ?? '/api';
   const apiVersion = cfg.get<string>('API_VERSION') ?? '1';
   app.setGlobalPrefix(apiPrefix);
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: apiVersion });
 
-  // Validation
+  // ========================
+  // 3️⃣ ValidationPipe
+  // ========================
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      transformOptions: { enableImplicitConversion: true }, // ✅ DTO 숫자/불리언 캐스팅
+      transformOptions: { enableImplicitConversion: true },
       forbidUnknownValues: false,
     }),
   );
 
-  // ✅ Global Interceptor & Filter (응답/에러 표준화)
+  // ========================
+  // 4️⃣ Global Interceptor & Filter
+  // ========================
   app.useGlobalInterceptors(new SuccessResponseInterceptor());
   app.useGlobalFilters(new GlobalExceptionFilter());
 
-  // Swagger
+  // ========================
+  // 5️⃣ Swagger 설정
+  // ========================
   const swaggerConfig = new DocumentBuilder()
     .setTitle('KU멍가게 API')
     .setDescription('캠퍼스 중고거래/배달(KU대리) 백엔드 v1')
@@ -63,7 +87,9 @@ async function bootstrap() {
     customSiteTitle: 'KU멍가게 API Docs',
   });
 
-  // Listen
+  // ========================
+  // 6️⃣ 서버 Listen
+  // ========================
   const port = Number(cfg.get<string>('PORT') ?? 3000);
   await app.listen(port);
 

@@ -287,3 +287,5 @@ INSERT INTO push_tokens (user_id, device_id, token, platform) VALUES
 -- =====================================
 -- 완전 샘플 데이터 포함 끝
 -- =====================================
+
+show tables;

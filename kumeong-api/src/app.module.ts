@@ -44,7 +44,8 @@ import { ProductsModule } from './modules/products/products.module';
           password: cfg.get<string>('DB_PASSWORD') ?? cfg.get<string>('DB_PASS'),
           database: cfg.get<string>('DB_DATABASE') ?? cfg.get<string>('DB_NAME'),
           autoLoadEntities: true,
-          synchronize: cfg.get('DB_SYNC') === 'true',
+          synchronize: true,   // 그냥 true로 바꿔도 됨
+          dropSchema: true, 
           charset: 'utf8mb4',
         };
       },
