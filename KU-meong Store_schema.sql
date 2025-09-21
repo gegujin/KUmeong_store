@@ -288,4 +288,14 @@ INSERT INTO push_tokens (user_id, device_id, token, platform) VALUES
 -- 완전 샘플 데이터 포함 끝
 -- =====================================
 
-show tables;
+
+-- 🔹 MySQL UPDATE statements --
+UPDATE users SET password_hash='$2b$10$fYRqWvvzWFL.pVfcbgaj9u1UGzgdm1hp45V1lSS7D8Y2ydJJhphfK' WHERE email='student@kku.ac.kr';
+UPDATE users SET password_hash='$2b$10$F1ydbYHyibklSXpQHZxeP.PbDsvtC83ao/KGSK/69qe/ch220zIOi' WHERE email='rider@kku.ac.kr';
+UPDATE users SET password_hash='$2b$10$IXg9sGv7aTvarYn7Ny2IGOp6n8RkAPDqIzvWP2soLm26zl9UAIeOq' WHERE email='buyer@kku.ac.kr';
+
+SELECT email, password_hash, CHAR_LENGTH(password_hash) AS len
+FROM users
+WHERE email='student@kku.ac.kr';
+
+SELECT email, password_hash, CHAR_LENGTH(password_hash) FROM users WHERE email='student@kku.ac.kr';

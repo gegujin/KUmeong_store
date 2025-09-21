@@ -1,145 +1,77 @@
+// import 'dart:convert';
+// import 'package:flutter/foundation.dart' show kIsWeb;
+// import 'package:http/http.dart' as http;
+
+// String get _baseUrl {
+//   if (kIsWeb) return 'http://localhost:3000/api/v1'; // Flutter Web용
+//   return 'http://10.0.2.2:3000/api/v1'; // Android Emulator용
+// }
+
+// /// 로그인
+// /// 성공 시 JWT access token 반환, 실패 시 null
+// Future<String?> login(String email, String password) async {
+//   final uri = Uri.parse('$_baseUrl/auth/login');
+
+//   try {
+//     final res = await http.post(
+//       uri,
+//       headers: {'Content-Type': 'application/json'},
+//       body: jsonEncode({'email': email, 'password': password}),
+//     );
+
+//     if (res.statusCode == 200) {
+//       final data = jsonDecode(res.body);
+//       // API 구조에 맞춰 token 필드 확인
+//       return data['accessToken'] ?? data['token'];
+//     } else {
+//       print('[API] 로그인 실패: ${res.statusCode} ${res.body}');
+//       return null;
+//     }
+//   } catch (e) {
+//     print('[API] 로그인 예외: $e');
+//     return null;
+//   }
+// }
 // lib/api_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 
-/// ==========================
-/// 1️⃣ API Base URL 자동 설정
-String get apiBaseUrl {
-  if (kIsWeb) {
-    return "http://localhost:3000/api/v1"; // 맞음
-  } else if (Platform.isAndroid) {
-    return "http://10.0.2.2:3000/api/v1";
-  } else if (Platform.isIOS) {
-    return "http://localhost:3000/api/v1";
-  } else {
-    return "http://localhost:3000/api/v1"; // PC
-  }
-}
+// ==============================
+// ⚡ Flutter Web 로그인 POST 호출
+// ==============================
 
-/// ==========================
-/// 2️⃣ JWT 토큰 관리
-/// ==========================
-String? jwtToken;
+/// 서버 기본 URL
+/// Flutter Web에서 동작 시 localhost + NestJS 포트
+const String baseUrl = 'http://localhost:3000/api/v1';
 
-Future<void> saveToken(String token) async {
-  jwtToken = token;
-  // 필요하면 SharedPreferences 등에 저장 가능
-}
-
-/// ==========================
-/// 3️⃣ 회원가입
-/// ==========================
-Future<bool> register(String email, String password, String name) async {
-  final uri = Uri.parse('$apiBaseUrl/auth/register');
-  final response = await http.post(
-    uri,
-    headers: {'Content-Type': 'application/json'},
-    body: jsonEncode({'email': email, 'password': password, 'name': name}),
-  );
-
-  print('[API] POST $uri -> ${response.statusCode} ${response.body}');
-  return response.statusCode == 200 || response.statusCode == 201;
-}
-
-/// ==========================
-/// 4️⃣ 로그인
-/// ==========================
+/// 로그인 함수
+/// 성공 시 JWT 토큰 문자열 반환, 실패 시 null
 Future<String?> login(String email, String password) async {
-  final uri = Uri.parse('$apiBaseUrl/auth/login');
+  final url = Uri.parse('$baseUrl/auth/login');
+
   try {
-    print('[API] POST $uri body: ${{"email": email, "password": "******"}}');
     final response = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password}),
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'email': email,
+        'password': password,
+      }),
     );
 
-    print('[API] Response ${response.statusCode} -> ${response.body}');
-
     if (response.statusCode == 200) {
-      final decoded = jsonDecode(response.body);
-
-      // 안전하게 accessToken 추출
-      String? token;
-      if (decoded is Map<String, dynamic>) {
-        if (decoded['accessToken'] != null) {
-          token = decoded['accessToken'] as String;
-        } else if (decoded['data'] is Map &&
-            decoded['data']['accessToken'] != null) {
-          token = decoded['data']['accessToken'] as String;
-        }
-      }
-
-      if (token != null) {
-        await saveToken(token);
-        return token;
-      } else {
-        print('[API] 로그인 성공 응답이지만 accessToken을 찾지 못함');
-        return null;
-      }
+      // JSON 파싱 후 token 반환
+      final data = jsonDecode(response.body);
+      return data['accessToken'] ?? data['token']; // ✅ 두 케이스 모두 대응
     } else {
-      print('[API] 로그인 실패: ${response.statusCode} ${response.body}');
+      // 실패 시 로그 출력
+      print('[API] 로그인 실패 ${response.statusCode}: ${response.body}');
       return null;
     }
   } catch (e) {
     print('[API] 로그인 예외: $e');
     return null;
   }
-}
-
-/// ==========================
-/// 5️⃣ 상품 목록 조회 (JWT 불필요)
-/// ==========================
-Future<List<dynamic>> fetchProducts() async {
-  final response = await http.get(Uri.parse('$apiBaseUrl/products'));
-  if (response.statusCode == 200) {
-    return jsonDecode(response.body);
-  } else {
-    throw Exception('Failed to load products: ${response.body}');
-  }
-}
-
-/// ==========================
-/// 6️⃣ 상품 등록 (JWT 필요)
-/// ==========================
-Future<bool> createProduct(Map<String, dynamic> productData) async {
-  final response = await http.post(
-    Uri.parse('$apiBaseUrl/products'),
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $jwtToken',
-    },
-    body: jsonEncode(productData),
-  );
-  print(
-      '[API] POST $apiBaseUrl/products -> ${response.statusCode} ${response.body}');
-  return response.statusCode == 201;
-}
-
-/// ==========================
-/// 7️⃣ 상품 수정 (JWT 필요)
-/// ==========================
-Future<bool> updateProduct(int id, Map<String, dynamic> data) async {
-  final response = await http.patch(
-    Uri.parse('$apiBaseUrl/products/$id'),
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $jwtToken',
-    },
-    body: jsonEncode(data),
-  );
-  return response.statusCode == 200;
-}
-
-/// ==========================
-/// 8️⃣ 상품 삭제 (JWT 필요)
-/// ==========================
-Future<bool> deleteProduct(int id) async {
-  final response = await http.delete(
-    Uri.parse('$apiBaseUrl/products/$id'),
-    headers: {'Authorization': 'Bearer $jwtToken'},
-  );
-  return response.statusCode == 200;
 }
