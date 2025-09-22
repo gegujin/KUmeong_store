@@ -104,3 +104,6 @@ my.cnf
 id_rsa*
 id_dsa*
 private.key
+
+stop
+dir
