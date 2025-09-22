@@ -236,11 +236,14 @@ CREATE TABLE chat_messages (
 -- 6. 샘플 데이터 삽입
 -- =====================================
 
--- 6-1. users
+-- bcrypt 해시 준비:
+-- password1234 -> $2b$10$w1SY5rGbzRz0H6pVkqA.6u1/7jLtHPSXaj1O0Gr0RGZ3k7VekMxjG
+
+-- 6-1. users (로그인 가능한 더미 포함)
 INSERT INTO users (id, email, name, password_hash) VALUES
-('11111111-1111-1111-1111-111111111111','student@kku.ac.kr','KKU Student','$2a$10$examplehash'),
-('22222222-2222-2222-2222-222222222222','rider@kku.ac.kr','Rider','$2a$10$examplehash'),
-('33333333-3333-3333-3333-333333333333','buyer@kku.ac.kr','Buyer','$2a$10$examplehash');
+('11111111-1111-1111-1111-111111111111','student@kku.ac.kr','KKU Student','$2b$10$w1SY5rGbzRz0H6pVkqA.6u1/7jLtHPSXaj1O0Gr0RGZ3k7VekMxjG'),
+('22222222-2222-2222-2222-222222222222','rider@kku.ac.kr','Rider','$2b$10$F1ydbYHyibklSXpQHZxeP.PbDsvtC83ao/KGSK/69qe/ch220zIOi'),
+('33333333-3333-3333-3333-333333333333','buyer@kku.ac.kr','Buyer','$2b$10$IXg9sGv7aTvarYn7Ny2IGOp6n8RkAPDqIzvWP2soLm26zl9UAIeOq');
 
 -- 6-2. products
 INSERT INTO products (id, seller_id, title, price_won, description, category) VALUES
@@ -260,7 +263,7 @@ INSERT INTO product_favorites (user_id, product_id) VALUES
 INSERT INTO trades (id, product_id, buyer_id, seller_id, amount_won, status) VALUES
 ('bbbbbbb1-bbbb-bbbb-bbbb-bbbbbbbbbbb1','aaaaaaa1-aaaa-aaaa-aaaa-aaaaaaaaaaa1','33333333-3333-3333-3333-333333333333','11111111-1111-1111-1111-111111111111',30000,'CREATED');
 
--- 6-6. delivery_requests (KU대리)
+-- 6-6. delivery_requests
 INSERT INTO delivery_requests (id, requester_id, rider_id, product_id, price_won, status, start_lat, start_lng, end_lat, end_lng) VALUES
 ('d1111111-d111-d111-d111-d11111111111','33333333-3333-3333-3333-333333333333','22222222-2222-2222-2222-222222222222','aaaaaaa1-aaaa-aaaa-aaaa-aaaaaaaaaaa1',5000,'REQUESTED',36.3741,127.3655,36.3700,127.3600);
 
@@ -288,14 +291,10 @@ INSERT INTO push_tokens (user_id, device_id, token, platform) VALUES
 -- 완전 샘플 데이터 포함 끝
 -- =====================================
 
+-- 🔎 확인용
+UPDATE users
+SET password_hash = '$2b$10$5CpFUmH9ueAnsREr2OQFN.VTtnDCldczlNxiY9piGZQ.jfGuuqKIW'
+WHERE email = 'student@kku.ac.kr';
 
--- 🔹 MySQL UPDATE statements --
-UPDATE users SET password_hash='$2b$10$fYRqWvvzWFL.pVfcbgaj9u1UGzgdm1hp45V1lSS7D8Y2ydJJhphfK' WHERE email='student@kku.ac.kr';
-UPDATE users SET password_hash='$2b$10$F1ydbYHyibklSXpQHZxeP.PbDsvtC83ao/KGSK/69qe/ch220zIOi' WHERE email='rider@kku.ac.kr';
-UPDATE users SET password_hash='$2b$10$IXg9sGv7aTvarYn7Ny2IGOp6n8RkAPDqIzvWP2soLm26zl9UAIeOq' WHERE email='buyer@kku.ac.kr';
+SELECT email, password_hash FROM users WHERE email='student@kku.ac.kr';
 
-SELECT email, password_hash, CHAR_LENGTH(password_hash) AS len
-FROM users
-WHERE email='student@kku.ac.kr';
-
-SELECT email, password_hash, CHAR_LENGTH(password_hash) FROM users WHERE email='student@kku.ac.kr';

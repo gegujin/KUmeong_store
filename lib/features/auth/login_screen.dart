@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
-import 'package:kumeong_store/api_service.dart'; // 아래에 구현할 login 함수가 이 파일에 있어야 함
+import 'package:kumeong_store/api_service.dart'; // login 함수 정의
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -33,18 +33,17 @@ class _LoginPageState extends State<LoginPage> {
     try {
       debugPrint('[DEBUG] 로그인 시도: $email');
 
-      // api_service.dart 에 정의된 top-level login 함수를 호출
+      // api_service.dart에 정의된 login 함수 호출
       final token = await login(email, password);
 
-      if (!context.mounted) return;
+      if (!mounted) return;
 
       if (token != null) {
         debugPrint('[DEBUG] 로그인 성공, 토큰 길이: ${token.length}');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('로그인 성공!')),
         );
-        // 필요한 경우 토큰/유저 정보를 더 저장하거나 상태관리로 전달
-        context.goNamed(R.RouteNames.home);
+        context.goNamed(R.RouteNames.home); // 홈 화면 이동
       } else {
         debugPrint('[DEBUG] 로그인 실패: 서버가 null을 반환');
         ScaffoldMessenger.of(context).showSnackBar(
@@ -53,11 +52,13 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e, st) {
       debugPrint('[DEBUG] 로그인 예외 발생: $e\n$st');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('로그인 중 오류가 발생했습니다: ${e.toString()}')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('로그인 중 오류가 발생했습니다: ${e.toString()}')),
+        );
+      }
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -84,7 +85,7 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 40),
               TextField(
                 controller: emailController,
-                decoration: const InputDecoration(labelText: '아이디'),
+                decoration: const InputDecoration(labelText: '아이디(이메일)'),
                 style: const TextStyle(fontSize: 16),
                 keyboardType: TextInputType.emailAddress,
               ),

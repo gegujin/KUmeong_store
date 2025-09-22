@@ -1,5 +1,5 @@
 // src/modules/auth/auth.service.ts
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../users/users.service';
@@ -10,6 +10,8 @@ import { UserRole } from '../users/entities/user.entity';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly users: UsersService,
     private readonly jwt: JwtService,
@@ -18,8 +20,10 @@ export class AuthService {
 
   /** 회원가입 + 액세스 토큰 발급 */
   async register(dto: RegisterDto) {
-    const newUser = await this.users.create(dto); // SafeUser(id,email,role)
+    const newUser = await this.users.create(dto);
     const accessToken = await this.signToken(newUser.id, newUser.email, newUser.role);
+
+    this.logger.log(`회원가입 완료: ${newUser.email}`);
 
     return {
       accessToken,
@@ -27,7 +31,6 @@ export class AuthService {
         id: newUser.id,
         email: newUser.email,
         role: newUser.role,
-        // SafeUser에 name이 없을 수 있으므로 dto에서 보존
         name: dto.name?.trim() ?? '',
       },
     };
@@ -35,14 +38,26 @@ export class AuthService {
 
   /** 로그인 + 액세스 토큰 발급 */
   async login(dto: LoginDto) {
-    // 해시 포함 원본 레코드(UserRecord)
+    this.logger.log(`로그인 시도: ${dto.email}`);
+
     const user = await this.users.findByEmailWithHash(dto.email);
-    if (!user) throw new UnauthorizedException('Invalid credentials');
+    this.logger.debug(`조회된 유저: ${JSON.stringify(user)}`);
+
+    if (!user) {
+      this.logger.warn(`유저 없음: ${dto.email}`);
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
     const ok = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!ok) throw new UnauthorizedException('Invalid credentials');
+    this.logger.debug(`bcrypt 비교 결과: ${ok}`);
+
+    if (!ok) {
+      this.logger.warn(`비밀번호 불일치: ${dto.email}`);
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
     const accessToken = await this.signToken(user.id, user.email, user.role);
+    this.logger.log(`로그인 성공: ${dto.email}`);
 
     return {
       accessToken,
@@ -55,7 +70,7 @@ export class AuthService {
     };
   }
 
-  /** JWT 서명(ISSUER/AUDIENCE 설정 시 자동 포함) */
+  /** JWT 서명 */
   private async signToken(sub: string, email: string, role: UserRole): Promise<string> {
     const issuer = this.cfg.get<string>('JWT_ISSUER');
     const audience = this.cfg.get<string>('JWT_AUDIENCE');
