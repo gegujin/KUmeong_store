@@ -7,3 +7,5 @@
 *.md            text eol=lf
 # 윈도우 배치
 *.bat           text eol=crlf
+.gitattributes     text eol=lf
+my.cnf.example     text eol=lf
