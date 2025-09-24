@@ -7,9 +7,9 @@ export class LoginDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: 'password1234', minLength: 8 })
+  @ApiProperty({ example: '1234', minLength: 4 })
   @IsString()
-  @MinLength(8)
+  @MinLength(4)
   @MaxLength(64)
   password!: string;
 }

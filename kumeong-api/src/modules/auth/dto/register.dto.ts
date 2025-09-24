@@ -28,15 +28,15 @@ export class RegisterDto {
   name!: string;
 
   @ApiProperty({
-    example: 'password1234',
-    minLength: 8,
+    example: '1234',
+    minLength: 4,
     maxLength: 72, // bcrypt 권장 상한
     writeOnly: true,
-    description: '8자 이상 비밀번호',
+    description: '4자 이상 비밀번호',
     required: true,
   })
   @IsString()
-  @MinLength(8)
+  @MinLength(4)
   @MaxLength(72)
   // 규정 강화 시:
   // @Matches(/^(?=.*[A-Za-z])(?=.*\d).{8,}$/, { message: '영문+숫자 조합 8자 이상' })
