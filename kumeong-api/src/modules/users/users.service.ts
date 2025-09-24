@@ -3,110 +3,133 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
-import { UserRole } from './entities/user.entity';
-import type { SafeUser } from '../auth/types/user.types'; 
-
-/** 내부 저장용 레코드(해시 포함) */
-export interface UserRecord {
-  id: string;
-  email: string;
-  name: string;
-  passwordHash: string;
-  role: UserRole;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import { User, UserRole } from './entities/user.entity';
+import { DataSource, Repository } from 'typeorm';
+import type { SafeUser } from '../auth/types/user.types';
 
 @Injectable()
 export class UsersService {
-  private usersById = new Map<string, UserRecord>();
-  private usersByEmail = new Map<string, UserRecord>();
+  /** 테스트용 유저 (메모리 저장) */
+  private testUsersByEmail = new Map<string, User>();
+  /** 실제 회원가입 유저 Repository (DB 연결용) */
+  private usersRepository: Repository<User>;
 
-  constructor(private readonly cfg: ConfigService) {
-    this.initTestUser(); // 서버 시작 시 테스트 유저 등록
+  constructor(
+    private readonly cfg: ConfigService,
+    private readonly dataSource: DataSource,
+  ) {
+    this.usersRepository = this.dataSource.getRepository(User);
+    this.initTestUser(); // 동기 등록
   }
 
+  /** 이메일 정규화 */
   private normEmail(email: string) {
     return (email ?? '').trim().toLowerCase();
   }
 
-  private toSafeUser(u: UserRecord): SafeUser {
+  /** 비밀번호 제외 안전 유저 타입 변환 */
+  private toSafeUser(u: User): SafeUser {
     const { passwordHash, ...safe } = u;
     return safe as SafeUser;
   }
 
-  /** 서버 시작 시 테스트용 유저 등록 */
-  private async initTestUser() {
-    const testEmail = 'student@kku.ac.kr';
-    const testName = 'KKU Student';
-    const testPassword = 'password1234';
+  /** 서버 시작 시 테스트용 유저 등록 (즉시 로그인 가능) */
+  private initTestUser() {
+    const testEmail = this.normEmail('student@kku.ac.kr');
+    if (this.testUsersByEmail.has(testEmail)) return;
 
-    if (!this.usersByEmail.has(this.normEmail(testEmail))) {
-      const rounds = this.cfg.get<number>('BCRYPT_SALT_ROUNDS', 10);
-      const passwordHash = await bcrypt.hash(testPassword, rounds);
-      const now = new Date();
+    const rounds = this.cfg.get<number>('BCRYPT_SALT_ROUNDS', 10);
+    const passwordHash = bcrypt.hashSync('password1234', rounds);
+    const now = new Date();
 
-      const user: UserRecord = {
-        id: randomUUID(),
-        email: this.normEmail(testEmail),
-        name: testName,
-        passwordHash,
-        role: UserRole.USER,
-        createdAt: now,
-        updatedAt: now,
-      };
+    const user: User = {
+      id: randomUUID(),
+      email: testEmail,
+      name: 'KKU Student',
+      passwordHash,
+      reputation: 0,
+      role: UserRole.USER,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      products: [],
+    };
 
-      this.usersById.set(user.id, user);
-      this.usersByEmail.set(user.email, user);
-
-      console.log('[UsersService] 초기 테스트 유저 등록 완료:', user.email);
-    }
+    this.testUsersByEmail.set(testEmail, user);
+    console.log('[UsersService] ✅ 테스트 유저 등록 완료:', user.email);
   }
 
-  /** 회원 생성 (해시 저장), 반환은 안전 객체 */
+  /** 회원가입: 일반 유저용 */
   async create(dto: { email: string; name: string; password: string }): Promise<SafeUser> {
     const email = this.normEmail(dto.email);
-    if (this.usersByEmail.has(email)) {
-      throw new ConflictException('Email already in use');
+
+    // 테스트 유저는 회원가입 막기
+    if (this.testUsersByEmail.has(email)) {
+      throw new ConflictException('This is a reserved test account');
     }
+
+    // 최소 비밀번호 길이 4자로 허용
+    if (!dto.password || dto.password.length < 4) {
+      throw new ConflictException('Password must be at least 4 characters');
+    }
+
+    // DB 중복 체크
+    const exists = await this.usersRepository.findOne({ where: { email } });
+    if (exists) throw new ConflictException('Email already in use');
 
     const rounds = this.cfg.get<number>('BCRYPT_SALT_ROUNDS', 10);
     const passwordHash = await bcrypt.hash(dto.password, rounds);
-    const now = new Date();
 
-    const user: UserRecord = {
+    const user = this.usersRepository.create({
       id: randomUUID(),
       email,
       name: (dto.name ?? '').trim().replace(/\s+/g, ' '),
       passwordHash,
+      reputation: 0,
       role: UserRole.USER,
-      createdAt: now,
-      updatedAt: now,
-    };
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    });
 
-    this.usersById.set(user.id, user);
-    this.usersByEmail.set(email, user);
+    await this.usersRepository.save(user);
+    console.log('[UsersService] 🟢 회원가입 완료 (DB):', user.email);
 
     return this.toSafeUser(user);
   }
 
-  /** 로그인용: 해시 포함 원본 레코드 (AuthService가 사용) */
-  async findByEmailWithHash(email: string): Promise<UserRecord | null> {
-    const user = this.usersByEmail.get(this.normEmail(email)) ?? null;
-    console.log('[UsersService] DB에서 조회:', user ? user.email : null);
-    return user;
+  /** 로그인: 해시 포함 원본 조회 */
+  async findByEmailWithHash(email: string): Promise<User | null> {
+    const norm = this.normEmail(email);
+
+    // 테스트 유저 먼저 확인
+    const testUser = this.testUsersByEmail.get(norm);
+    if (testUser) {
+      console.log('[UsersService] ✨ 메모리에서 테스트 유저 조회:', testUser.email);
+      return testUser;
+    }
+
+    // 실제 DB 조회 (passwordHash 포함)
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password_hash')
+      .where('user.email = :email', { email: norm })
+      .getOne();
+
+    console.log('[UsersService] 🔍 DB에서 조회:', user ? user.email : null);
+    return user ?? null;
   }
 
-  /** 조회용: 해시 제거 */
+  /** 조회용: 안전 유저 타입 */
   async findByEmail(email: string): Promise<SafeUser | null> {
     const u = await this.findByEmailWithHash(email);
     return u ? this.toSafeUser(u) : null;
   }
 
-  /** ID로 조회(해시 제거) */
+  /** ID로 조회(안전 유저 타입) */
   async findOne(id: string): Promise<SafeUser> {
-    const u = this.usersById.get(id);
-    if (!u) throw new NotFoundException('User not found');
-    return this.toSafeUser(u);
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    return this.toSafeUser(user);
   }
 }
