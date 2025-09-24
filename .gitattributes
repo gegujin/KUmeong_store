@@ -1,0 +1,18 @@
+*                                   text=auto
+
+# ?? ??? ??? ?? ??
+.gitattributes                        text eol=lf
+README.md                             text eol=lf
+android/local.properties.example      text eol=lf
+**/local.properties.example           text eol=lf
+
+# (??? ??) ?/???? LF
+*.sh                                  text eol=lf
+*.cnf                                 text eol=lf
+*.yml                                 text eol=lf
+*.yaml                                text eol=lf
+*.md                                   text eol=lf
+
+# (???) ?? ????? CRLF
+*.bat                                 text eol=crlf
+.gitignore                         text eol=lf

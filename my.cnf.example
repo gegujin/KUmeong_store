@@ -1,0 +1,5 @@
+﻿[client]
+user=YOUR_DB_USER
+password=YOUR_DB_PASSWORD
+host=127.0.0.1
+port=3306

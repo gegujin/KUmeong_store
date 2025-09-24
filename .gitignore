@@ -1,55 +1,112 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
+# =========================
+# OS & 편집기/도구 공통
+# =========================
 .DS_Store
-.atom/
-.buildlog/
+*.log
+*.swp
+*.pyc
+*.class
 .history
 .svn/
-migrate_working_dir/
-
-# IntelliJ related
+.atom/
+.vscode/
+.idea/
 *.iml
 *.ipr
 *.iws
-.idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# =========================
+# Flutter / Dart
+# =========================
 .dart_tool/
+.packages
 .flutter-plugins
 .flutter-plugins-dependencies
-.pub-cache/
 .pub/
-/build/
-
-# Symbolication related
+.pub-cache/
+**/build/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.metadata
+coverage/
+# 심볼/난독화 산출물
 app.*.symbols
-
-# Obfuscation related
 app.*.map.json
 
-# Android Studio will place build artifacts here
+# =========================
+# Android (Gradle, NDK, 로컬 설정/키)
+# =========================
+/android/local.properties
 /android/app/debug
 /android/app/profile
 /android/app/release
+.android/
+.gradle/
+.cxx/
 
+# Android Keystore (절대 커밋 금지)
+*.keystore
+*.jks
+*.keystore.properties
 
-# DB / Runtime
+# Firebase/Google 서비스 키 (절대 커밋 금지)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+
+# 과거 백업/임시
+android_old/
+
+# =========================
+# iOS (Pods는 보통 제외, Podfile.lock은 유지 권장)
+# =========================
+ios/Pods/
+# ios/Podfile.lock  # <- 잠금파일은 보통 커밋 유지
+
+# =========================
+# Node / JS (모노레포 대비 재귀)
+# =========================
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# 빌드 산출물(웹/백엔드 가능성)
+dist/
+.out/
+.next/
+.tmp/
+.temp/
+.cache/
+
+# =========================
+# DB / 런타임 / 로그
+# =========================
 mysql_data/
 *.sock
 *.pid
-*.log
+
+# =========================
+# 비밀/환경설정(절대 커밋 금지)
+# =========================
+.env
+.env.*
+*.env
+*.env.*
+*.secret
+*_secret.*
+*secret*.json
+my.cnf
+*.cnf
+*.pem
+*.crt
+*.key
+id_rsa*
+id_dsa*
+private.key
+
+stop
+dir
 
 
-.metadata
-.vscode/
-android_old/
+node_modules/
