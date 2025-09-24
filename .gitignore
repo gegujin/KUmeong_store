@@ -148,3 +148,21 @@ id_rsa*
 id_dsa*
 .ssh/
 private.key
+
+# --- Databases / dumps ---
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.sql
+*.sql.gz
+dump*.sql*
+
+# --- OS artifacts (Windows) ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Node/Nest/JS 테스트/커버리지 ---
+.nyc_output/
+coverage/

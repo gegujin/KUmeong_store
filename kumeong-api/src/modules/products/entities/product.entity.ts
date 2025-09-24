@@ -45,7 +45,7 @@ export class Product {
   images?: string[];
 
   // snake_case FK
-  @Column({ type: 'char', length: 36, name: 'owner_id' })
+  @Column({ type: 'varchar', length: 36, name: 'owner_id' })
   ownerId: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE', eager: false })
