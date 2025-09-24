@@ -1,5 +1,8 @@
-// src/core/verify/university-domain.service.ts
-import { Injectable } from '@nestjs/common';
+// src/features/university/university-verification.controller.ts
+import { Body, Controller, Post, BadRequestException } from '@nestjs/common';
+import { EmailService } from '../../core/email/email.service';
+import { CodeStoreService } from '../../core/verify/code-store.service';
+import { UniversityDomainService } from '../../core/verify/university-domain.service';
 import { isAcademic } from 'swot-node'; // true if *.edu / *.ac.kr 등 학술 기관
 
 @Injectable()
