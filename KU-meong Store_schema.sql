@@ -298,3 +298,32 @@ WHERE email = 'student@kku.ac.kr';
 
 SELECT email, password_hash FROM users WHERE email='student@kku.ac.kr';
 
+-- 1. 리뷰 삭제 (유저 관련)
+DELETE FROM reviews 
+WHERE target_id = (SELECT id FROM users WHERE email='student@kku.ac.kr');
+
+-- 2. 거래 삭제 (products 참조)
+DELETE FROM trades 
+WHERE product_id IN (
+    SELECT id FROM products WHERE seller_id = (SELECT id FROM users WHERE email='student@kku.ac.kr')
+);
+
+-- 3. 상품 삭제
+DELETE FROM products 
+WHERE seller_id = (SELECT id FROM users WHERE email='student@kku.ac.kr');
+
+-- 4. 채팅 삭제
+DELETE FROM chat_rooms 
+WHERE seller_id = (SELECT id FROM users WHERE email='student@kku.ac.kr');
+
+-- 5. 마지막으로 유저 삭제
+DELETE FROM users 
+WHERE email='student@kku.ac.kr';
+
+ALTER TABLE users
+ADD COLUMN role ENUM('USER','ADMIN') NOT NULL DEFAULT 'USER';
+
+
+
+
+
