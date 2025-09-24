@@ -1,5 +1,5 @@
 # =========================
-# OS & 편집기/도구 공통
+# OS & Editors / Tools
 # =========================
 .DS_Store
 *.log
@@ -9,11 +9,15 @@
 .history
 .svn/
 .atom/
-.vscode/
 .idea/
 *.iml
 *.ipr
 *.iws
+
+# VS Code: 워크스페이스 설정은 팀 공유용으로 허용(민감값 넣지 말 것)
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
 
 # =========================
 # Flutter / Dart
@@ -24,17 +28,22 @@
 .flutter-plugins-dependencies
 .pub/
 .pub-cache/
+.fvm/
 **/build/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .metadata
 coverage/
+
 # 심볼/난독화 산출물
 app.*.symbols
 app.*.map.json
 
+# pubspec.lock: 앱은 보통 커밋 유지(패키지라면 무시 고려)
+# (무시하지 않음)
+
 # =========================
-# Android (Gradle, NDK, 로컬 설정/키)
+# Android (Gradle, NDK, Local keys)
 # =========================
 /android/local.properties
 /android/app/debug
@@ -44,23 +53,37 @@ app.*.map.json
 .gradle/
 .cxx/
 
-# Android Keystore (절대 커밋 금지)
+# Android signing / keys (절대 커밋 금지)
+android/key.properties
 *.keystore
 *.jks
 *.keystore.properties
 
-# Firebase/Google 서비스 키 (절대 커밋 금지)
+# Firebase(Google) service keys (절대 커밋 금지)
 android/app/google-services.json
-ios/Runner/GoogleService-Info.plist
+# flavor 분리 시 경로 추가 예: android/app/src/**/google-services.json
 
 # 과거 백업/임시
 android_old/
 
 # =========================
-# iOS (Pods는 보통 제외, Podfile.lock은 유지 권장)
+# iOS
 # =========================
 ios/Pods/
-# ios/Podfile.lock  # <- 잠금파일은 보통 커밋 유지
+# ios/Podfile.lock  # 보통 커밋 유지 권장
+
+# iOS 빌드/서명 산출물
+ios/DerivedData/
+**/*.xcuserdatad/
+**/*.xcuserdata/
+**/*.xcscmblueprint
+**/*.dSYM.zip
+**/*.ipa
+**/*.mobileprovision
+**/*.provisionprofile
+
+# Firebase(Google) service keys (절대 커밋 금지)
+ios/Runner/GoogleService-Info.plist
 
 # =========================
 # Node / JS (모노레포 대비 재귀)
@@ -80,30 +103,48 @@ dist/
 .cache/
 
 # =========================
-# DB / 런타임 / 로그
+# DB / Runtime / PIDs / Sockets
 # =========================
 mysql_data/
 *.sock
 *.pid
 
 # =========================
-# 비밀/환경설정(절대 커밋 금지)
+# Secrets / Environment (절대 커밋 금지)
 # =========================
+# .env 류: 모든 깊이에서 제외
 .env
 .env.*
+**/.env
+**/.env.*
 *.env
 *.env.*
+
+# 예시 템플릿은 허용
+!.env.example
+!**/.env.example
+!*.example
+
+# 일반 비밀/자격증명
 *.secret
 *_secret.*
 *secret*.json
+*credentials*.json
+serviceAccount*.json
+sentry.properties
 my.cnf
 *.cnf
+
+# 인증서/키
 *.pem
 *.crt
+*.cer
+*.der
+*.p7s
+*.p12
+*.pfx
 *.key
 id_rsa*
 id_dsa*
+.ssh/
 private.key
-
-stop
-dir
