@@ -8,7 +8,7 @@ import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProductsModule } from './modules/products/products.module';
 
-// ⬇️ 대학 이메일 인증 모듈 추가
+// ✅ 대학 이메일 인증 모듈
 import { UniversityVerificationModule } from './features/university/university-verification.module';
 
 @Module({
@@ -35,11 +35,10 @@ import { UniversityVerificationModule } from './features/university/university-v
         const nodeEnv = cfg.get<string>('NODE_ENV') ?? 'development';
         const isProd = nodeEnv === 'production';
 
-        // 공통 옵션
         const logging =
-          (cfg.get<string>('DB_LOGGING') === 'true') || !isProd; // 개발 기본 on
+          cfg.get<string>('DB_LOGGING') === 'true' || !isProd; // dev 기본 on
         const synchronize =
-          cfg.get<string>('DB_SYNC') === 'true' && !isProd;      // 프로덕션 보호
+          cfg.get<string>('DB_SYNC') === 'true' && !isProd; // prod 보호
         const dropSchema =
           cfg.get<string>('DB_DROP_SCHEMA') === 'true' && !isProd;
 
@@ -59,9 +58,18 @@ import { UniversityVerificationModule } from './features/university/university-v
           type: 'mysql' as const,
           host: cfg.get<string>('DB_HOST') ?? '127.0.0.1',
           port: Number(cfg.get<number>('DB_PORT') ?? 3306),
-          username: cfg.get<string>('DB_USERNAME') ?? cfg.get<string>('DB_USER') ?? 'root',
-          password: cfg.get<string>('DB_PASSWORD') ?? cfg.get<string>('DB_PASS') ?? '',
-          database: cfg.get<string>('DB_DATABASE') ?? cfg.get<string>('DB_NAME') ?? 'app',
+          username:
+            cfg.get<string>('DB_USERNAME') ??
+            cfg.get<string>('DB_USER') ??
+            'root',
+          password:
+            cfg.get<string>('DB_PASSWORD') ??
+            cfg.get<string>('DB_PASS') ??
+            '',
+          database:
+            cfg.get<string>('DB_DATABASE') ??
+            cfg.get<string>('DB_NAME') ??
+            'app',
           autoLoadEntities: true,
           synchronize,
           dropSchema,
@@ -79,7 +87,7 @@ import { UniversityVerificationModule } from './features/university/university-v
     AuthModule,
     ProductsModule,
 
-    // 대학 이메일 인증 모듈 등록
+    // ✅ 대학 이메일 인증 모듈 등록 (4단계 완료)
     UniversityVerificationModule,
   ],
 })
