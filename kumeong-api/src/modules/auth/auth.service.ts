@@ -39,7 +39,7 @@ export class AuthService {
     this.logger.log(`로그인 시도: ${dto.email}`);
 
     const user = await this.users.findByEmailWithHash(dto.email);
-    this.logger.debug(`조회된 유저: ${JSON.stringify(user)}`);
+    this.logger.debug(`조회된 유저: ${user ? user.email : 'null'}`);
 
     if (!user) {
       this.logger.warn(`유저 없음: ${dto.email}`);
@@ -68,17 +68,26 @@ export class AuthService {
     };
   }
 
-  /** JWT 서명: id는 string | number 모두 허용 */
-  private async signToken(userId: string | number, email: string, role: UserRole): Promise<string> {
+  /** JWT 서명: 호출부와 일치( id, email, role ) + payload에 email 포함 */
+  private async signToken(
+    userId: string | number,
+    email: string,
+    role?: UserRole | string,
+  ): Promise<string> {
     const issuer = this.cfg.get<string>('JWT_ISSUER');
     const audience = this.cfg.get<string>('JWT_AUDIENCE');
+    const expiresIn = this.cfg.get<string>('JWT_EXPIRES') ?? '7d';
 
-    return this.jwt.signAsync(
-      { sub: String(userId), email, role }, // ← 문자열로 강제 변환
-      {
-        ...(issuer ? { issuer } : {}),
-        ...(audience ? { audience } : {}),
-      },
-    );
+    const payload = {
+      sub: String(userId),    // 문자열 고정
+      email,                  // ✅ validate에서 사용할 핵심
+      role: (role ?? 'USER') as string,
+    };
+
+    return this.jwt.signAsync(payload, {
+      ...(issuer ? { issuer } : {}),
+      ...(audience ? { audience } : {}),
+      expiresIn,
+    });
   }
 }

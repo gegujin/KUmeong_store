@@ -51,8 +51,6 @@ export class UsersService {
       role: UserRole.USER,
       universityName: null,
       universityVerified: false,
-      // TypeORM의 @CreateDateColumn/@UpdateDateColumn/@DeleteDateColumn은 DB에서 관리되지만,
-      // 메모리 테스트 유저는 타입 충족을 위해 값만 채운다.
       createdAt: new Date(),
       updatedAt: new Date(),
       deletedAt: null,
@@ -105,18 +103,17 @@ export class UsersService {
   async findByEmailWithHash(email: string): Promise<User | null> {
     const norm = this.normEmail(email);
 
-    // 테스트 유저 먼저 확인
+    // 1) 테스트 유저 먼저
     const testUser = this.testUsersByEmail.get(norm);
     if (testUser) {
       console.log('[UsersService] ✨ 메모리에서 테스트 유저 조회:', testUser.email);
       return testUser;
     }
 
-    // 실제 DB 조회 (passwordHash 포함)
-    // passwordHash의 DB 컬럼명은 password_hash 이므로 addSelect 시 그 이름을 사용
+    // 2) 실제 DB 조회 (passwordHash는 엔티티 속성명으로 addSelect)
     const user = await this.usersRepository
       .createQueryBuilder('user')
-      .addSelect('user.password_hash')
+      .addSelect('user.passwordHash') // ✅ 엔티티 속성명 사용
       .where('user.email = :email', { email: norm })
       .getOne();
 
@@ -132,13 +129,19 @@ export class UsersService {
 
   /** ID로 조회(안전 유저 타입) */
   async findOne(id: number): Promise<SafeUser> {
+    // ✅ 테스트 유저 폴백: JWT sub=0인 경우 커버
+    if (id === 0) {
+      const test = this.testUsersByEmail.get(this.normEmail('student@kku.ac.kr'));
+      if (test) return this.toSafeUser(test);
+    }
+
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
     return this.toSafeUser(user);
   }
 
   /**
-   * ② (추가) 대학교 인증 완료 표시
+   * 대학교 인증 완료 표시
    * - 이메일 기준으로 유저를 찾아 인증 플래그/학교명 업데이트
    * - 테스트 유저/DB 유저 모두 처리, 멱등성 보장
    */
