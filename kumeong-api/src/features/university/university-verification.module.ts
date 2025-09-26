@@ -1,16 +1,14 @@
+// kumeong-api/src/features/university/university-verification.module.ts
 import { Module } from '@nestjs/common';
 import { UniversityVerificationController } from './university-verification.controller';
-// 다음 단계에서 실제 서비스들 주입 예정
-// import { EmailService } from '../../core/email/email.service';
-// import { CodeStoreService } from '../../core/verify/code-store.service';
-// import { UniversityDomainService } from '../../core/verify/university-domain.service';
+import { CodeStoreService } from '../../core/verify/code-store.service';
+import { UniversityDomainService } from '../../core/verify/university-domain.service';
+import { UniversityEmailService } from './university-email.service';
+import { UsersModule } from '../../modules/users/users.module'; // ✅ UsersService 주입용
 
 @Module({
+  imports: [UsersModule], // ✅ 추가
   controllers: [UniversityVerificationController],
-  providers: [
-    // EmailService,
-    // CodeStoreService,
-    // UniversityDomainService,
-  ],
+  providers: [CodeStoreService, UniversityDomainService, UniversityEmailService],
 })
 export class UniversityVerificationModule {}

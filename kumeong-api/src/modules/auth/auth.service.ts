@@ -18,7 +18,6 @@ export class AuthService {
     private readonly cfg: ConfigService,
   ) {}
 
-  /** 회원가입 + 액세스 토큰 발급 */
   async register(dto: RegisterDto) {
     const newUser = await this.users.create(dto);
     const accessToken = await this.signToken(newUser.id, newUser.email, newUser.role);
@@ -36,7 +35,6 @@ export class AuthService {
     };
   }
 
-  /** 로그인 + 액세스 토큰 발급 */
   async login(dto: LoginDto) {
     this.logger.log(`로그인 시도: ${dto.email}`);
 
@@ -70,13 +68,13 @@ export class AuthService {
     };
   }
 
-  /** JWT 서명 */
-  private async signToken(sub: string, email: string, role: UserRole): Promise<string> {
+  /** JWT 서명: id는 string | number 모두 허용 */
+  private async signToken(userId: string | number, email: string, role: UserRole): Promise<string> {
     const issuer = this.cfg.get<string>('JWT_ISSUER');
     const audience = this.cfg.get<string>('JWT_AUDIENCE');
 
     return this.jwt.signAsync(
-      { sub, email, role },
+      { sub: String(userId), email, role }, // ← 문자열로 강제 변환
       {
         ...(issuer ? { issuer } : {}),
         ...(audience ? { audience } : {}),

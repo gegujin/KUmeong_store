@@ -8,7 +8,7 @@ import { UserRole } from '../users/entities/user.entity';
 import type { SafeUser } from './types/user.types';
 
 interface JwtPayload {
-  sub: string;
+  sub: string;   // ← 문자열 유지 (표준)
   email: string;
   iat?: number;
   exp?: number;
@@ -40,16 +40,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       audience: cfg.get<string>('JWT_AUDIENCE') || undefined,
     });
   }
-  
+
   // req.user 에 들어갈 최종 형태
   async validate(payload: JwtPayload): Promise<SafeUser> {
     if (!payload?.sub || !payload?.email) {
       throw new UnauthorizedException('Invalid token payload');
     }
-    const u = await this.users.findOne(payload.sub); // ✅ 이제 role 포함 SafeUser
+
+    // 🔧 sub(string) → number로 변환
+    const userId = Number(payload.sub);
+    if (!Number.isFinite(userId)) {
+      throw new UnauthorizedException('Invalid token subject');
+    }
+
+    // UsersService.findOne은 number를 받음
+    const u = await this.users.findOne(userId);
+
     // 혹시 과거 데이터에 role이 없을 수 있으니 마지막 방어
     return { id: u.id, email: u.email, role: u.role ?? UserRole.USER };
   }
 }
-
-  

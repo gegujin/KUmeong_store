@@ -1,9 +1,12 @@
 import type { UserRole } from '../../users/entities/user.entity';
 
 export type SafeUser = {
-  id: string;
+  id: number;          // ← number로 변경
   email: string;
-  role: UserRole;  // ✅ 반드시 포함
+  role: UserRole;
+  name?: string;
+  universityName?: string | null;
+  universityVerified?: boolean;
 };
 
 // 호환용

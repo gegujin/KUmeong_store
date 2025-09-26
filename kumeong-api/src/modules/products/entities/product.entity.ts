@@ -1,3 +1,4 @@
+// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\entities\product.entity.ts
 import {
   Column,
   CreateDateColumn,
@@ -21,6 +22,7 @@ export enum ProductStatus {
 @Index('IDX_product_createdAt', ['createdAt'])
 @Index('IDX_product_price', ['price'])
 export class Product {
+  // 상품 PK는 기존대로 UUID 유지 (변경 불필요)
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -44,11 +46,11 @@ export class Product {
   @Column({ type: 'simple-json', nullable: true })
   images?: string[];
 
-  // snake_case FK
-  @Column({ type: 'varchar', length: 36, name: 'owner_id' })
-  ownerId: string;
+  // 🔧 FK: User.id(number) 에 맞게 number로 변경, length 제거
+  @Column({ name: 'owner_id', type: 'int' })
+  ownerId: number;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE', eager: false })
+  @ManyToOne(() => User, (u) => u.products, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'owner_id' })
   owner: User;
 

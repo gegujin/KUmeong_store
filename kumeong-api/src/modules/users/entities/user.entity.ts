@@ -1,7 +1,7 @@
 // src/modules/users/entities/user.entity.ts
 import {
   Entity,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   Column,
   OneToMany,
   CreateDateColumn,
@@ -18,8 +18,14 @@ export enum UserRole {
 
 @Entity('users')
 export class User {
-  @PrimaryColumn({ type: 'varchar', length: 36 })
-  id: string; // UUID
+  @PrimaryGeneratedColumn('increment')
+  id: number;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  universityName?: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  universityVerified: boolean;
 
   @Column({ type: 'varchar', length: 120, unique: true })
   email: string;
