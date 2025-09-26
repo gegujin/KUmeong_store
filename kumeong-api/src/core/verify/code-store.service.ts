@@ -69,6 +69,17 @@ export class CodeStoreService {
     });
   }
 
+  /** DEV 전용: 아직 유효한 코드만 조회(만료/초과면 null) */
+  peekActiveCode(email: string): { code: string; expiresAt: string } | null {
+    const key = this.norm(email);              // ✅ 정규화
+    const rec = this.store.get(key);
+    if (!rec) return null;
+    const now = Date.now();
+    if (now > rec.expiresAt) return null;
+    if (rec.attempts >= this.maxAttempts) return null;
+    return { code: rec.code, expiresAt: new Date(rec.expiresAt).toISOString() };
+  }
+
   /**
    * 코드 검증
    * - not_found | expired | too_many | mismatch 사유 분리
