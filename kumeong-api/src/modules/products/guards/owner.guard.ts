@@ -33,8 +33,12 @@ export class OwnerGuard implements CanActivate {
     if (!user) throw new ForbiddenException('Unauthorized');
 
     if (user.role === UserRole.ADMIN) return true; // 관리자 우회
-    if (p.ownerId !== user.id) {
-      throw new ForbiddenException('Only owner can modify/delete');
+    const userIdNum = Number(user.id); // SafeUser.id가 string일 수 있어서 변환
+    if (!Number.isFinite(userIdNum)) {
+      throw new ForbiddenException('잘못된 사용자 식별자');
+    }
+    if (p.ownerId !== userIdNum) {
+      throw new ForbiddenException('본인 상품만 변경할 수 있습니다.');
     }
     return true;
   }

@@ -34,4 +34,9 @@ export const envValidationSchema = Joi.object({
   // 레거시 호환(있어도 되고 없어도 됨)
   DB_USER: Joi.any().optional(),
   DB_PASS: Joi.any().optional(),
+
+  EMAIL_CODE_TTL_SEC: Joi.number().default(300),
+  EMAIL_COOLDOWN_SEC: Joi.number().default(60),
+  EMAIL_MAX_ATTEMPTS: Joi.number().default(5),
+  EMAIL_CODE_LENGTH: Joi.number().default(6),
 });

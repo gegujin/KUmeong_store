@@ -1,7 +1,7 @@
 // src/modules/products/products.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DeepPartial, Repository } from 'typeorm';
 import { Product, ProductStatus } from './entities/product.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -45,27 +45,40 @@ export class ProductsService {
     return { items, page, limit, total, pages };
   }
 
-  /** 단건 조회 */
+  /** 단건 조회 (PK는 uuid 문자열) */
   async findOne(id: string): Promise<Product> {
     const item = await this.repo.findOne({ where: { id } });
     if (!item) throw new NotFoundException('Product not found');
     return item;
   }
 
-  /** 생성: ownerId는 컨트롤러에서 @CurrentUser로 받아 주입 */
-  async createWithOwner(dto: CreateProductDto, ownerId: string): Promise<Product> {
-    const entity = this.repo.create({ ...dto, ownerId });
-    const saved = await this.repo.save(entity);
-    return saved;
+  /** 생성: ownerId는 컨트롤러에서 @CurrentUser로 받아 주입 (User.id:number) */
+  async createProduct(ownerId: number | string, dto: CreateProductDto): Promise<Product> {
+    const ownerIdNum = Number(ownerId);
+    if (!Number.isFinite(ownerIdNum)) {
+      throw new BadRequestException('ownerId must be a number');
+    }
+
+    // create/save 단건 오버로드로 사용
+    const entity = this.repo.create({
+      ...(dto as unknown as DeepPartial<Product>),
+      ownerId: ownerIdNum,
+    });
+
+    return this.repo.save(entity);
+  }
+
+  /** ✅ 컨트롤러 호환용 래퍼: (dto, ownerId) 순서 */
+  async createWithOwner(dto: CreateProductDto, ownerId: number | string): Promise<Product> {
+    return this.createProduct(ownerId, dto);
   }
 
   /** 수정 */
   async update(id: string, dto: UpdateProductDto): Promise<Product> {
     const exists = await this.repo.findOne({ where: { id } });
     if (!exists) throw new NotFoundException('Product not found');
-    const merged = this.repo.merge(exists, dto);
-    const saved = await this.repo.save(merged);
-    return saved;
+    const merged = this.repo.merge(exists, dto as DeepPartial<Product>);
+    return this.repo.save(merged);
   }
 
   /** 삭제 */

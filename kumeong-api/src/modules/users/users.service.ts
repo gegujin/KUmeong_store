@@ -2,9 +2,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
-import { randomUUID } from 'crypto';
-import { User, UserRole } from './entities/user.entity';
 import { DataSource, Repository } from 'typeorm';
+import { User, UserRole } from './entities/user.entity';
 import type { SafeUser } from '../auth/types/user.types';
 
 @Injectable()
@@ -29,7 +28,8 @@ export class UsersService {
 
   /** 비밀번호 제외 안전 유저 타입 변환 */
   private toSafeUser(u: User): SafeUser {
-    const { passwordHash, ...safe } = u;
+    // passwordHash 컬럼만 제거해서 반환
+    const { passwordHash, ...safe } = u as any;
     return safe as SafeUser;
   }
 
@@ -40,17 +40,21 @@ export class UsersService {
 
     const rounds = this.cfg.get<number>('BCRYPT_SALT_ROUNDS', 10);
     const passwordHash = bcrypt.hashSync('password1234', rounds);
-    const now = new Date();
 
+    // 엔티티 정의에 맞춰 id는 number 사용(메모리 전용이므로 0 사용)
     const user: User = {
-      id: randomUUID(),
+      id: 0,
       email: testEmail,
       name: 'KKU Student',
       passwordHash,
       reputation: 0,
       role: UserRole.USER,
-      createdAt: now,
-      updatedAt: now,
+      universityName: null,
+      universityVerified: false,
+      // TypeORM의 @CreateDateColumn/@UpdateDateColumn/@DeleteDateColumn은 DB에서 관리되지만,
+      // 메모리 테스트 유저는 타입 충족을 위해 값만 채운다.
+      createdAt: new Date(),
+      updatedAt: new Date(),
       deletedAt: null,
       products: [],
     };
@@ -80,16 +84,15 @@ export class UsersService {
     const rounds = this.cfg.get<number>('BCRYPT_SALT_ROUNDS', 10);
     const passwordHash = await bcrypt.hash(dto.password, rounds);
 
+    // id/타임스탬프는 데코레이터가 관리 → 직접 지정하지 않음
     const user = this.usersRepository.create({
-      id: randomUUID(),
       email,
       name: (dto.name ?? '').trim().replace(/\s+/g, ' '),
       passwordHash,
       reputation: 0,
       role: UserRole.USER,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      deletedAt: null,
+      universityName: null,
+      universityVerified: false,
     });
 
     await this.usersRepository.save(user);
@@ -110,6 +113,7 @@ export class UsersService {
     }
 
     // 실제 DB 조회 (passwordHash 포함)
+    // passwordHash의 DB 컬럼명은 password_hash 이므로 addSelect 시 그 이름을 사용
     const user = await this.usersRepository
       .createQueryBuilder('user')
       .addSelect('user.password_hash')
@@ -127,9 +131,45 @@ export class UsersService {
   }
 
   /** ID로 조회(안전 유저 타입) */
-  async findOne(id: string): Promise<SafeUser> {
+  async findOne(id: number): Promise<SafeUser> {
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
     return this.toSafeUser(user);
+  }
+
+  /**
+   * ② (추가) 대학교 인증 완료 표시
+   * - 이메일 기준으로 유저를 찾아 인증 플래그/학교명 업데이트
+   * - 테스트 유저/DB 유저 모두 처리, 멱등성 보장
+   */
+  async markUniversityVerifiedByEmail(email: string, universityName: string) {
+    const norm = this.normEmail(email);
+
+    // 1) 메모리 테스트 유저
+    const t = this.testUsersByEmail.get(norm);
+    if (t) {
+      t.universityVerified = true;
+      t.universityName = universityName;
+      t.updatedAt = new Date();
+      this.testUsersByEmail.set(norm, t);
+      return { ok: true as const, updated: true as const, source: 'memory' as const };
+    }
+
+    // 2) 실제 DB 유저
+    const user = await this.usersRepository.findOne({ where: { email: norm } });
+    if (!user) {
+      return { ok: false as const, reason: 'user_not_found' as const };
+    }
+
+    // 멱등성
+    if (user.universityVerified && user.universityName === universityName) {
+      return { ok: true as const, already: true as const, source: 'db' as const };
+    }
+
+    user.universityVerified = true;
+    user.universityName = universityName;
+    await this.usersRepository.save(user);
+
+    return { ok: true as const, updated: true as const, source: 'db' as const };
   }
 }
