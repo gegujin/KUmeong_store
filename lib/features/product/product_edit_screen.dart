@@ -1,15 +1,25 @@
 import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:go_router/go_router.dart';
-import 'package:kumeong_store/core/theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/post.dart';
+import '../../api_service.dart';
+import 'package:kumeong_store/core/theme.dart';
+import 'dart:html' as html;
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+
+const String baseUrl = 'http://localhost:3000/api/v1';
 
 class ProductEditScreen extends StatefulWidget {
   const ProductEditScreen({
     super.key,
-    required this.productId, // ✅ ID 기반
-    this.initialProduct, // ✅ 있으면 폼 초기값으로 사용
+    required this.productId,
+    this.initialProduct,
   });
 
   final String productId;
@@ -21,14 +31,17 @@ class ProductEditScreen extends StatefulWidget {
 
 class _ProductEditScreenState extends State<ProductEditScreen> {
   static const int _maxTags = 8;
+  static const int _maxImages = 10;
 
   final _titleCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _picker = ImagePicker();
+  final _locationCtrl = TextEditingController();
 
-  final List<File> _images = [];
+  final List<dynamic> _images = []; // Web: XFile, Mobile: File
   final List<String> _tags = [];
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -37,43 +50,159 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     if (p != null) {
       _titleCtrl.text = p.title;
       _priceCtrl.text = p.price.toString();
-      _descCtrl.text = p.description;
+      _descCtrl.text = p.description ?? '';
+      _tags.addAll(p.category?.split(',') ?? []);
+      if (p.imageUrls.isNotEmpty) _images.addAll(p.imageUrls);
     }
-    // TODO(연동): widget.productId로 백엔드에서 상세를 불러와 폼 채우기
   }
 
   Future<void> _pickImage() async {
-    if (_images.length >= 10) return;
+    if (_images.length >= _maxImages) return;
     final x = await _picker.pickImage(source: ImageSource.gallery);
-    if (x != null) setState(() => _images.add(File(x.path)));
+    if (x != null) setState(() => _images.add(x));
+  }
+
+  /// Web/Mobile 공용 이미지 + 데이터 업로드
+  Future<Map<String, dynamic>?> createProductWithImages(
+      Map<String, dynamic> data, List<dynamic> images, String token) async {
+    final uri = Uri.parse('$baseUrl/products');
+    var request = http.MultipartRequest('POST', uri);
+    request.headers['Authorization'] = 'Bearer $token';
+    request.fields['title'] = data['title'];
+    request.fields['price'] = data['price'].toString();
+    if (data['description'] != null)
+      request.fields['description'] = data['description'];
+    if (data['category'] != null) request.fields['category'] = data['category'];
+
+    for (var img in images) {
+      if (kIsWeb && img is XFile) {
+        final bytes = await img.readAsBytes();
+        final multipartFile = http.MultipartFile.fromBytes(
+          'images',
+          bytes,
+          filename: img.name,
+          contentType: MediaType('image', 'jpeg'),
+        );
+        request.files.add(multipartFile);
+      } else if (!kIsWeb && img is File) {
+        final stream = http.ByteStream(img.openRead());
+        final length = await img.length();
+        final multipartFile = http.MultipartFile(
+          'images',
+          stream,
+          length,
+          filename: img.path.split('/').last,
+          contentType: MediaType('image', 'jpeg'),
+        );
+        request.files.add(multipartFile);
+      }
+    }
+
+    try {
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final body = jsonDecode(response.body);
+        if (body is Map<String, dynamic>) return body;
+      } else {
+        debugPrint('❌ 이미지 등록 실패: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('❌ 이미지 등록 예외: $e');
+    }
+    return null;
+  }
+
+  /// 상품 등록
+  Future<void> createProduct(String token) async {
+    final productData = {
+      'title': _titleCtrl.text.trim(),
+      'price': int.tryParse(_priceCtrl.text.trim()) ?? 0,
+      'description':
+          _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
+      'category': _tags.isEmpty ? null : _tags.join(','),
+      'location': {'name': _locationCtrl.text.trim()},
+    };
+
+    final result = await createProductWithImages(productData, _images, token);
+    if (result != null) {
+      debugPrint('✅ 상품 등록 성공');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('상품이 등록되었습니다!')));
+      final newProduct = Product.fromJson(result);
+      if (mounted) context.pop(newProduct); // 홈 화면으로 새 상품 반환
+    } else {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('상품 등록 실패')));
+    }
+  }
+
+  /// 상품 수정
+  Future<void> updateProduct(String token) async {
+    if (widget.initialProduct == null) return;
+
+    final productData = {
+      'title': _titleCtrl.text.trim(),
+      'price': int.tryParse(_priceCtrl.text.trim()) ?? 0,
+      'description':
+          _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
+      'category': _tags.isEmpty ? null : _tags.join(','),
+      'location': {'name': _locationCtrl.text.trim()},
+    };
+
+    final result = await updateProductApi(widget.productId, productData, token);
+    if (result != null) {
+      debugPrint('✅ 상품 수정 성공');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('상품 수정 완료!')));
+      final updatedProduct = Product.fromJson(result);
+      if (mounted) context.pop(updatedProduct); // 홈 화면으로 수정 상품 반환
+    } else {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('상품 수정 실패')));
+    }
   }
 
   Future<void> _submit() async {
     if (_titleCtrl.text.isEmpty || _priceCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('제목과 가격을 입력해 주세요.')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('제목과 가격을 입력해주세요.')));
       return;
     }
 
-    // TODO(연동):
-    // - widget.productId가 존재하면 업데이트, 신규면 생성 API 호출
-    // - 생성 시 서버가 부여한 productId로 교체 후 상세 페이지로 이동
+    setState(() => _isLoading = true);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content:
-              Text(widget.initialProduct != null ? '수정 완료!' : '상품이 등록되었습니다!')),
-    );
+    String? token;
+    if (kIsWeb) {
+      token = html.window.localStorage['accessToken'];
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      token = prefs.getString('accessToken');
+    }
 
-    // ✅ 뒤로가기(pop) 대신 앞으로 이동
-    if (!mounted) return;
-    context.goNamed(
-      'productDetail',
-      pathParameters: {'productId': widget.productId},
-      // extra에 초안 데이터 전달 가능(최적화 용도, 신뢰는 서버)
-      // extra: updatedProduct,
-    );
+    if (token == null || token.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('로그인이 필요합니다.')));
+      setState(() => _isLoading = false);
+      context.go('/login');
+      return;
+    }
+
+    try {
+      if (widget.initialProduct == null) {
+        await createProduct(token);
+      } else {
+        await updateProduct(token);
+      }
+    } catch (e) {
+      debugPrint('❌ 상품 등록/수정 예외: $e');
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('오류 발생: $e')));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -81,6 +210,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     _titleCtrl.dispose();
     _priceCtrl.dispose();
     _descCtrl.dispose();
+    _locationCtrl.dispose();
     super.dispose();
   }
 
@@ -96,68 +226,51 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
         backgroundColor: cs.primary,
         title: Text(isEditing ? '상품 수정' : '상품 등록',
             style: TextStyle(color: cs.onPrimary)),
-        automaticallyImplyLeading: false,
-        // 뒤로 가기 추가
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () {
-            context.go('/home');
+            context.pop(); // 새 Product가 없으면 그냥 뒤로
           },
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 이미지 선택
-            InkWell(
-              onTap: _pickImage,
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: cs.surface,
-                  border: Border.all(color: ext.accentSoft),
-                  borderRadius: BorderRadius.circular(8),
-                  image: _images.isNotEmpty
-                      ? DecorationImage(
-                          image: FileImage(_images.first), fit: BoxFit.cover)
-                      : null,
-                ),
-                child: _images.isEmpty
-                    ? Icon(Icons.camera_alt,
-                        size: 36, color: cs.onSurfaceVariant)
-                    : null,
-              ),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildImagePicker(context, cs, ext),
+                const SizedBox(height: 24),
+                _buildLabel(context, '제목'),
+                const SizedBox(height: 4),
+                _buildTextField(_titleCtrl, '제목 작성', cs, ext),
+                const SizedBox(height: 16),
+                _buildLabel(context, '가격'),
+                const SizedBox(height: 4),
+                _buildTextField(_priceCtrl, '원', cs, ext,
+                    keyboardType: TextInputType.number),
+                const SizedBox(height: 16),
+                _buildLabel(context, '상세설명'),
+                const SizedBox(height: 4),
+                _buildTextField(_descCtrl, '제품 설명, 상세설명', cs, ext, maxLines: 6),
+                const SizedBox(height: 16),
+                _buildLabel(context, '거래 위치'),
+                const SizedBox(height: 4),
+                _buildTextField(_locationCtrl, '예: 서울 강남구 역삼동', cs, ext),
+                const SizedBox(height: 32),
+                _buildLabel(context, '태그'),
+                const SizedBox(height: 8),
+                _buildTagSelector(context, cs, ext),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text('${_images.length}/10',
-                style: TextStyle(fontSize: 12, color: cs.onSurface)),
-            const SizedBox(height: 24),
-
-            _buildLabel(context, '제목'),
-            const SizedBox(height: 4),
-            _buildTextField(_titleCtrl, '제목 작성', cs, ext),
-            const SizedBox(height: 16),
-
-            _buildLabel(context, '가격'),
-            const SizedBox(height: 4),
-            _buildTextField(_priceCtrl, '원', cs, ext,
-                keyboardType: TextInputType.number),
-            const SizedBox(height: 16),
-
-            _buildLabel(context, '상세설명'),
-            const SizedBox(height: 4),
-            _buildTextField(_descCtrl, '제품 설명, 상세설명', cs, ext, maxLines: 6),
-            const SizedBox(height: 24),
-
-            _buildLabel(context, '태그'),
-            const SizedBox(height: 8),
-            _buildTagSelector(context, cs, ext),
-          ],
-        ),
+          ),
+          if (_isLoading)
+            Container(
+              color: Colors.black26,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+        ],
       ),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -177,20 +290,100 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     );
   }
 
+  Widget _buildImagePicker(BuildContext context, ColorScheme cs, KuColors ext) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ..._images.map((img) {
+              return Stack(
+                children: [
+                  Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: cs.surface,
+                      border: Border.all(color: ext.accentSoft),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: kIsWeb
+                          ? (img is XFile
+                              ? FutureBuilder<Uint8List>(
+                                  future: img.readAsBytes(),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.done) {
+                                      if (snapshot.hasError)
+                                        return const Icon(Icons.error);
+                                      return Image.memory(snapshot.data!,
+                                          fit: BoxFit.cover);
+                                    }
+                                    return const Center(
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2));
+                                  },
+                                )
+                              : Image.network(img.toString(),
+                                  fit: BoxFit.cover))
+                          : Image.file(img as File, fit: BoxFit.cover),
+                    ),
+                  ),
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: GestureDetector(
+                      onTap: () => setState(() => _images.remove(img)),
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close,
+                            size: 20, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }).toList(),
+            if (_images.length < _maxImages)
+              InkWell(
+                onTap: _pickImage,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    border: Border.all(color: ext.accentSoft),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.add, size: 36, color: cs.onSurfaceVariant),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text('${_images.length}/$_maxImages',
+            style: TextStyle(fontSize: 12, color: cs.onSurface)),
+      ],
+    );
+  }
+
   Widget _buildLabel(BuildContext context, String text) {
     final cs = Theme.of(context).colorScheme;
     return Text(text,
         style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface));
   }
 
-  Widget _buildTextField(
-    TextEditingController controller,
-    String hintText,
-    ColorScheme cs,
-    KuColors ext, {
-    int maxLines = 1,
-    TextInputType? keyboardType,
-  }) {
+  Widget _buildTextField(TextEditingController controller, String hintText,
+      ColorScheme cs, KuColors ext,
+      {int maxLines = 1, TextInputType? keyboardType}) {
     return TextField(
       controller: controller,
       maxLines: maxLines,
@@ -238,14 +431,12 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                 return;
               }
               final tag = await showDialog<String>(
-                context: context,
-                builder: (_) => const CategoryDialog(),
-              );
-              if (tag == null) return;
-              if (_tags.contains(tag)) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('이미 선택한 태그예요.')),
-                );
+                  context: context, builder: (_) => const CategoryDialog());
+              if (tag == null || _tags.contains(tag)) {
+                if (_tags.contains(tag)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('이미 선택한 태그예요.')));
+                }
                 return;
               }
               setState(() => _tags.add(tag));
@@ -272,7 +463,6 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
   }
 }
 
-/// 카테고리 선택 다이얼로그(모달 pop은 페이지 pop과 별개라 유지)
 class CategoryDialog extends StatelessWidget {
   const CategoryDialog({super.key});
 
@@ -282,7 +472,7 @@ class CategoryDialog extends StatelessWidget {
     '의류/패션': ['남성의류', '여성의류', '아동의류', '신발', '가방', '액세서리'],
     '가구/인테리어': ['침대/매트리스', '책상/의자', '소파', '수납/테이블', '조명/인테리어 소품'],
     '생활/주방': ['주방용품', '청소/세탁용품', '욕실/수납용품', '생활잡화', '기타 생활소품'],
-    '유아/아동': ['유아의류', '장난감', '유모차/카시트', '육아용품', '침구/가구'],
+    '유아/아동': ['유아의류', '장난감/유모차/카시트', '육아용품', '침구/가구'],
     '취미/게임/음반': ['게임', '운동용품', '음반/LP', '악기', '아웃도어용품'],
     '도서/문구': ['소설/에세이', '참고서/전공서적', '만화책', '문구/사무용품', '기타 도서류'],
     '반려동물': ['사료/간식', '장난감/용품', '이동장/하우스', '의류/목줄', '기타 반려용품'],
