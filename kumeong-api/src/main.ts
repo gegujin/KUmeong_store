@@ -128,6 +128,8 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { SuccessResponseInterceptor } from './common/interceptors/success-response.interceptor';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { join } from 'path';
+import * as express from 'express';
 
 function sanitizePrefix(p?: string) {
   const v = (p ?? 'api').trim();
@@ -153,15 +155,17 @@ async function bootstrap() {
   const cfg = app.get(ConfigService);
 
   // ✅ CORS 설정 (Flutter Web용)
-const originConf = parseCorsOrigin(cfg);
-app.enableCors({
-  origin: [/^http:\/\/localhost(?::\d+)?$/, /^http:\/\/127\.0\.0\.1(?::\d+)?$/],
-  credentials: true,
-  methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','X-Requested-With','Accept'],
-});
+  const originConf = parseCorsOrigin(cfg);
+  app.enableCors({
+    origin: [/^http:\/\/localhost(?::\d+)?$/, /^http:\/\/127\.0\.0\.1(?::\d+)?$/],
+    credentials: true,
+    methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
+    allowedHeaders: ['Content-Type','Authorization','X-Requested-With','Accept'],
+  });
 
-
+  // 정적 파일 제공: 업로드된 이미지
+  // 예: public/uploads 폴더를 /uploads 경로로 제공
+  app.use('/uploads', express.static(join(__dirname, '..', 'public', 'uploads')));
 
   // API Prefix & Versioning
   const apiPrefix = sanitizePrefix(cfg.get<string>('API_PREFIX'));

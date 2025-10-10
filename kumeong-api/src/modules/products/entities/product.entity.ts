@@ -1,4 +1,4 @@
-// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\entities\product.entity.ts
+// src/modules/products/entities/product.entity.ts
 import {
   Column,
   CreateDateColumn,
@@ -8,6 +8,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 
@@ -22,7 +23,7 @@ export enum ProductStatus {
 @Index('IDX_product_createdAt', ['createdAt'])
 @Index('IDX_product_price', ['price'])
 export class Product {
-  // 상품 PK는 기존대로 UUID 유지 (변경 불필요)
+  // 상품 PK UUID
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -32,7 +33,6 @@ export class Product {
   @Column('int')
   price: number;
 
-  // cross-DB(enum)
   @Column({ type: 'simple-enum', enum: ProductStatus, default: ProductStatus.LISTED })
   status: ProductStatus;
 
@@ -42,11 +42,11 @@ export class Product {
   @Column({ length: 50, nullable: true })
   category?: string;
 
-  // cross-DB(JSON)
+  // 이미지 URL 배열 (JSON)
   @Column({ type: 'simple-json', nullable: true })
   images?: string[];
 
-  // 🔧 FK: User.id(number) 에 맞게 number로 변경, length 제거
+  // 소유자 FK(User.id: number)
   @Column({ name: 'owner_id', type: 'int' })
   ownerId: number;
 
@@ -59,4 +59,8 @@ export class Product {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  // 삭제일 컬럼 추가 (soft delete 지원)
+  @DeleteDateColumn({ nullable: true })
+  deletedAt?: Date;
 }
