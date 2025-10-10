@@ -1,7 +1,47 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
-import 'package:kumeong_store/api_service.dart'; // register 함수 필요
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'dart:html' as html; // Web용
+
+const String baseUrl = 'http://localhost:3000/api/v1';
+
+/// 🔑 회원가입 API
+Future<String?> register(String email, String password, String name) async {
+  final url = Uri.parse('$baseUrl/auth/register');
+  try {
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(
+          {'email': email.trim(), 'password': password, 'name': name.trim()}),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final token = data['data']?['accessToken'] as String?;
+      if (token != null) {
+        if (kIsWeb) {
+          html.window.localStorage['accessToken'] = token;
+        } else {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('accessToken', token);
+        }
+        debugPrint('[API] 회원가입 성공, 토큰 저장 ✅');
+      }
+      return token;
+    } else {
+      debugPrint('[API] 회원가입 실패: ${response.statusCode} ${response.body}');
+      return null;
+    }
+  } catch (e) {
+    debugPrint('[API] 회원가입 예외: $e');
+    return null;
+  }
+}
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -44,7 +84,6 @@ class _SignUpPageState extends State<SignUpPage> {
     setState(() => isLoading = true);
 
     try {
-      // 🔹 서버에 회원가입 요청
       final token = await register(email, password, name);
 
       if (!mounted) return;
@@ -53,7 +92,6 @@ class _SignUpPageState extends State<SignUpPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('회원가입 성공! 로그인 화면으로 이동')),
         );
-        // 🔹 회원가입 성공 시 로그인 화면으로 이동
         context.goNamed(R.RouteNames.login);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -1,16 +1,21 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:kumeong_store/features/delivery/ku_delivery_signup_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:kumeong_store/models/post.dart';
-import 'package:kumeong_store/core/widgets/app_bottom_nav.dart';
-import '../product/product_list_screen.dart';
-import '../home/alarm_screen.dart';
 import 'package:kumeong_store/core/ui/hero_tags.dart';
-import '../../core/theme.dart';
-import '../mypage/mypage_screen.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
 
-// ✅ KU 전용 색상 상수
+import '../product/product_list_screen.dart';
+import '../home/alarm_screen.dart';
+import '../mypage/mypage_screen.dart';
+import 'package:kumeong_store/core/widgets/app_bottom_nav.dart';
+import '../../core/theme.dart';
+import '../../api_service.dart';
+import 'dart:html' as html; // Web 전용 localStorage
+
 const Color kuInfo = Color(0xFF147AD6);
 
 class HomePage extends StatefulWidget {
@@ -20,53 +25,51 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
-  final List<Map<String, dynamic>> allProducts = [
-    {
-      'title': 'Willson 농구공 팝니다',
-      'location': '신촌운동장',
-      'time': '2일전',
-      'likes': 1,
-      'views': 5,
-      'price': '25,000원',
-      'isLiked': true,
-    },
-    {
-      'title': '컴공 과잠 팝니다',
-      'location': '모시래마을',
-      'time': '3일전',
-      'likes': 1,
-      'views': 5,
-      'price': '30,000원',
-      'isLiked': true,
-    },
-    {
-      'title': '스마트폰 판매합니다',
-      'location': '중앙동',
-      'time': '1일전',
-      'likes': 0,
-      'views': 20,
-      'price': '500,000원',
-      'isLiked': false,
-    },
-  ];
-
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
+  List<Map<String, dynamic>> allProducts = [];
   String searchText = '';
-  bool _isMenuOpen = false; // ✅ 메뉴 열림/닫힘 상태
+  bool _isMenuOpen = false;
+  String? token;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTokenAndProducts();
+  }
+
+  Future<void> _loadTokenAndProducts() async {
+    if (kIsWeb) {
+      token = html.window.localStorage['accessToken'];
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      token = prefs.getString('accessToken');
+    }
+
+    // 더미 데이터 추가 (홈 화면용 Map)
+    allProducts = [demoProduct.toMapForHome()];
+
+    if (token != null) {
+      final productsFromApi = await fetchProducts(token!);
+      setState(() {
+        allProducts.addAll(productsFromApi.map((p) => p.toMapForHome()));
+      });
+    } else {
+      setState(() {});
+    }
+  }
 
   void _toggleLike(int index) {
     setState(() {
-      final liked = allProducts[index]['isLiked'] as bool;
-      final likes = allProducts[index]['likes'] as int;
+      final liked = (allProducts[index]['isLiked'] ?? false) as bool;
+      final likes = allProducts[index]['likes'] as int? ?? 0;
       allProducts[index]['isLiked'] = !liked;
       allProducts[index]['likes'] = liked ? likes - 1 : likes + 1;
     });
   }
 
   void _toggleFabMenu() {
-    setState(() {
-      _isMenuOpen = !_isMenuOpen;
-    });
+    setState(() => _isMenuOpen = !_isMenuOpen);
   }
 
   @override
@@ -79,10 +82,6 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             .contains(searchText.toLowerCase()))
         .toList();
 
-    // ❗️demoProduct가 프로젝트에 이미 존재한다고 가정 (models/post.dart)
-    // 존재하지 않는다면 'demo-product'로 대체
-    final productId = (demoProduct.id.isNotEmpty) ? demoProduct.id : 'demo-product';
-
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -91,7 +90,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           children: [
             IconButton(
               icon: const Icon(Icons.menu, color: Colors.white),
-              onPressed: () => context.pushNamed(R.RouteNames.categories), // ✅
+              onPressed: () => context.pushNamed(R.RouteNames.categories),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -100,8 +99,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   hintText: '상품 검색',
                   fillColor: Colors.white,
                   filled: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(3)),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(3)),
                 ),
                 onChanged: (v) => setState(() => searchText = v),
               ),
@@ -109,39 +110,68 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             const SizedBox(width: 10),
             IconButton(
               icon: const Icon(Icons.notifications, color: Colors.white),
-              onPressed: () => context.pushNamed(R.RouteNames.alarms), // ✅
+              onPressed: () => context.pushNamed(R.RouteNames.alarms),
             ),
           ],
         ),
       ),
       body: Stack(
         children: [
-          // 상품 리스트
           ListView.builder(
-            padding: const EdgeInsets.only(bottom: 120), // ✅ FAB/메뉴 영역 여유
+            padding: const EdgeInsets.only(bottom: 120),
             itemCount: filteredProducts.length,
             itemBuilder: (_, index) {
               final product = filteredProducts[index];
+              final liked = (product['isLiked'] ?? false) as bool;
+
+              final imageUrl = (product['imageUrls'] != null &&
+                      (product['imageUrls'] as List).isNotEmpty)
+                  ? (product['imageUrls'] as List).first
+                  : null;
+
+              final title = product['title'] as String? ?? '';
+              final location = product['location']?.toString() ?? '';
+              final time = product['time'] as String? ?? '';
+              final price = product['price']?.toString() ?? '0원';
 
               return InkWell(
-                onTap: () => context.pushNamed( // ✅ 상세는 push
-                  R.RouteNames.productDetail,
-                  pathParameters: {'productId': productId},
-                  extra: demoProduct,
-                ),
+                onTap: () {
+                  context.pushNamed(
+                    R.RouteNames.productDetail,
+                    pathParameters: {
+                      'productId': product['id'] ?? 'demo-product'
+                    },
+                  );
+                },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          width: 80,
-                          height: 80,
-                          color: Colors.grey[300],
-                          child: const Icon(Icons.image, color: Colors.white70),
-                        ),
+                        child: imageUrl != null
+                            ? Image.network(
+                                imageUrl,
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 80,
+                                  height: 80,
+                                  color: Colors.grey[300],
+                                  child: const Icon(Icons.broken_image,
+                                      color: Colors.white70),
+                                ),
+                              )
+                            : Container(
+                                width: 80,
+                                height: 80,
+                                color: Colors.grey[300],
+                                child: const Icon(Icons.image,
+                                    color: Colors.white70),
+                              ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -149,23 +179,22 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              product['title'] as String,
+                              title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              '${product['location']} | ${product['time']}',
-                              style: const TextStyle(color: Colors.grey),
-                            ),
+                            Text('$location | $time',
+                                style: const TextStyle(color: Colors.grey)),
                             const SizedBox(height: 4),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('가격 ${product['price']}'),
+                                Text('가격 $price'),
                                 Text(
-                                  '찜 ${product['likes']} 조회수 ${product['views']}',
+                                  '찜 ${product['likes'] ?? 0} 조회수 ${product['views'] ?? 0}',
                                   style: const TextStyle(color: Colors.grey),
                                 ),
                               ],
@@ -176,10 +205,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                               child: GestureDetector(
                                 onTap: () => _toggleLike(index),
                                 child: Icon(
-                                  (product['isLiked'] as bool)
+                                  liked
                                       ? Icons.favorite
                                       : Icons.favorite_border,
-                                  color: (product['isLiked'] as bool) ? Colors.red : Colors.grey,
+                                  color: liked ? Colors.red : Colors.grey,
                                   size: 22,
                                 ),
                               ),
@@ -193,8 +222,6 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               );
             },
           ),
-
-          // ✅ (옵션) 바깥 터치로 메뉴 닫기용 투명 오버레이
           if (_isMenuOpen)
             Positioned.fill(
               child: GestureDetector(
@@ -203,15 +230,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 child: const SizedBox.shrink(),
               ),
             ),
-
-          // FAB 메뉴
           AnimatedPositioned(
             duration: const Duration(milliseconds: 250),
             right: 16,
             bottom: _isMenuOpen ? 100 : 80,
             curve: Curves.easeOut,
-
-            // ✅ 핵심: 닫혀 있을 땐 터치 완전 차단 (히트 테스트 불가)
             child: IgnorePointer(
               ignoring: !_isMenuOpen,
               child: AnimatedOpacity(
@@ -225,7 +248,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                       label: 'KU대리',
                       onTap: () {
                         _toggleFabMenu();
-                        context.pushNamed(R.RouteNames.kuDeliverySignup); // ✅
+                        context.pushNamed(R.RouteNames.kuDeliverySignup);
                       },
                     ),
                     const Divider(height: 1, color: Color(0xFFF1F3F5)),
@@ -233,12 +256,19 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                       icon: Icons.add_box_outlined,
                       iconColor: Color(0xFFFF6A00),
                       label: '상품 등록',
-                      onTap: () {
+                      onTap: () async {
                         _toggleFabMenu();
-                        context.pushNamed( // ✅
+                        if (!mounted) return;
+                        final Product? newProduct =
+                            await context.pushNamed<Product>(
                           R.RouteNames.productEdit,
-                          pathParameters: {'productId': productId},
+                          pathParameters: {'productId': 'demo-product'},
                         );
+                        if (newProduct != null && mounted) {
+                          setState(() {
+                            allProducts.insert(0, newProduct.toMapForHome());
+                          });
+                        }
                       },
                     ),
                   ],
@@ -248,15 +278,16 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           ),
         ],
       ),
-
-      // ✅ FAB: 루트에서만 히어로 참여 + 고유 태그(브랜치 네임스페이스)
       floatingActionButton: HeroMode(
         enabled: (ModalRoute.of(context)?.isFirst ?? true),
         child: FloatingActionButton(
           heroTag: heroTagFab('home'),
           backgroundColor: mainColor,
           onPressed: _toggleFabMenu,
-          child: Icon(_isMenuOpen ? Icons.close : Icons.add, color: Colors.white),
+          child: Icon(
+            _isMenuOpen ? Icons.close : Icons.add,
+            color: Colors.white,
+          ),
         ),
       ),
     );
@@ -278,10 +309,7 @@ class _MenuCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           boxShadow: const [
             BoxShadow(
-              color: Colors.black26,
-              blurRadius: 20,
-              offset: Offset(0, 6),
-            ),
+                color: Colors.black26, blurRadius: 20, offset: Offset(0, 6)),
           ],
         ),
         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -316,10 +344,9 @@ class _MenuItem extends StatelessWidget {
             Icon(icon, color: iconColor, size: 26),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-              ),
+              child: Text(label,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700)),
             ),
           ],
         ),
