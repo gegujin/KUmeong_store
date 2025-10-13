@@ -1,9 +1,11 @@
-// lib/features/auth/login_screen.dart
+//C:\Users\82105\KU-meong Store\lib\features\auth\login_screen.dart
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
 import 'package:kumeong_store/api_service.dart'; // login 함수 정의
+import 'package:shared_preferences/shared_preferences.dart'; // Web/Mobile 공통으로 사용
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -33,23 +35,32 @@ class _LoginPageState extends State<LoginPage> {
     try {
       debugPrint('[DEBUG] 로그인 시도: $email');
 
-      // api_service.dart에 정의된 login 함수 호출
-      final token = await login(email, password);
+      // login 함수는 api_service.dart에 정의되어 있어야 하며, 
+      // 여기서 'Future isn\'t a type' 오류가 발생했다면 api_service.dart의 
+      // login 함수의 정의를 확인해야 합니다. (이 파일에서는 수정 불가)
+      final result = await login(email, password);
+
+      // 🔹 로그인 함수에서 반환되는 accessToken 가져오기
+      String token = result ?? '';
+
+      if (token.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로그인 실패: 토큰이 없습니다.')),
+        );
+        return;
+      }
+
+      // 🔹 토큰 저장: SharedPreferences를 Web과 Mobile 모두에서 사용 (dart:html 제거)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('accessToken', token);
 
       if (!mounted) return;
 
-      if (token != null) {
-        debugPrint('[DEBUG] 로그인 성공, 토큰 길이: ${token.length}');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('로그인 성공!')),
-        );
-        context.goNamed(R.RouteNames.home); // 홈 화면 이동
-      } else {
-        debugPrint('[DEBUG] 로그인 실패: 서버가 null을 반환');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('로그인 실패: 이메일 또는 비밀번호를 확인하세요.')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('로그인 성공!')),
+      );
+      context.goNamed(R.RouteNames.home); // 홈 화면 이동
     } catch (e, st) {
       debugPrint('[DEBUG] 로그인 예외 발생: $e\n$st');
       if (mounted) {

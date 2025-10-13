@@ -52,23 +52,24 @@ export class ProductsService {
     return item;
   }
 
-  /** 생성: ownerId는 컨트롤러에서 @CurrentUser로 받아 주입 (User.id:number) */
+  /** 생성: ownerId는 컨트롤러에서 @CurrentUser로 받아 주입 */
   async createProduct(ownerId: number | string, dto: CreateProductDto): Promise<Product> {
     const ownerIdNum = Number(ownerId);
     if (!Number.isFinite(ownerIdNum)) {
       throw new BadRequestException('ownerId must be a number');
     }
 
-    // create/save 단건 오버로드로 사용
     const entity = this.repo.create({
       ...(dto as unknown as DeepPartial<Product>),
       ownerId: ownerIdNum,
+      // images 배열도 그대로 저장
+      images: dto.images?.length ? dto.images : [],
     });
 
     return this.repo.save(entity);
   }
 
-  /** ✅ 컨트롤러 호환용 래퍼: (dto, ownerId) 순서 */
+  /** 컨트롤러 호환용 래퍼 */
   async createWithOwner(dto: CreateProductDto, ownerId: number | string): Promise<Product> {
     return this.createProduct(ownerId, dto);
   }
