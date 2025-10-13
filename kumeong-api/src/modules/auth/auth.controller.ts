@@ -1,30 +1,26 @@
 // src/modules/auth/auth.controller.ts
-import { Body, Controller, Get, Post, UseGuards, HttpCode } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiTags,
-  ApiBody,
-  ApiOperation,
-  ApiOkResponse,
-  ApiUnauthorizedResponse,
-} from '@nestjs/swagger';
+import { Body, Controller, Get, Post, UseGuards, HttpCode, VERSION_NEUTRAL } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags, ApiBody, ApiOperation, ApiOkResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { JwtAuthGuard } from './jwt-auth.guard';
-import { CurrentUser } from './decorators/current-user.decorator';       // ✅ 경로 수정
-import type { SafeUser } from './types/user.types';                       // ✅ 경로 수정
+import { RefreshDto } from './dto/refresh.dto'; // { refreshToken: string }
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { CurrentUser } from './decorators/current-user.decorator';
+import type { SafeUser } from './types/user.types';
 import { Public } from './decorators/public.decorator';
 
 @ApiTags('Auth')
+// ✅ 버전 중립으로 변경: 헤더 없이도 /api/auth/* 매칭
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
+  // ========== REGISTER ==========
   @Public()
   @Post('register')
-  @HttpCode(200) // Swagger 예시(200)와 실제 상태코드 일치
-  @ApiOperation({ summary: '회원가입 + 액세스 토큰 발급' })
+  @HttpCode(200)
+  @ApiOperation({ summary: '회원가입 + 액세스/리프레시 토큰 발급' })
   @ApiBody({
     type: RegisterDto,
     examples: {
@@ -44,12 +40,13 @@ export class AuthController {
       example: {
         ok: true,
         data: {
-          accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+          accessToken: 'eyJhbGciOi...',
+          refreshToken: 'eyJhbGciOi...',
           user: {
             id: 'uuid',
             email: 'student@kku.ac.kr',
             name: 'KKU Student',
-            role: 'USER', // ✅ role 포함
+            role: 'USER',
           },
         },
       },
@@ -60,10 +57,11 @@ export class AuthController {
     return { ok: true, data: result };
   }
 
+  // ========== LOGIN ==========
   @Public()
   @Post('login')
   @HttpCode(200)
-  @ApiOperation({ summary: '로그인 + 액세스 토큰 발급' })
+  @ApiOperation({ summary: '로그인 + 액세스/리프레시 토큰 발급' })
   @ApiBody({
     type: LoginDto,
     examples: {
@@ -82,12 +80,13 @@ export class AuthController {
       example: {
         ok: true,
         data: {
-          accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+          accessToken: 'eyJhbGciOi...',
+          refreshToken: 'eyJhbGciOi...',
           user: {
             id: 'uuid',
             email: 'student@kku.ac.kr',
             name: 'KKU Student',
-            role: 'USER', // ✅ role 포함
+            role: 'USER',
           },
         },
       },
@@ -98,9 +97,10 @@ export class AuthController {
     schema: {
       example: {
         ok: false,
-        error: { code: 401, message: 'Invalid credentials' },
-        path: '/api/v1/auth/login',
-        timestamp: '2025-09-13T12:34:56.789Z',
+        error: { code: 401, message: 'INVALID_CREDENTIALS' },
+        // ✅ 경로 예시도 /api/auth/login 로 정정
+        path: '/api/auth/login',
+        timestamp: '2025-10-08T12:34:56.789Z',
       },
     },
   })
@@ -109,6 +109,35 @@ export class AuthController {
     return { ok: true, data: result };
   }
 
+  // ========== REFRESH ==========
+  @Public()
+  @Post('refresh')
+  @HttpCode(200)
+  @ApiOperation({ summary: '리프레시 토큰으로 액세스 토큰 재발급' })
+  @ApiBody({
+    type: RefreshDto,
+    examples: {
+      sample: {
+        summary: '예시',
+        value: { refreshToken: 'eyJhbGciOi...' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: '재발급 성공',
+    schema: {
+      example: { ok: true, data: { accessToken: 'eyJhbGciOi...' } },
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: '리프레시 토큰 누락/만료/폐기',
+  })
+  async refresh(@Body() dto: RefreshDto) {
+    const accessToken = await this.auth.refresh(dto.refreshToken);
+    return { ok: true, data: { accessToken } };
+  }
+
+  // ========== ME ==========
   @Get('me')
   @ApiOperation({ summary: '현재 사용자 정보 조회 (JWT 필요)' })
   @ApiBearerAuth()
@@ -121,15 +150,14 @@ export class AuthController {
           user: {
             id: 'uuid',
             email: 'student@kku.ac.kr',
-            role: 'USER', // ✅ role 포함
+            name: 'KKU Student',
+            role: 'USER',
           },
         },
       },
     },
   })
-  @ApiUnauthorizedResponse({
-    description: 'JWT 누락/유효하지 않음',
-  })
+  @ApiUnauthorizedResponse({ description: 'JWT 누락/유효하지 않음' })
   me(@CurrentUser() user: SafeUser) {
     return { ok: true, data: { user } };
   }
