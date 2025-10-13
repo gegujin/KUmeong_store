@@ -1,0 +1,34 @@
+# C:\Users\82105\KU-meong Store\kumeong-api\rest\friends.http
+### base: http://localhost:3000/api
+### JWT는 1단계에선 생략 가능(가드가 X-User-Id로 대체)
+### X-User-Id 헤더로 로그인 유저 지정 (없으면 1)
+
+### 친구 요청 보내기 (me=1이 42에게)
+POST {{base}}/friends/requests
+X-User-Id: 1
+Content-Type: application/json
+
+{ "toUserId": 42 }
+
+### 받은/보낸 요청 보기 (me=42)
+GET {{base}}/friends/requests
+X-User-Id: 42
+
+### 요청 수락 (me=42가 1→42 요청을 수락)
+POST {{base}}/friends/requests/1/accept
+X-User-Id: 42
+
+### 친구 목록 (me=1)
+GET {{base}}/friends
+X-User-Id: 1
+
+### 언프렌드 (me=1이 peer=42를 삭제)
+DELETE {{base}}/friends/42
+X-User-Id: 1
+
+### 차단 / 차단 해제 (me=1이 42를 차단/해제)
+POST {{base}}/friends/blocks/42
+X-User-Id: 1
+
+DELETE {{base}}/friends/blocks/42
+X-User-Id: 1
