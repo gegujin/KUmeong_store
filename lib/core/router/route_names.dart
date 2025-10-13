@@ -37,13 +37,14 @@ class RouteNames {
   static const sellHistory = 'sellHistory';
   static const recentPosts = 'recentPosts';
   static const friends = 'friends';
+  static const friendRequests = 'friendRequests'; // ✅ 추가: 친구 요청함
 
   // ── 거래/결제 플로우
   static const tradeConfirm = 'tradeConfirm';
   static const paymentMethod = 'paymentMethod';
   static const securePay = 'securePay';
 
-  // ── 설정(Settings) 오버레이 & 하위 (★ 추가)
+  // ── 설정(Settings) 오버레이 & 하위
   static const settings = 'settings';
   static const paymentMethods = 'paymentMethods'; // 카드/간편결제 관리
   static const refundAccount  = 'refundAccount';  // 환불계좌

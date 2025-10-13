@@ -110,10 +110,12 @@ class MyPage extends StatelessWidget {
             const SizedBox(height: 20),
 
             // ▼ 목록 (모두 네임드 라우트로 통일)
+            // MyPage의 친구목록 ListTile
             ListTile(
               leading: const Icon(Icons.group),
               title: const Text('친구목록'),
-              onTap: () => context.goNamed('friends'),
+              // 기존: context.goNamed(R.RouteNames.friends)
+              onTap: () => context.goNamed(R.RouteNames.friends),
             ),
             _buildDivider(),
             ListTile(

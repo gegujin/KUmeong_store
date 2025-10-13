@@ -1,10 +1,20 @@
+// C:\Users\82105\KU-meong Store\lib\features\friend\friend_detail_screen.dart
 import 'package:flutter/material.dart';
 import '../friend/friend_chat_screen.dart';
 
 class FriendDetailPage extends StatelessWidget {
   final String friendName;
+  final String meUserId;    // 로그인 사용자 문자열 ID (개발가드 X-User-Id)
+  final String peerUserId;  // 친구 ID (숫자 문자열이어야 함: "42" 등)
+  final String? avatarUrl;
 
-  const FriendDetailPage({super.key, required this.friendName});
+  const FriendDetailPage({
+    super.key,
+    required this.friendName,
+    required this.meUserId,
+    required this.peerUserId,
+    this.avatarUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -25,10 +35,15 @@ class FriendDetailPage extends StatelessWidget {
             CircleAvatar(
               radius: 50,
               backgroundColor: Colors.grey[300],
-              child: Text(
-                friendName[0],
-                style: const TextStyle(fontSize: 40, color: Colors.black),
-              ),
+              backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
+                  ? NetworkImage(avatarUrl!)
+                  : null,
+              child: (avatarUrl == null || avatarUrl!.isEmpty)
+                  ? Text(
+                      friendName.isNotEmpty ? friendName[0] : '?',
+                      style: const TextStyle(fontSize: 40, color: Colors.black),
+                    )
+                  : null,
             ),
             const SizedBox(height: 15),
 
@@ -44,13 +59,11 @@ class FriendDetailPage extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(
                 5,
-                (index) =>
-                    const Icon(Icons.star, color: Colors.amber, size: 28),
+                (index) => const Icon(Icons.star, color: Colors.amber, size: 28),
               ),
             ),
             const SizedBox(height: 20),
 
-            // 판매내역 (임시 더미)
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -59,6 +72,7 @@ class FriendDetailPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
+
             Expanded(
               child: ListView(
                 children: const [
@@ -91,7 +105,11 @@ class FriendDetailPage extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => FriendChatPage(friendName: friendName),
+                      builder: (_) => FriendChatPage(
+                        friendName: friendName,
+                        meUserId: meUserId,      // ✅ 문자열 UUID
+                        peerUserId: peerUserId,  // ✅ 그대로 문자열 전달
+                      ),
                     ),
                   );
                 },

@@ -1,7 +1,7 @@
 // src/modules/users/entities/user.entity.ts
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   OneToMany,
   CreateDateColumn,
@@ -9,8 +9,8 @@ import {
   DeleteDateColumn,
 } from 'typeorm';
 import { Product } from '../../products/entities/product.entity';
+import { v4 as uuidv4 } from 'uuid';
 
-/** 사용자 역할 enum */
 export enum UserRole {
   USER = 'USER',
   ADMIN = 'ADMIN',
@@ -18,8 +18,8 @@ export enum UserRole {
 
 @Entity('users')
 export class User {
-  @PrimaryGeneratedColumn('increment')
-  id: number;
+  @PrimaryColumn({ type: 'char', length: 36 })
+  id: string = uuidv4(); // ✅ UUID 기본값
 
   @Column({ type: 'varchar', length: 64, nullable: true })
   universityName?: string | null;
@@ -33,15 +33,14 @@ export class User {
   @Column({ type: 'varchar', length: 100 })
   name: string;
 
-  // 🔹 select: false 제거 (로그인 시 passwordHash 조회 가능)
-  @Column({ name: 'password_hash', type: 'varchar', length: 255 })
+  @Column({ name: 'password_hash', select: false })
   passwordHash: string;
 
   @Column({ type: 'int', default: 0 })
   reputation: number;
 
   @Column({
-    type: 'simple-enum',        // ✅ SQLite 호환
+    type: 'simple-enum',
     enum: UserRole,
     default: UserRole.USER,
   })
