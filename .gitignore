@@ -166,3 +166,7 @@ Desktop.ini
 # --- Node/Nest/JS 테스트/커버리지 ---
 .nyc_output/
 coverage/
+
+# User uploads (never track)
+kumeong-api/uploads/
+kumeong-api/public/uploads/
