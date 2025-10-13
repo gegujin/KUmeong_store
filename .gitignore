@@ -1,4 +1,4 @@
-# =========================
+# ========================= 
 # OS & Editors / Tools
 # =========================
 .DS_Store
@@ -167,6 +167,12 @@ Desktop.ini
 .nyc_output/
 coverage/
 
-# User uploads (never track)
+# =========================
+# App uploads (never track)
+# =========================
 kumeong-api/uploads/
 kumeong-api/public/uploads/
+
+# allow placeholder files to keep empty dirs
+!kumeong-api/uploads/.gitkeep
+!kumeong-api/public/uploads/.gitkeep
