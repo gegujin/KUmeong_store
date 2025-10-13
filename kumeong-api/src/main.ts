@@ -9,6 +9,8 @@ import { SuccessResponseInterceptor } from './common/interceptors/success-respon
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { normalizeId } from './common/utils/ids';
 import { DataSource } from 'typeorm';
+import { join } from 'path';
+import * as express from 'express';
 
 /** prefix 문자열에서 /를 정리 */
 function sanitizePrefix(p?: string) {
@@ -56,9 +58,19 @@ async function bootstrap() {
     origin: originConf,
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-User-Id', 'X-API-Version'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'Accept',
+      'X-User-Id',
+      'X-API-Version',
+    ],
     exposedHeaders: ['Content-Length'],
   });
+
+  // ✅ 정적 파일 제공: 업로드된 이미지 (/uploads → ./public/uploads)
+  app.use('/uploads', express.static(join(__dirname, '..', 'public', 'uploads')));
 
   // ✅ API Prefix & Versioning — URI 방식 (/api/v1/*)
   const apiPrefix = sanitizePrefix(cfg.get<string>('API_PREFIX'));
@@ -67,12 +79,11 @@ async function bootstrap() {
   app.setGlobalPrefix(apiPrefix);
 
   app.enableVersioning({
-    type: VersioningType.URI,      // /api/v1/*
+    type: VersioningType.URI, // /api/v1/*
     defaultVersion: apiVersion,
   });
 
-  // 🔁 호환 레이어: /api/* 로 오는 요청은 자동으로 /api/v{apiVersion}/* 로 승격
-  // (프런트 전환 완료 후 제거 가능)
+  // 🔁 호환 레이어: /api/* → /api/v{apiVersion}/* 자동 승격 (전환 완료 후 제거 가능)
   app.use(`/${apiPrefix}`, (req, _res, next) => {
     // 이 미들웨어는 '/api'에 마운트되어 있으므로 req.url은 '/v1/...' 또는 '/friends' 형태
     if (!req.url.startsWith('/v')) {
@@ -91,20 +102,17 @@ async function bootstrap() {
     .setTitle('KU멍가게 API')
     .setDescription('캠퍼스 중고거래/배달(KU대리) 백엔드 v1')
     .setVersion('1.0.0')
-    .addServer('/api/v1') // Swagger에서 basePath 설정
+    .addServer(`/${apiPrefix}/v${apiVersion}`)
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'bearer')
     .build();
 
-  // Swagger 문서 생성
   const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig, {
     operationIdFactory: (_controllerKey, methodKey) => methodKey,
   });
 
-  // Swagger UI 설정
   SwaggerModule.setup(`/${apiPrefix}/docs`, app, swaggerDoc, {
     swaggerOptions: { docExpansion: 'none' },
   });
-
 
   // ✅ 부팅 시 DB/뷰 체크 로그
   const ds = app.get(DataSource);
@@ -114,11 +122,11 @@ async function bootstrap() {
     const [viewRow] = await ds.query(
       `
       SELECT
-        SUM(CASE WHEN table_name='vwfriendsforuser' THEN 1 ELSE 0 END) AS has_vwfriendsforuser,
-        SUM(CASE WHEN table_name='vw_friends_for_user' THEN 1 ELSE 0 END) AS has_vw_friends_for_user,
-        SUM(CASE WHEN table_name='vw_conversations_for_user' THEN 1 ELSE 0 END) AS has_vw_conversations_for_user
+        SUM(CASE WHEN TABLE_NAME='vwfriendsforuser' THEN 1 ELSE 0 END) AS has_vwfriendsforuser,
+        SUM(CASE WHEN TABLE_NAME='vw_friends_for_user' THEN 1 ELSE 0 END) AS has_vw_friends_for_user,
+        SUM(CASE WHEN TABLE_NAME='vw_conversations_for_user' THEN 1 ELSE 0 END) AS has_vw_conversations_for_user
       FROM information_schema.VIEWS
-      WHERE table_schema = ?
+      WHERE TABLE_SCHEMA = ?
       `,
       [currentDb],
     );
