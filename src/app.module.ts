@@ -1,15 +1,23 @@
 // src/app.module.ts
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { DataSourceOptions } from 'typeorm';
+import { MailerModule } from '@nestjs-modules/mailer';
+
+import dataSource from './typeorm.config';
 import { envValidationSchema } from './core/config/env.validation';
 
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProductsModule } from './modules/products/products.module';
 
-// ✅ 대학 이메일 인증 모듈
 import { UniversityVerificationModule } from './features/university/university-verification.module';
+import { FriendsModule } from './features/friends/friends.module';
+import { ChatsModule } from './features/chats/chats.module';
+
+// ✅ 추가: X-User-Id 보정/자동생성 미들웨어
+import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware';
 
 @Module({
   imports: [
@@ -28,57 +36,29 @@ import { UniversityVerificationModule } from './features/university/university-v
     }),
 
     // ===== DB =====
-    TypeOrmModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (cfg: ConfigService) => {
-        const kind = cfg.get<string>('DB_KIND') ?? 'mysql';
-        const nodeEnv = cfg.get<string>('NODE_ENV') ?? 'development';
-        const isProd = nodeEnv === 'production';
+    TypeOrmModule.forRoot({
+      ...(dataSource.options as DataSourceOptions),
+      // ✅ 엔티티 자동 로드: ChatsModule 등에서 등록한 엔티티 자동 인식
+      autoLoadEntities: true,
+      synchronize: false,
+      dropSchema: false,
+    }),
 
-        const logging =
-          cfg.get<string>('DB_LOGGING') === 'true' || !isProd; // dev 기본 on
-        const synchronize =
-          cfg.get<string>('DB_SYNC') === 'true' && !isProd; // prod 보호
-        const dropSchema =
-          cfg.get<string>('DB_DROP_SCHEMA') === 'true' && !isProd;
-
-        if (kind === 'sqlite') {
-          return {
-            type: 'sqlite' as const,
-            database: cfg.get<string>('DB_SQLITE_PATH') ?? 'data/dev.sqlite',
-            autoLoadEntities: true,
-            synchronize,
-            dropSchema,
-            logging,
-          };
-        }
-
-        // MySQL / MariaDB
-        return {
-          type: 'mysql' as const,
-          host: cfg.get<string>('DB_HOST') ?? '127.0.0.1',
-          port: Number(cfg.get<number>('DB_PORT') ?? 3306),
-          username:
-            cfg.get<string>('DB_USERNAME') ??
-            cfg.get<string>('DB_USER') ??
-            'root',
-          password:
-            cfg.get<string>('DB_PASSWORD') ??
-            cfg.get<string>('DB_PASS') ??
-            '',
-          database:
-            cfg.get<string>('DB_DATABASE') ??
-            cfg.get<string>('DB_NAME') ??
-            'app',
-          autoLoadEntities: true,
-          synchronize,
-          dropSchema,
-          logging,
-          charset: cfg.get<string>('DB_CHARSET') ?? 'utf8mb4',
-          timezone: cfg.get<string>('DB_TIMEZONE') ?? '+09:00', // KST
-          // retryAttempts: 3,
-          // retryDelay: 2000,
-        };
+    // ===== Mailer (ENV: MAIL_*) =====
+    MailerModule.forRoot({
+      transport: {
+        host: process.env.MAIL_HOST,
+        port: Number(process.env.MAIL_PORT ?? 1025),
+        secure: process.env.MAIL_SECURE === 'true', // 보통 465만 true
+        auth:
+          process.env.MAIL_USER && process.env.MAIL_PASS
+            ? { user: process.env.MAIL_USER, pass: process.env.MAIL_PASS }
+            : undefined,
+        connectionTimeout: 5000,
+        greetingTimeout: 5000,
+      },
+      defaults: {
+        from: process.env.MAIL_FROM ?? '"KU멍가게" <no-reply@kumeong.local>',
       },
     }),
 
@@ -86,9 +66,17 @@ import { UniversityVerificationModule } from './features/university/university-v
     UsersModule,
     AuthModule,
     ProductsModule,
-
-    // ✅ 대학 이메일 인증 모듈 등록 (4단계 완료)
     UniversityVerificationModule,
+    FriendsModule,
+    ChatsModule,
+
+    // (선택) 로컬 테스트용 DevModule을 쓰는 경우 여기에 추가
+    // DevModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // ✅ 전역 적용: 헤더에 X-User-Id 없거나 숫자면 UUID로 보정
+    consumer.apply(EnsureUserMiddleware).forRoutes('*');
+  }
+}
