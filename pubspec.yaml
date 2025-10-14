@@ -16,7 +16,8 @@ dependencies:
   # 데이터 통신
   http: ^0.13.5
   web_socket_channel: ^2.4.5 # ✅ 요청하신 버전 적용
-  
+  jwt_decode: ^0.3.1
+
   # 상태/데이터 관리
   shared_preferences: ^2.3.2 # ✅ 요청하신 버전으로 업데이트 및 적용
   

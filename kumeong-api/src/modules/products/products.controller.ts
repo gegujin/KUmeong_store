@@ -1,32 +1,31 @@
 // C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\products.controller.ts
 import {
-  Body,
+  BadRequestException,
   Controller,
-  Get,
-  Post,
-  Patch,
   Delete,
+  Get,
+  NotFoundException,
   Param,
+  Patch,
+  Post,
+  Body,
   Query,
   Req,
-  BadRequestException,
-  NotFoundException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 
-import { ProductsService } from '../products/products.service';              // ← ../products → ./ 로 수정
-import { CreateProductDto } from '../products/dto/create-product.dto';       // ← ../products/dto → ./
-import { UpdateProductDto } from '../products/dto/update-product.dto';
-import { QueryProductDto } from '../products/dto/query-product.dto';
-import { Product } from '../products/entities/product.entity';
+import { ProductsService } from './products.service';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
+import { QueryProductDto } from './dto/query-product.dto';
+import { Product } from './entities/product.entity';
 
-import { CurrentUser } from '../auth/decorators/current-user.decorator'; // modules/products → modules/auth 경로 OK
-// import { OwnerGuard } ... (필요 시 추가)
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('products')
 @ApiBearerAuth()
-@Controller('v1/products')
+@Controller({ path: 'products', version: '1' })
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
@@ -92,6 +91,7 @@ export class ProductsController {
     return { ok: true, data: result };
   }
 }
+
 
 
 // import {

@@ -35,8 +35,8 @@ class _LoginPageState extends State<LoginPage> {
     try {
       debugPrint('[DEBUG] 로그인 시도: $email');
 
-      // login 함수는 api_service.dart에 정의되어 있어야 하며, 
-      // 여기서 'Future isn\'t a type' 오류가 발생했다면 api_service.dart의 
+      // login 함수는 api_service.dart에 정의되어 있어야 하며,
+      // 여기서 'Future isn\'t a type' 오류가 발생했다면 api_service.dart의
       // login 함수의 정의를 확인해야 합니다. (이 파일에서는 수정 불가)
       final result = await login(email, password);
 
@@ -54,6 +54,10 @@ class _LoginPageState extends State<LoginPage> {
       // 🔹 토큰 저장: SharedPreferences를 Web과 Mobile 모두에서 사용 (dart:html 제거)
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('accessToken', token);
+
+      // 🔹 저장 확인용 출력
+      final savedToken = prefs.getString('accessToken');
+      debugPrint('[DEBUG] 저장된 토큰: $savedToken');
 
       if (!mounted) return;
 
