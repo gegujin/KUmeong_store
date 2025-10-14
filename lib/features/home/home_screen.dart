@@ -38,6 +38,7 @@ class _HomePageState extends State<HomePage>
     _loadTokenAndProducts();
   }
 
+  /// ✅ 수정 ①: 비동기 로딩 구조 개선
   Future<void> _loadTokenAndProducts() async {
     if (kIsWeb) {
       token = html.window.localStorage['accessToken'];
@@ -46,17 +47,21 @@ class _HomePageState extends State<HomePage>
       token = prefs.getString('accessToken');
     }
 
-    // 더미 데이터 추가 (홈 화면용 Map)
-    allProducts = [demoProduct.toMapForHome()];
+    final products = <Map<String, dynamic>>[demoProduct.toMapForHome()];
 
     if (token != null) {
-      final productsFromApi = await fetchProducts(token!);
-      setState(() {
-        allProducts.addAll(productsFromApi.map((p) => p.toMapForHome()));
-      });
-    } else {
-      setState(() {});
+      try {
+        final productsFromApi = await fetchProducts(token!);
+        products.addAll(productsFromApi.map((p) => p.toMapForHome()));
+      } catch (e) {
+        debugPrint('상품 불러오기 오류: $e');
+      }
     }
+
+    // 비동기 완료 후 한 번만 setState 호출
+    setState(() {
+      allProducts = products;
+    });
   }
 
   void _toggleLike(int index) {
@@ -130,7 +135,34 @@ class _HomePageState extends State<HomePage>
                   : null;
 
               final title = product['title'] as String? ?? '';
-              final location = product['location']?.toString() ?? '';
+
+              /// ✅ 수정: locationName이 비어있으면 seller.locationName 사용
+              final locationValue = product['location'];
+              String location = '';
+              if (locationValue is Map) {
+                location = (locationValue['name']?.toString().isNotEmpty ??
+                        false)
+                    ? locationValue['name']
+                    : (locationValue['locationName']?.toString().isNotEmpty ??
+                            false)
+                        ? locationValue['locationName']
+                        : (product['seller']?['locationName']
+                                    ?.toString()
+                                    .isNotEmpty ??
+                                false)
+                            ? product['seller']['locationName']
+                            : '위치 정보 없음';
+              } else if (locationValue is String && locationValue.isNotEmpty) {
+                location = locationValue;
+              } else {
+                location = (product['seller']?['locationName']
+                            ?.toString()
+                            .isNotEmpty ??
+                        false)
+                    ? product['seller']['locationName']
+                    : '위치 정보 없음';
+              }
+
               final time = product['time'] as String? ?? '';
               final price = product['price']?.toString() ?? '0원';
 
@@ -222,6 +254,8 @@ class _HomePageState extends State<HomePage>
               );
             },
           ),
+
+          /// ✅ FAB 외부 탭시 닫기 처리
           if (_isMenuOpen)
             Positioned.fill(
               child: GestureDetector(
@@ -230,6 +264,8 @@ class _HomePageState extends State<HomePage>
                 child: const SizedBox.shrink(),
               ),
             ),
+
+          /// ✅ FAB 메뉴
           AnimatedPositioned(
             duration: const Duration(milliseconds: 250),
             right: 16,
@@ -264,9 +300,12 @@ class _HomePageState extends State<HomePage>
                           R.RouteNames.productEdit,
                           pathParameters: {'productId': 'demo-product'},
                         );
+
+                        /// ✅ 수정 ②: 등록된 상품 즉시 반영
                         if (newProduct != null && mounted) {
                           setState(() {
-                            allProducts.insert(0, newProduct.toMapForHome());
+                            final newMap = newProduct.toMapForHome();
+                            allProducts.insert(0, newMap);
                           });
                         }
                       },

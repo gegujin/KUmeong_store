@@ -26,7 +26,6 @@ import {
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import type { File as MulterFile } from 'multer';
 
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -97,7 +96,7 @@ export class ProductsController {
   async create(
     @Body() dto: CreateProductDto,
     @CurrentUser() u: SafeUser,
-    @UploadedFiles() files: MulterFile[],
+    @UploadedFiles() files: Express.Multer.File[],
   ) {
     // 업로드된 이미지 URL 배열 생성
     if (files && files.length > 0) {
