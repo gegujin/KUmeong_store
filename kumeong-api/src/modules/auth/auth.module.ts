@@ -1,3 +1,4 @@
+// src/modules/auth/auth.module.ts
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -33,7 +34,7 @@ import { EmailVerificationController } from './controllers/email-verification.co
       }),
     }),
     TypeOrmModule.forFeature([EmailVerification, User]),
-    MailerModule, // ✅ 전역 설정 재사용
+    MailerModule,
   ],
   controllers: [AuthController, EmailVerificationController],
   providers: [AuthService, JwtStrategy, EmailVerificationService],
