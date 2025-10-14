@@ -1,7 +1,6 @@
 // C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\products.controller.ts
 import {
   BadRequestException,
-  Body,
   Controller,
   Delete,
   Get,
@@ -9,13 +8,14 @@ import {
   Param,
   Patch,
   Post,
+  Body,
   Query,
   Req,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 
-import { ProductsService } from './products.service';               // ← ./ 로 정리
+import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
@@ -25,7 +25,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('products')
 @ApiBearerAuth()
-@Controller({ path: 'products', version: '1' })                      // 최종 경로: /api/v1/products
+@Controller({ path: 'products', version: '1' })
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
