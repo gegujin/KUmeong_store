@@ -1,28 +1,49 @@
 // C:\Users\82105\KU-meong Store\kumeong-api\src\features\chats\entities\chat-message.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
+import {
+  Entity,
+  PrimaryColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
+  BeforeInsert,
+} from 'typeorm';
+import { randomUUID } from 'crypto';
+import { ChatRoom } from './chat-room.entity';
 
-@Entity('chat_messages')
-@Index('ix_pair_id', ['userAId', 'userBId', 'id'])
-export class ChatMessageEntity {
-  // ✅ PK를 UUID(string)으로 통일
-  @PrimaryGeneratedColumn('uuid')
+export type ChatMessageType = 'TEXT' | 'IMAGE' | 'FILE' | string;
+
+@Entity({ name: 'chatMessages' })
+@Index('ix_chatMessages_room_created', ['roomId', 'createdAt', 'id'])
+export class ChatMessage {
+  @PrimaryColumn('char', { length: 36 })
   id!: string;
 
-  // ✅ 친구쌍 정규화: 항상 (사전식 기준, UUID)
-  @Column({ name: 'user_a_id', type: 'char', length: 36 })
-  userAId!: string;
+  @Column('char', { length: 36 })
+  roomId!: string;
 
-  @Column({ name: 'user_b_id', type: 'char', length: 36 })
-  userBId!: string;
+  @ManyToOne(() => ChatRoom, (r) => r.messages, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'roomId' })
+  room!: ChatRoom;
 
-  // ✅ 보낸 사람 UUID
-  @Column({ name: 'sender_id', type: 'char', length: 36 })
+  @Column('char', { length: 36 })
   senderId!: string;
 
-  // 본문
-  @Column({ type: 'text' })
-  text!: string;
+  @Column({ type: 'varchar', length: 16, default: 'TEXT' })
+  type!: ChatMessageType;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @Column({ type: 'text', nullable: true })
+  content?: string | null;
+
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  fileUrl?: string | null;
+
+  @CreateDateColumn({ type: 'datetime', precision: 6 })
   createdAt!: Date;
+
+  @BeforeInsert()
+  assignId() {
+    if (!this.id) this.id = randomUUID();
+  }
 }

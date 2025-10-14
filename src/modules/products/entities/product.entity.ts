@@ -1,66 +1,74 @@
-// src/modules/products/entities/product.entity.ts
+// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\entities\product.entity.ts
 import {
-  Column,
-  CreateDateColumn,
   Entity,
-  Index,
-  JoinColumn,
+  Column,
+  PrimaryColumn,
   ManyToOne,
-  PrimaryGeneratedColumn,
+  CreateDateColumn,
   UpdateDateColumn,
-  DeleteDateColumn,
+  JoinColumn,
+  BeforeInsert,
+  Index,
 } from 'typeorm';
+import { randomUUID } from 'crypto';
 import { User } from '../../users/entities/user.entity';
 
 export enum ProductStatus {
-  LISTED = 'LISTED',
+  DRAFT = 'DRAFT',
+  ON_SALE = 'ON_SALE',
   RESERVED = 'RESERVED',
   SOLD = 'SOLD',
 }
 
-@Entity('products')
+@Entity({ name: 'products' })
 @Index('IDX_product_owner', ['ownerId'])
 @Index('IDX_product_createdAt', ['createdAt'])
 @Index('IDX_product_price', ['price'])
 export class Product {
-  // 상품 PK UUID
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  // PK: UUID/CHAR(36) — 전역 정책
+  @PrimaryColumn('char', { length: 36 })
+  id!: string;
 
-  @Column({ length: 100 })
-  title: string;
+  @Column('varchar', { length: 200 })
+  title!: string;
 
-  @Column('int')
-  price: number;
+  @Column('int', { unsigned: true })
+  price!: number;
 
-  @Column({ type: 'simple-enum', enum: ProductStatus, default: ProductStatus.LISTED })
-  status: ProductStatus;
+  @Column('enum', { enum: ProductStatus, default: ProductStatus.ON_SALE })
+  status!: ProductStatus;
 
+  // 선택 필드들(기존 스키마 호환)
   @Column({ type: 'text', nullable: true })
   description?: string;
 
   @Column({ length: 50, nullable: true })
   category?: string;
 
-  // 이미지 URL 배열 (JSON)
+  // 이미지 URL 배열(JSON)
   @Column({ type: 'simple-json', nullable: true })
   images?: string[];
 
-  // 소유자 FK(User.id: number)
-  @Column({ name: 'owner_id', type: 'int' })
-  ownerId: number;
+  // 소유자 FK — UUID/CHAR(36)
+  @Column('char', { length: 36 })
+  ownerId!: string;
 
-  @ManyToOne(() => User, (u) => u.products, { onDelete: 'CASCADE', nullable: false })
-  @JoinColumn({ name: 'owner_id' })
-  owner: User;
+  @ManyToOne(() => User, (u) => u.products, {
+    onDelete: 'CASCADE',
+    nullable: false,
+    eager: false,
+  })
+  @JoinColumn({ name: 'ownerId', referencedColumnName: 'id' })
+  owner!: User;
 
-  @CreateDateColumn()
-  createdAt: Date;
+  @CreateDateColumn({ type: 'timestamp' })
+  createdAt!: Date;
 
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @UpdateDateColumn({ type: 'timestamp' })
+  updatedAt!: Date;
 
-  // 삭제일 컬럼 추가 (soft delete 지원)
-  @DeleteDateColumn({ nullable: true })
-  deletedAt?: Date;
+  @BeforeInsert()
+  assignId() {
+    if (!this.id) this.id = randomUUID();
+  }
 }
