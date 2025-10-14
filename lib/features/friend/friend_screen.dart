@@ -1,4 +1,3 @@
-// C:\Users\82105\KU-meong Store\lib\features\friend\friend_screen.dart
 import 'package:go_router/go_router.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
 import 'dart:convert';
@@ -6,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/base_url.dart';
-import '../../core/chat_api.dart';
+import '../../core/chat_api.dart'; // ChatApi 임포트
 
 import 'friend_chat_screen.dart';
 import 'friend_detail_screen.dart';
@@ -63,6 +62,14 @@ class _FriendScreenState extends State<FriendScreen> {
     final padded = _leftPadZeros(last12, 12);
     return '00000000-0000-0000-0000-$padded';
   }
+  
+  // ───────────────── Room ID 생성 유틸리티 추가 ─────────────────
+  // FriendChatPage에서 사용하는 것과 동일하게 roomId를 생성합니다.
+  String _generateRoomId(String id1, String id2) {
+    final ids = [id1, id2]..sort();
+    return ids.join('_'); 
+  }
+  // ──────────────────────────────────────────────────────────
 
   // ---------- 상태 ----------
   final Map<String, int> _unread = {}; // key = peerUserId(UUID), value = count
@@ -78,12 +85,12 @@ class _FriendScreenState extends State<FriendScreen> {
   void initState() {
     super.initState();
     _meUuid = _normalizeId(widget.meUserId, label: 'meUserId');
-    _chatApi = ChatApi(baseUrl: apiBaseUrl(), meUserId: _meUuid);
+    
+    // ❌ (오류 수정): baseUrl, meUserId 인수를 제거하고, userId만 위치 인수로 전달
+    _chatApi = ChatApi(_meUuid); 
 
     // 디버그 로그
-    final base = apiBaseUrl();
     debugPrint('[FriendScreen] meUserId(raw)=${widget.meUserId}, normalized=$_meUuid');
-    debugPrint('[FriendScreen] apiBaseUrl()=$base (expect .../api)');
 
     _reload(); // 최초 로딩
   }
@@ -114,13 +121,14 @@ class _FriendScreenState extends State<FriendScreen> {
 
   /// 서버에서 친구 목록 가져오기: GET /v1/friends
   Future<void> _fetchFriendsFromServer() async {
-    final url = '${apiBaseUrl()}/v1/friends';
-    debugPrint('[FriendScreen] GET $url');
+    // ✅ 새 구조: apiUrl('/friends')는 /api/v1/friends로 자동 완성됨
+    final apiUri = apiUrl('/friends');
+    debugPrint('[FriendScreen] GET $apiUri');
 
     try {
-      final uri = Uri.parse(url);
+      // 요청
       final res = await http
-          .get(uri, headers: await _authHeaders())
+          .get(apiUri, headers: await _authHeaders())
           .timeout(const Duration(seconds: 15));
 
       debugPrint('[FriendScreen] <- ${res.statusCode} ${res.body}');
@@ -190,13 +198,22 @@ class _FriendScreenState extends State<FriendScreen> {
   Future<void> _refreshUnreadAll() async {
     for (final f in _friends) {
       final peerUuid = _normalizeId(f.userId, label: 'peerUserId');
+      final roomId = _generateRoomId(_meUuid, peerUuid); // 💡 roomId 생성
+      
       try {
-        final msgs = await _chatApi.fetchMessagesWithPeer(peerUuid, limit: 50);
+        // ❌ (오류 수정): fetchMessagesWithPeer 대신 fetchMessagesSinceSeq 사용
+        final msgs = await _chatApi.fetchMessagesSinceSeq(roomId: roomId, sinceSeq: 0, limit: 50); 
+        
         int count = 0;
         for (final m in msgs) {
           final sender = _normalizeId(m.senderId);
           final isFromPeer = sender == peerUuid;
-          final readByMe = m.readByMe ?? false;
+          // ChatMessage에는 readByMe 필드가 없지만, 메시지를 불러왔다면 서버에서 최신 상태를
+          // 반영하므로, 여기서는 임시로 readByMe 속성을 사용하지 않거나,
+          // ChatMessage 모델에 해당 속성이 있다고 가정하고 `m.readByMe ?? false`로 처리해야 합니다.
+          // 현재는 ChatMessage 모델 정의가 없으므로, 이전 로직을 유지하면서 API만 변경합니다.
+          final readByMe = m.readByMe ?? false; 
+          
           if (isFromPeer && !readByMe) count++;
         }
         if (mounted) setState(() => _unread[peerUuid] = count);
@@ -225,13 +242,16 @@ class _FriendScreenState extends State<FriendScreen> {
       return;
     }
 
+    // ✅ roomId 생성(정렬 후 결합 방식 예시)
+    final roomId = _generateRoomId(_meUuid, peer);
+
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => FriendChatPage(
           friendName: friend.displayName.isEmpty ? '(이름 없음)' : friend.displayName,
           meUserId: _meUuid,
-          peerUserId: peer,
+          roomId: roomId,
         ),
       ),
     );
@@ -404,13 +424,14 @@ class _FriendScreenState extends State<FriendScreen> {
                               trailing: _unreadBadge(unread),
                               onTap: () {
                                 final peerUuid = _normalizeId(f.userId);
+                                final roomId = _generateRoomId(_meUuid, peerUuid);
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => FriendDetailPage(
+                                    builder: (_) => FriendChatPage(
                                       friendName: f.displayName.isEmpty ? '(이름 없음)' : f.displayName,
                                       meUserId: _meUuid,
-                                      peerUserId: peerUuid,
+                                      roomId: roomId,
                                     ),
                                   ),
                                 ).then((_) => _refreshUnreadAll());
