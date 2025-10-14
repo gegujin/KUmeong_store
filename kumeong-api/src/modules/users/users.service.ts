@@ -76,19 +76,16 @@ export class UsersService {
   }
 
   /** 로그인: 해시 포함 원본 조회 (정규화 일관) */
-  async findByEmailWithHash(email: string): Promise<User | null> {
-    const norm = this.normEmail(email);
+  async findByEmailWithHash(email: string) {
+    const e = (email ?? '').trim().toLowerCase();
 
-    // 실제 DB 조회 (passwordHash는 select:false일 수 있어 addSelect)
-    const user = await this.usersRepository
-      .createQueryBuilder('user')
-      .addSelect('user.passwordHash')
-      .where('LOWER(user.email) = :email', { email: norm })
-      .getOne();
-
-    // eslint-disable-next-line no-console
-    console.log('[UsersService] 🔍 DB에서 조회:', user ? user.email : null);
-    return user ?? null;
+    // passwordHash가 엔티티에서 select:false 라는 가정 하에 addSelect로 명시 추가
+    return this.usersRepository
+    .createQueryBuilder('u')
+    .where('LOWER(u.email) = :e', { e })
+    .andWhere('u.deletedAt IS NULL')
+    .addSelect('u.passwordHash')   // ★ 핵심: select:false 컬럼을 명시적으로 포함
+    .getOne();
   }
 
   /** 조회용: 안전 유저 타입 */
