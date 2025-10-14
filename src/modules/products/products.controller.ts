@@ -1,48 +1,31 @@
 // C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\products.controller.ts
 import {
+  BadRequestException,
   Body,
   Controller,
-  Get,
-  Post,
-  Patch,
   Delete,
+  Get,
+  NotFoundException,
   Param,
+  Patch,
+  Post,
   Query,
   Req,
-  BadRequestException,
-  NotFoundException,
 } from '@nestjs/common';
-<<<<<<< HEAD
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
-=======
-import {
-  ApiBearerAuth,
-  ApiForbiddenResponse,
-  ApiNotFoundResponse,
-  ApiOkResponse,
-  ApiCreatedResponse,
-  ApiUnauthorizedResponse,
-  ApiTags,
-  ApiConsumes,
-} from '@nestjs/swagger';
-import { FilesInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
->>>>>>> 3807f98184bcd254c51b5ae0071d8655a85553ff
 
-import { ProductsService } from '../products/products.service';              // ← ../products → ./ 로 수정
-import { CreateProductDto } from '../products/dto/create-product.dto';       // ← ../products/dto → ./
-import { UpdateProductDto } from '../products/dto/update-product.dto';
-import { QueryProductDto } from '../products/dto/query-product.dto';
-import { Product } from '../products/entities/product.entity';
+import { ProductsService } from './products.service';               // ← ./ 로 정리
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
+import { QueryProductDto } from './dto/query-product.dto';
+import { Product } from './entities/product.entity';
 
-import { CurrentUser } from '../auth/decorators/current-user.decorator'; // modules/products → modules/auth 경로 OK
-// import { OwnerGuard } ... (필요 시 추가)
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('products')
 @ApiBearerAuth()
-@Controller('v1/products')
+@Controller({ path: 'products', version: '1' })                      // 최종 경로: /api/v1/products
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
@@ -68,13 +51,8 @@ export class ProductsController {
   @Post()
   async create(
     @Body() dto: CreateProductDto,
-<<<<<<< HEAD
     @Req() req: Request,
     @CurrentUser() u?: { id: string | number },
-=======
-    @CurrentUser() u: SafeUser,
-    @UploadedFiles() files: Express.Multer.File[],
->>>>>>> 3807f98184bcd254c51b5ae0071d8655a85553ff
   ) {
     // user.id(숫자여도) → 문자열 UUID로 정규화, 없으면 X-User-Id 헤더 사용
     const ownerId = ((u?.id ?? req.header('X-User-Id') ?? '') as any)
@@ -113,6 +91,7 @@ export class ProductsController {
     return { ok: true, data: result };
   }
 }
+
 
 
 // import {
