@@ -447,10 +447,15 @@ class Product {
 // 🔹 홈 화면용 Map 변환 확장
 extension ProductMap on Product {
   Map<String, dynamic> toMapForHome() {
+    final imageUrl = (imageUrls.isNotEmpty)
+        ? imageUrls.first
+        : 'https://via.placeholder.com/150?text=No+Image';
+    final locationName =
+        seller.locationName.isNotEmpty ? seller.locationName : '위치 정보 없음';
     return {
       'id': id,
       'title': title,
-      'location': seller.locationName,
+      'location': locationName,
       'time': _formatTime(createdAt),
       'likes': likes,
       'views': views,
