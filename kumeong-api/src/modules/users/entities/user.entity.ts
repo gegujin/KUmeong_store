@@ -6,7 +6,7 @@ import {
   OneToMany,
   CreateDateColumn,
   UpdateDateColumn,
-  DeleteDateColumn,
+  DeleteDateColumn, // <-- 여기서 import 됨
   BeforeInsert,
 } from 'typeorm';
 import { randomUUID } from 'crypto';
@@ -49,6 +49,7 @@ export class User {
   @UpdateDateColumn({ type: 'datetime', precision: 6 })
   updatedAt!: Date;
 
+  // ⭐️ 첫 번째 'deletedAt' 정의
   @DeleteDateColumn({ type: 'datetime', precision: 6, nullable: true })
   deletedAt?: Date | null;
 

@@ -1,10 +1,18 @@
-// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\auth\auth.service.ts
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+// src/modules/auth/auth.service.ts
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
+  import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, IsNull } from 'typeorm';
+import { randomUUID } from 'crypto';
+
 import { UsersService } from '../users/users.service';
-import { UserRole } from '../users/entities/user.entity';
+import { User, UserRole } from '../users/entities/user.entity';
 import type { SafeUser } from './types/user.types';
 import { RefreshDto } from './dto/refresh.dto';
 
@@ -20,19 +28,83 @@ export class AuthService {
     private readonly users: UsersService,
     private readonly jwt: JwtService,
     private readonly cfg: ConfigService,
+    @InjectRepository(User) private readonly userRepo: Repository<User>,
   ) {}
 
+  // --------- 회원가입 ---------
+  async register(dto: { email: string; password: string; name?: string }): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    user: SafeUser;
+  }> {
+    const email = dto.email.trim().toLowerCase();
+
+    // 중복 이메일 체크 (삭제되지 않은 계정만 대상)
+    const exists = await this.userRepo.findOne({
+      where: { email, deletedAt: IsNull() },
+      select: { id: true }, // 가벼운 조회
+    });
+    if (exists) {
+      throw new BadRequestException('EMAIL_TAKEN');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+
+    // 기본값: 이름 없으면 이메일 앞부분 사용
+    const name = (dto.name ?? email.split('@')[0]).trim();
+
+    const newUser = this.userRepo.create({
+      id: randomUUID(),
+      email,
+      name,
+      passwordHash,
+      role: (UserRole as any).USER ?? 'USER',
+      // reputation, universityVerified 등은 엔티티의 디폴트를 사용
+    });
+
+    await this.userRepo.save(newUser);
+
+    // UsersService의 toSafeUser 헬퍼 재사용 (프로젝트 기존 구조 호환)
+    const safe: SafeUser =
+      (this.users as any)['toSafeUser']
+        ? (this.users as any)['toSafeUser'](newUser)
+        : {
+            id: newUser.id,
+            email: newUser.email,
+            name: newUser.name,
+            role: newUser.role as any,
+          };
+
+    // 회원가입 후 즉시 토큰 발급
+    const payload: JwtPayload = {
+      sub: String(safe.id),
+      email: safe.email!,
+      role: safe.role! as unknown as UserRole,
+    };
+    const accessToken = this.signAccessToken(payload);
+    const refreshToken = this.signRefreshToken({ sub: String(safe.id) });
+
+    return { accessToken, refreshToken, user: safe };
+  }
+
+  // --------- 로그인 ---------
   /** 이메일/패스워드 검증 → SafeUser 반환 */
   private async validateUser(email: string, password: string): Promise<SafeUser> {
-    const user = await this.users.findByEmailWithHash(email);
+    const user = await this.users.findByEmailWithHash(email.toLowerCase());
     if (!user?.passwordHash) {
       throw new UnauthorizedException('INVALID_CREDENTIALS');
     }
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('INVALID_CREDENTIALS');
 
-    // UsersService의 private 헬퍼를 우회 호출 (프로젝트 기존 구조 유지)
-    return (this.users as any)['toSafeUser'](user);
+    return (this.users as any)['toSafeUser']
+      ? (this.users as any)['toSafeUser'](user)
+      : ({
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role as any,
+        } as SafeUser);
   }
 
   /** 액세스 토큰 발급 */
@@ -57,13 +129,13 @@ export class AuthService {
     const safe = await this.validateUser(email, password);
 
     const payload: JwtPayload = {
-      sub: String(safe.id),                     // ← 문자열로 정규화
+      sub: String(safe.id),
       email: safe.email!,
-      role: safe.role! as unknown as UserRole,  // (필요 시 enum 캐스팅)
+      role: safe.role! as unknown as UserRole,
     };
 
     const accessToken = this.signAccessToken(payload);
-    const refreshToken = this.signRefreshToken({ sub: String(safe.id) }); // ← 문자열
+    const refreshToken = this.signRefreshToken({ sub: String(safe.id) });
 
     return { accessToken, refreshToken, user: safe };
   }
@@ -90,9 +162,9 @@ export class AuthService {
     const userId = decoded?.sub;
     if (userId == null) throw new UnauthorizedException('INVALID_REFRESH_TOKEN');
 
-    const safeUser = await this.users.findOne(String(userId)); // ← 문자열로 조회
+    const safeUser = await this.users.findOne(String(userId));
     const payload: JwtPayload = {
-      sub: String(safeUser.id),                   // ← 문자열 보장
+      sub: String(safeUser.id),
       email: safeUser.email!,
       role: safeUser.role! as unknown as UserRole,
     };
@@ -104,189 +176,3 @@ export class AuthService {
     return { accessToken: newAccess, refreshToken: newRefresh, user: safeUser };
   }
 }
-
-
-
-// import { Injectable, UnauthorizedException, Logger, ConflictException } from '@nestjs/common';
-// import { JwtService } from '@nestjs/jwt';
-// import * as bcrypt from 'bcryptjs';
-// import { UsersService } from '../users/users.service';
-// import { RegisterDto } from './dto/register.dto';
-// import { LoginDto } from './dto/login.dto';
-// import { ConfigService } from '@nestjs/config';
-
-// import { InjectRepository } from '@nestjs/typeorm';
-// import { Repository } from 'typeorm';
-// import { User } from '../users/entities/user.entity';
-
-// type SafeUser = {
-//   id: string;
-//   email: string;
-//   name?: string;
-//   role?: string;
-// };
-
-// @Injectable()
-// export class AuthService {
-//   private readonly logger = new Logger(AuthService.name);
-
-//   private readonly JWT_SECRET: string;
-//   private readonly JWT_ISSUER?: string;
-//   private readonly JWT_AUDIENCE?: string;
-
-//   constructor(
-//     private readonly users: UsersService,
-//     private readonly jwt: JwtService,
-//     private readonly cfg: ConfigService,
-
-//     @InjectRepository(User)
-//     private readonly usersRepo: Repository<User>,
-//   ) {
-//     const issuer = String(this.cfg.get('JWT_ISSUER') ?? '').trim();
-//     const audience = String(this.cfg.get('JWT_AUDIENCE') ?? '').trim();
-
-//     this.JWT_SECRET = String(this.cfg.get('JWT_SECRET') ?? '').trim();
-//     this.JWT_ISSUER = issuer || undefined;
-//     this.JWT_AUDIENCE = audience || undefined;
-
-//     if (!this.JWT_SECRET) {
-//       throw new Error('JWT_SECRET is missing (check your .env)');
-//     }
-//   }
-
-//   /** 회원가입 + access/refresh 토큰 발급 */
-//   async register(dto: RegisterDto) {
-//     const exists = await this.users.findByEmail?.(dto.email);
-//     if (exists) throw new ConflictException('EMAIL_IN_USE');
-
-//     const newUser = await this.users.create(dto);
-
-//     const safe = this.toSafeUser(newUser);
-//     const accessToken = await this.signAccessToken(safe);
-//     const refreshToken = await this.signRefreshToken(safe);
-
-//     this.logger.log(`회원가입 완료: ${newUser.email}`);
-
-//     return {
-//       accessToken,
-//       refreshToken,
-//       user: safe,
-//     };
-//   }
-
-//   /** 로그인 + access/refresh 토큰 발급 */
-//   async login(dto: LoginDto) {
-//     this.logger.log(`로그인 시도: ${dto.email}`);
-
-//     // passwordHash는 엔터티에서 select:false → 로그인 때만 addSelect로 포함
-//     const user = await this.usersRepo
-//       .createQueryBuilder('user')
-//       .addSelect('user.passwordHash') // ← 엔터티 프로퍼티명 기준
-//       .where('user.email = :email', { email: dto.email })
-//       .andWhere('user.deletedAt IS NULL') // ← 엔터티 프로퍼티명 기준
-//       .getOne();
-
-//     if (!user) {
-//       this.logger.warn(`유저 없음: ${dto.email}`);
-//       throw new UnauthorizedException('Invalid credentials');
-//     }
-
-//     const ok = await bcrypt.compare(dto.password, user.passwordHash);
-//     if (!ok) {
-//       this.logger.warn(`비밀번호 불일치: ${dto.email}`);
-//       throw new UnauthorizedException('Invalid credentials');
-//     }
-
-//     const safe = this.toSafeUser(user);
-//     const accessToken = await this.signAccessToken(safe);
-//     const refreshToken = await this.signRefreshToken(safe);
-
-//     this.logger.log(`로그인 성공: ${dto.email}`);
-
-//     return {
-//       accessToken,
-//       refreshToken,
-//       user: safe,
-//     };
-//   }
-
-//   /** 리프레시 토큰으로 액세스 토큰 재발급 (stateless) */
-//   async refresh(refreshToken: string) {
-//     if (!refreshToken) throw new UnauthorizedException('NO_REFRESH_TOKEN');
-
-//     const verifyOpts: any = {
-//       secret: this.JWT_SECRET,
-//       issuer: this.JWT_ISSUER,
-//       audience: this.JWT_AUDIENCE,
-//     };
-
-//     let payload: any;
-//     try {
-//       payload = await this.jwt.verifyAsync(refreshToken, verifyOpts);
-//     } catch {
-//       throw new UnauthorizedException('INVALID_REFRESH');
-//     }
-
-//     if (payload?.type !== 'refresh' || !payload?.sub) {
-//       throw new UnauthorizedException('INVALID_REFRESH');
-//     }
-
-//     // UsersService 시그니처 유연 대응
-//     let user: any = null;
-//     if ((this.users as any).findOne) {
-//       user = await (this.users as any).findOne(payload.sub);
-//     }
-//     if (!user && (this.users as any).findOneByUuid) {
-//       user = await (this.users as any).findOneByUuid(payload.sub as string);
-//     }
-//     if (!user && payload.email && (this.users as any).findByEmail) {
-//       user = await (this.users as any).findByEmail(payload.email);
-//     }
-
-//     if (!user) throw new UnauthorizedException('USER_NOT_FOUND');
-
-//     const safe = this.toSafeUser(user);
-//     const accessToken = await this.signAccessToken(safe);
-//     return accessToken; // 컨트롤러에서 { ok:true, data:{ accessToken } } 형태로 감싸서 응답
-//   }
-
-//   // ───────── helpers ─────────
-//   private toSafeUser(u: any): SafeUser {
-//     return {
-//       id: String(u.id), // number → string 캐스팅으로 JWT sub 일관성
-//       email: u.email,
-//       name: u.name,
-//       role: (u.role as string) ?? 'USER',
-//     };
-//   }
-
-//   private async signAccessToken(user: SafeUser) {
-//     const expiresIn = this.cfg.get<string>('JWT_EXPIRES') ?? '15m';
-//     const payload = {
-//       sub: user.id,
-//       email: user.email,
-//       name: user.name,
-//       role: user.role ?? 'USER',
-//       type: 'access',
-//     };
-
-//     return this.jwt.signAsync(payload, {
-//       secret: this.JWT_SECRET,
-//       expiresIn,
-//       issuer: this.JWT_ISSUER,
-//       audience: this.JWT_AUDIENCE,
-//     });
-//   }
-
-//   private async signRefreshToken(user: SafeUser) {
-//     const expiresIn = this.cfg.get<string>('REFRESH_EXPIRES') ?? '7d';
-//     const payload = { sub: user.id, type: 'refresh' };
-
-//     return this.jwt.signAsync(payload, {
-//       secret: this.JWT_SECRET,
-//       expiresIn,
-//       issuer: this.JWT_ISSUER,
-//       audience: this.JWT_AUDIENCE,
-//     });
-//   }
-// }
