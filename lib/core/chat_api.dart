@@ -1,214 +1,181 @@
 // C:\Users\82105\KU-meong Store\lib\core\chat_api.dart
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-class ChatMessageDto {
-  final String id;          // UUID(8-4-4-4-12; 서버에서 생성)
-  final String senderId;    // UUID
-  final String content;
-  final DateTime createdAt;
-  final bool? readByPeer;
+import 'base_url.dart'; // ✅ apiUrl() 사용
+
+/// 1) 모델
+class ChatMessage {
+  final String id;
+  final String roomId;
+  final String senderId;
+  final String text;
+  final DateTime timestamp;
+  final int seq;
   final bool? readByMe;
 
-  ChatMessageDto({
+  ChatMessage({
     required this.id,
+    required this.roomId,
     required this.senderId,
-    required this.content,
-    required this.createdAt,
-    this.readByPeer,
+    required this.text,
+    required this.timestamp,
+    required this.seq,
     this.readByMe,
   });
 
-  factory ChatMessageDto.fromJson(Map<String, dynamic> j) {
-    return ChatMessageDto(
-      id: (j['id'] ?? '').toString(),
-      senderId: (j['senderId'] ?? '').toString(),
-      content: (j['text'] ?? j['content'] ?? '') as String,
-      createdAt: DateTime.parse(j['createdAt'] as String),
-      readByPeer: j['readByPeer'] as bool?,
-      readByMe: j['readByMe'] as bool?,
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    final rawSeq = json['seq'];
+    final int safeSeq = rawSeq is num
+        ? rawSeq.toInt()
+        : (rawSeq is String ? int.tryParse(rawSeq) ?? 0 : 0);
+
+    final String tsStr = (json['timestamp'] ??
+            json['createdAt'] ??
+            DateTime.now().toIso8601String())
+        .toString();
+
+    final String safeText = (json['text'] ?? json['content'] ?? '').toString();
+
+    bool? safeReadByMe;
+    final rb = json['readByMe'];
+    if (rb is bool) {
+      safeReadByMe = rb;
+    } else if (rb is String) {
+      final lower = rb.toLowerCase();
+      if (lower == 'true') safeReadByMe = true;
+      if (lower == 'false') safeReadByMe = false;
+    }
+
+    return ChatMessage(
+      id: json['id'] as String,
+      roomId: json['roomId'] as String,
+      senderId: json['senderId'] as String,
+      text: safeText,
+      timestamp: DateTime.parse(tsStr),
+      seq: safeSeq,
+      readByMe: safeReadByMe,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'roomId': roomId,
+        'senderId': senderId,
+        'text': text,
+        'timestamp': timestamp.toIso8601String(),
+        'seq': seq,
+        'readByMe': readByMe,
+      };
 }
 
+/// 2) Chat API
 class ChatApi {
-  final String baseUrl;   // e.g. http://localhost:3000/api/v1
-  final http.Client _client;
+  final String _userId;
 
-  // 정규화된 "내 ID"(항상 UUID 8-4-4-4-12로 통일)
-  final String _meUuid;
+  /// X-User-Id만 필요 (토큰은 필요 시 추가)
+  ChatApi(this._userId);
 
-  ChatApi({
-    required this.baseUrl,
-    required String meUserId, // 숫자/UUID 모두 허용
-    http.Client? client,
-  })  : _client = client ?? http.Client(),
-        _meUuid = _normalizeId(meUserId);
-
-  // ───────────────── 내부 유틸 (서버 규칙과 동일) ─────────────────
-
-  static bool _ok(int s) => s >= 200 && s < 300;
-
-  // UUID 패턴 (버전 고정 아님)
-  static final RegExp _uuidRe = RegExp(
-    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-    caseSensitive: false,
-  );
-
-  static bool _isUuid(String? v) => v != null && _uuidRe.hasMatch(v);
-
-  // replace 없이 숫자만 추출
-  static String _digitsOnly(String s) {
-    final b = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      final c = s.codeUnitAt(i);
-      if (c >= 48 && c <= 57) b.writeCharCode(c); // '0'..'9'
-    }
-    return b.toString();
+  Future<Map<String, String>> _getAuthHeaders() async {
+    final token = ''; // TODO: 실제 토큰 연결 시 사용
+    return {
+      'Content-Type': 'application/json',
+      if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+      'X-User-Id': _userId,
+    };
   }
 
-  // 왼쪽 0 패딩 (padStart 미사용)
-  static String _leftPadZeros(String s, int total) {
-    final need = total - s.length;
-    if (need <= 0) return s;
-    final b = StringBuffer();
-    for (var i = 0; i < need; i++) b.writeCharCode(48);
-    b.write(s);
-    return b.toString();
-  }
-
-  /// 숫자/UUID를 표준 UUID(8-4-4-4-12)로 정규화.
-  /// - "1" -> "00000000-0000-0000-0000-000000000001"
-  /// - "123456789012345" -> "...-234567890123" (오른쪽 12자리)
-  /// - 이미 UUID면 그대로 소문자화
-  /// - 그 외는 빈 문자열 반환
-  static String _normalizeId(String? raw) {
-    final s = (raw ?? '').trim();
-    if (s.isEmpty) return '';
-    if (_isUuid(s)) return s.toLowerCase();
-
-    final digits = _digitsOnly(s);
-    if (digits.isEmpty) return '';
-
-    final start = digits.length > 12 ? digits.length - 12 : 0;
-    final last12 = digits.substring(start);
-    final padded = _leftPadZeros(last12, 12);
-    return '00000000-0000-0000-0000-$padded';
-  }
-
-  Map<String, String> _headers() => {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'X-User-Id': _meUuid, // ✅ 항상 정규화된 "내 ID"
-      };
-
-  Uri _build(String path, [Map<String, String>? qp]) {
-    final base = Uri.parse(baseUrl);
-    return base.replace(
-      path: '${base.path}$path',
-      queryParameters: qp,
-    );
-  }
-
-  // 서버 응답을 안전하게 파싱 ({ok:true, data:...} 또는 바로 data 둘 다 수용)
-  T _parseData<T>(http.Response res, T Function(Object? json) mapper) {
-    final raw = utf8.decode(res.bodyBytes);
-    final decoded = raw.isEmpty ? null : jsonDecode(raw);
-
-    Object? payload;
-    if (decoded is Map && decoded.containsKey('data')) {
-      payload = decoded['data'];
-    } else {
-      // 리스트/오브젝트를 바로 내려주는 경우도 허용
-      payload = decoded;
-    }
-    return mapper(payload);
-  }
-
-  // ───────────────── API ─────────────────
-
-  /// peerId/afterId도 숫자/UUID 모두 허용 → 내부에서 정규화
-  Future<List<ChatMessageDto>> fetchMessagesWithPeer(
-    String peerId, {
-    String? afterId,
+  /// 메시지 목록 (sinceSeq 기준)
+  Future<List<ChatMessage>> fetchMessagesSinceSeq({
+    required String roomId,
+    required int sinceSeq,
     int limit = 50,
   }) async {
-    final peer = _normalizeId(peerId);
-    if (peer.isEmpty) {
-      throw ArgumentError('peerId must be numeric or UUID-like. got: $peerId');
-    }
-    // ✅ 자기 자신 대화 가드
-    if (peer == _meUuid) {
-      throw ArgumentError('me and peer cannot be the same.');
-    }
+    final uri = apiUrl(
+      '/chat/rooms/$roomId/messages',
+      {'sinceSeq': sinceSeq, 'limit': limit},
+    );
 
-    final qp = <String, String>{};
-    final normalizedAfter = (afterId != null) ? _normalizeId(afterId) : '';
-    if (normalizedAfter.isNotEmpty) qp['afterId'] = normalizedAfter;
-    if (limit > 0) qp['limit'] = '$limit';
+    debugPrint('[ChatApi] GET $uri');
 
-    final uri = _build('/chats/$peer/messages', qp);
-    final res = await _client
-        .get(uri, headers: _headers())
-        .timeout(const Duration(seconds: 10));
+    final res = await http
+        .get(uri, headers: await _getAuthHeaders())
+        .timeout(const Duration(seconds: 15));
 
-    if (!_ok(res.statusCode)) {
-      throw Exception('GET messages failed: ${res.statusCode} ${res.body}');
+    if (res.statusCode != 200) {
+      throw Exception('메시지 불러오기 실패: ${res.statusCode} ${res.body}');
     }
 
-    return _parseData<List<ChatMessageDto>>(res, (json) {
-      final list = (json as List?)?.cast<Map<String, dynamic>>() ?? const [];
-      return list.map(ChatMessageDto.fromJson).toList();
-    });
+    try {
+      final decoded = jsonDecode(res.body);
+      final List<dynamic> list = (decoded is Map)
+          ? (decoded['data'] as List? ?? [])
+          : (decoded as List? ?? []);
+      return list
+          .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      debugPrint('[ChatApi] JSON 파싱 오류: $e');
+      throw Exception('메시지 데이터 파싱 실패');
+    }
   }
 
-  Future<ChatMessageDto> sendToPeer(String peerId, String text) async {
-    final peer = _normalizeId(peerId);
-    if (peer.isEmpty) {
-      throw ArgumentError('peerId must be numeric or UUID-like. got: $peerId');
-    }
-    // ✅ 자기 자신 대화 가드
-    if (peer == _meUuid) {
-      throw ArgumentError('me and peer cannot be the same.');
-    }
+  /// 메시지 전송
+  Future<ChatMessage> sendMessage({
+    required String roomId,
+    required String text,
+  }) async {
+    final uri = apiUrl('/chat/rooms/$roomId/messages');
 
-    final uri = _build('/chats/$peer/messages');
-    final res = await _client
-        .post(uri, headers: _headers(), body: jsonEncode({'text': text}))
-        .timeout(const Duration(seconds: 10));
-
-    // ✅ 2xx 전부 성공으로 간주 (201 포함)
-    if (!_ok(res.statusCode)) {
-      throw Exception('POST send failed: ${res.statusCode} ${res.body}');
-    }
-
-    return _parseData<ChatMessageDto>(res, (json) {
-      return ChatMessageDto.fromJson((json as Map).cast<String, dynamic>());
+    final body = jsonEncode({
+      'text': text,
+      'senderId': _userId,
+      'roomId': roomId,
     });
+
+    debugPrint('[ChatApi] POST $uri (Text: "$text")');
+
+    final res = await http
+        .post(uri, headers: await _getAuthHeaders(), body: body)
+        .timeout(const Duration(seconds: 15));
+
+    if (res.statusCode != 201) {
+      throw Exception('메시지 전송 실패: ${res.statusCode} ${res.body}');
+    }
+
+    try {
+      final decoded = jsonDecode(res.body);
+      final Map<String, dynamic> data = (decoded is Map)
+          ? (decoded['data'] as Map<String, dynamic>? ?? {})
+          : (decoded as Map<String, dynamic>? ?? {});
+      return ChatMessage.fromJson(data);
+    } catch (e) {
+      debugPrint('[ChatApi] 전송 응답 파싱 오류: $e');
+      throw Exception('메시지 전송 후 응답 데이터 파싱 실패');
+    }
   }
 
-  Future<void> markReadUpTo(String peerId, String lastMessageId) async {
-    final peer = _normalizeId(peerId);
-    final last = _normalizeId(lastMessageId);
-    if (peer.isEmpty) {
-      throw ArgumentError('peerId must be numeric or UUID-like. got: $peerId');
-    }
-    if (last.isEmpty) {
-      throw ArgumentError('lastMessageId must be numeric or UUID-like. got: $lastMessageId');
-    }
-    // ✅ 자기 자신 대화 가드
-    if (peer == _meUuid) {
-      throw ArgumentError('me and peer cannot be the same.');
-    }
+  /// 읽음 커서 갱신
+  Future<void> markRead({
+    required String roomId,
+    required String lastMessageId,
+  }) async {
+    final uri = apiUrl('/chat/rooms/$roomId/read_cursor');
 
-    final uri = _build('/chats/$peer/read');
-    final res = await _client
-        .post(uri, headers: _headers(), body: jsonEncode({'lastMessageId': last}))
-        .timeout(const Duration(seconds: 8));
+    final body = jsonEncode({
+      'lastMessageId': lastMessageId,
+      'userId': _userId,
+    });
 
-    // ✅ 2xx 전부 성공으로 간주 (혹시 204 등도 허용)
-    if (!_ok(res.statusCode)) {
-      throw Exception('POST read failed: ${res.statusCode} ${res.body}');
+    debugPrint('[ChatApi] PUT $uri (Msg ID: $lastMessageId)');
+
+    final res = await http
+        .put(uri, headers: await _getAuthHeaders(), body: body)
+        .timeout(const Duration(seconds: 15));
+
+    if (res.statusCode != 200) {
+      throw Exception('읽음 처리 실패: ${res.statusCode} ${res.body}');
     }
   }
 }
