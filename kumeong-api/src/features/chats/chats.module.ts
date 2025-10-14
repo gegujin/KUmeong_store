@@ -14,15 +14,10 @@ import { ConversationMessage } from './entities/conversation-message.entity';
  * - DataSource는 TypeOrmModule.forRoot()에서 주입되므로 별도 import 불필요
  */
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([
-      Conversation,
-      ConversationMessage,
-    ]),
-  ],
+  // DataSource는 forRoot에서 이미 주입되므로 별도 imports 불필요
   controllers: [ChatsController],
   providers: [ChatsService],
-  // ✅ 다른 모듈에서 ChatsService 또는 Repo를 재사용할 수 있게 export
-  exports: [ChatsService, TypeOrmModule],
+  exports: [ChatsService],
 })
 export class ChatsModule {}
+

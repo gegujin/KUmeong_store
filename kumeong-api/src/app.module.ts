@@ -1,4 +1,4 @@
-// src/app.module.ts
+// C:\Users\82105\KU-meong Store\kumeong-api\src\app.module.ts
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -38,8 +38,7 @@ import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware
     // ===== DB =====
     TypeOrmModule.forRoot({
       ...(dataSource.options as DataSourceOptions),
-      // ✅ 엔티티 자동 로드: ChatsModule 등에서 등록한 엔티티 자동 인식
-      autoLoadEntities: true,
+      autoLoadEntities: true, // ✅ feature 모듈의 엔티티 자동 인식
       synchronize: false,
       dropSchema: false,
     }),
@@ -49,7 +48,7 @@ import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware
       transport: {
         host: process.env.MAIL_HOST,
         port: Number(process.env.MAIL_PORT ?? 1025),
-        secure: process.env.MAIL_SECURE === 'true', // 보통 465만 true
+        secure: process.env.MAIL_SECURE === 'true',
         auth:
           process.env.MAIL_USER && process.env.MAIL_PASS
             ? { user: process.env.MAIL_USER, pass: process.env.MAIL_PASS }
@@ -69,9 +68,6 @@ import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware
     UniversityVerificationModule,
     FriendsModule,
     ChatsModule,
-
-    // (선택) 로컬 테스트용 DevModule을 쓰는 경우 여기에 추가
-    // DevModule,
   ],
 })
 export class AppModule implements NestModule {

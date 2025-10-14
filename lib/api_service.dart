@@ -2,19 +2,17 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart'; // MediaType
+import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:kumeong_store/models/post.dart';
 
-// 🔹 서버 주소
-// - 기본은 localhost:3000
-// - 안드로이드 에뮬레이터는 10.0.2.2 사용 권장 (필요 시 baseUrl만 바꾸면 됨)
-const String baseUrl = 'http://localhost:3000/api/v1';
-// const String baseUrl = 'http://10.0.2.2:3000/api/v1'; // ← 에뮬레이터일 때 사용
+import 'core/base_url.dart';           // ✅ 절대 URL 빌더 사용
+import 'models/post.dart';
 
+// -------------------------------
+// 공통 유틸
+// -------------------------------
 String _normalizeEmail(String email) => email.trim().toLowerCase();
-
 Map<String, String> get _jsonHeaders => {'Content-Type': 'application/json'};
 
 T? _get<T>(Object? obj, String key) {
@@ -25,36 +23,47 @@ T? _get<T>(Object? obj, String key) {
   return null;
 }
 
+/// 서버 응답이 JSON이 아닐 경우 즉시 원인 노출
+Map<String, dynamic> _parseJsonResponse(http.Response resp) {
+  final ct = resp.headers['content-type'] ?? '';
+  if (!ct.contains('application/json')) {
+    final head = resp.body.length > 200 ? resp.body.substring(0, 200) : resp.body;
+    throw FormatException('Non-JSON response (${resp.statusCode} $ct) :: $head');
+  }
+  final decoded = jsonDecode(resp.body);
+  if (decoded is Map<String, dynamic>) return decoded;
+  throw FormatException('JSON root is not an object');
+}
+
 // -------------------------------
-// 🔑 로그인: 성공 시 accessToken 반환
+// 🔑 로그인
 // -------------------------------
 Future<String?> login(String email, String password) async {
-  final url = Uri.parse('$baseUrl/auth/login');
-  final normalizedEmail = _normalizeEmail(email);
+  final url = apiUrl('/auth/login');  // ✅ 절대 URL
 
   try {
-    final response = await http.post(
+    final resp = await http.post(
       url,
       headers: _jsonHeaders,
-      body: jsonEncode({'email': normalizedEmail, 'password': password}),
+      body: jsonEncode({
+        'email': _normalizeEmail(email),
+        'password': password,
+      }),
     );
 
-    final body = jsonDecode(response.body);
+    final body = _parseJsonResponse(resp);
     final data = _get<Map>(body, 'data') ?? body;
 
-    if (response.statusCode == 200) {
+    if (resp.statusCode == 200) {
       final token =
           _get<String>(data, 'accessToken') ?? _get<String>(body, 'accessToken');
-      if (token != null && token.isNotEmpty) {
-        // 저장은 호출부(LoginPage)에서 하도록 유지 (원한다면 여기서 저장해도 됨)
-        return token;
-      }
-      debugPrint('[API] 로그인 실패: accessToken 없음. resp=${response.body}');
+      if (token != null && token.isNotEmpty) return token;
+      debugPrint('[API] 로그인 실패: accessToken 없음. resp=${resp.body}');
       return null;
     }
 
-    final msg = _get<Map>(body, 'error')?['message'] ?? response.body;
-    debugPrint('[API] 로그인 실패 ${response.statusCode}: $msg');
+    final msg = _get<Map>(body, 'error')?['message'] ?? resp.body;
+    debugPrint('[API] 로그인 실패 ${resp.statusCode}: $msg');
     return null;
   } catch (e, st) {
     debugPrint('[API] 로그인 예외: $e\n$st');
@@ -62,48 +71,39 @@ Future<String?> login(String email, String password) async {
   }
 }
 
-// -------------------------------------------
-// 📝 회원가입: (옵션) univToken 포함 가능
-// 성공 시 accessToken 반환
-// -------------------------------------------
+// -------------------------------
+// 📝 회원가입
+// -------------------------------
 Future<String?> register(
   String email,
   String password,
   String name, {
   String? univToken,
 }) async {
-  final url = Uri.parse('$baseUrl/auth/register');
-  final normalizedEmail = _normalizeEmail(email);
+  final url = apiUrl('/auth/register');  // ✅
 
   try {
     final payload = <String, dynamic>{
-      'email': normalizedEmail,
+      'email': _normalizeEmail(email),
       'password': password,
       'name': name.trim(),
       if (univToken != null && univToken.isNotEmpty) 'univToken': univToken,
     };
 
-    final response = await http.post(
-      url,
-      headers: _jsonHeaders,
-      body: jsonEncode(payload),
-    );
-
-    final body = jsonDecode(response.body);
+    final resp = await http.post(url, headers: _jsonHeaders, body: jsonEncode(payload));
+    final body = _parseJsonResponse(resp);
     final data = _get<Map>(body, 'data') ?? body;
 
-    if (response.statusCode == 200 || response.statusCode == 201) {
+    if (resp.statusCode == 200 || resp.statusCode == 201) {
       final token =
           _get<String>(data, 'accessToken') ?? _get<String>(body, 'accessToken');
-      if (token != null && token.isNotEmpty) {
-        return token;
-      }
-      debugPrint('[API] 회원가입 응답에 accessToken 없음. resp=${response.body}');
+      if (token != null && token.isNotEmpty) return token;
+      debugPrint('[API] 회원가입 응답에 accessToken 없음. resp=${resp.body}');
       return null;
     }
 
-    final msg = _get<Map>(body, 'error')?['message'] ?? response.body;
-    debugPrint('[API] 회원가입 실패 ${response.statusCode}: $msg');
+    final msg = _get<Map>(body, 'error')?['message'] ?? resp.body;
+    debugPrint('[API] 회원가입 실패 ${resp.statusCode}: $msg');
     return null;
   } catch (e, st) {
     debugPrint('[API] 회원가입 예외: $e\n$st');
@@ -113,49 +113,37 @@ Future<String?> register(
 
 // ---------------------------------------------------------
 // 📦 상품 등록 (이미지 포함)
-// - images: List<dynamic> (XFile 또는 경로(String)) 지원
-// - 웹: XFile.readAsBytes → fromBytes
-// - 그 외: fromPath(img.path 또는 경로 문자열)
 // ---------------------------------------------------------
 Future<Map<String, dynamic>?> createProductWithImages(
   Map<String, dynamic> productData,
   List<dynamic> images,
   String token,
 ) async {
-  final uri = Uri.parse('$baseUrl/products');
-  final request = http.MultipartRequest('POST', uri);
-  request.headers['Authorization'] = 'Bearer $token';
+  final uri = apiUrl('/products');     // ✅
+  final req = http.MultipartRequest('POST', uri);
+  req.headers['Authorization'] = 'Bearer $token';
 
   for (final img in images) {
     try {
       if (img is XFile) {
         if (kIsWeb) {
           final bytes = await img.readAsBytes();
-          request.files.add(
-            http.MultipartFile.fromBytes(
-              'images',
-              bytes,
-              filename: img.name,
-              contentType: MediaType('image', _getImageSubtype(img.name)),
-            ),
-          );
+          req.files.add(http.MultipartFile.fromBytes(
+            'images', bytes,
+            filename: img.name,
+            contentType: MediaType('image', _imgSubtype(img.name)),
+          ));
         } else {
-          request.files.add(
-            await http.MultipartFile.fromPath(
-              'images',
-              img.path,
-              contentType: MediaType('image', _getImageSubtype(img.path)),
-            ),
-          );
+          req.files.add(await http.MultipartFile.fromPath(
+            'images', img.path,
+            contentType: MediaType('image', _imgSubtype(img.path)),
+          ));
         }
       } else if (img is String) {
-        request.files.add(
-          await http.MultipartFile.fromPath(
-            'images',
-            img,
-            contentType: MediaType('image', _getImageSubtype(img)),
-          ),
-        );
+        req.files.add(await http.MultipartFile.fromPath(
+          'images', img,
+          contentType: MediaType('image', _imgSubtype(img)),
+        ));
       } else {
         debugPrint('[API] 알 수 없는 이미지 타입: $img');
       }
@@ -164,25 +152,20 @@ Future<Map<String, dynamic>?> createProductWithImages(
     }
   }
 
-  // 나머지 필드 세팅
   productData.forEach((k, v) {
-    if (k != 'images' && v != null) {
-      request.fields[k] = v.toString();
-    }
+    if (k != 'images' && v != null) req.fields[k] = v.toString();
   });
 
   try {
-    final streamed = await request.send();
-    final response = await http.Response.fromStream(streamed);
-
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      final data = jsonDecode(response.body);
-      if (data is Map && data['ok'] == true && data['data'] != null) {
-        debugPrint('✅ [API] 상품 등록 성공: ${data['data']}');
-        return data['data'] as Map<String, dynamic>;
-      }
+    final streamed = await req.send();
+    final resp = await http.Response.fromStream(streamed);
+    final ok = resp.statusCode == 200 || resp.statusCode == 201;
+    if (ok) {
+      final body = _parseJsonResponse(resp);
+      final data = _get<Map>(body, 'data');
+      if (data != null) return data.cast<String, dynamic>();
     }
-    debugPrint('❌ [API] 상품 등록 실패: ${response.statusCode} ${response.body}');
+    debugPrint('❌ [API] 상품 등록 실패: ${resp.statusCode} ${resp.body}');
     return null;
   } catch (e, st) {
     debugPrint('💥 [API] 상품 등록 예외: $e\n$st');
@@ -191,16 +174,16 @@ Future<Map<String, dynamic>?> createProductWithImages(
 }
 
 // ---------------------------------------------------------
-// 🛠️ 상품 수정 (이미지 포함 로직 동일)
+// 🛠️ 상품 수정
 // ---------------------------------------------------------
 Future<Map<String, dynamic>?> updateProduct(
   String productId,
   Map<String, dynamic> productData,
   String token,
 ) async {
-  final uri = Uri.parse('$baseUrl/products/$productId');
-  final request = http.MultipartRequest('PUT', uri);
-  request.headers['Authorization'] = 'Bearer $token';
+  final uri = apiUrl('/products/$productId'); // ✅
+  final req = http.MultipartRequest('PUT', uri);
+  req.headers['Authorization'] = 'Bearer $token';
 
   final images = productData['images'] as List<dynamic>?;
   if (images != null) {
@@ -209,31 +192,22 @@ Future<Map<String, dynamic>?> updateProduct(
         if (img is XFile) {
           if (kIsWeb) {
             final bytes = await img.readAsBytes();
-            request.files.add(
-              http.MultipartFile.fromBytes(
-                'images',
-                bytes,
-                filename: img.name,
-                contentType: MediaType('image', _getImageSubtype(img.name)),
-              ),
-            );
+            req.files.add(http.MultipartFile.fromBytes(
+              'images', bytes,
+              filename: img.name,
+              contentType: MediaType('image', _imgSubtype(img.name)),
+            ));
           } else {
-            request.files.add(
-              await http.MultipartFile.fromPath(
-                'images',
-                img.path,
-                contentType: MediaType('image', _getImageSubtype(img.path)),
-              ),
-            );
+            req.files.add(await http.MultipartFile.fromPath(
+              'images', img.path,
+              contentType: MediaType('image', _imgSubtype(img.path)),
+            ));
           }
         } else if (img is String) {
-          request.files.add(
-            await http.MultipartFile.fromPath(
-              'images',
-              img,
-              contentType: MediaType('image', _getImageSubtype(img)),
-            ),
-          );
+          req.files.add(await http.MultipartFile.fromPath(
+            'images', img,
+            contentType: MediaType('image', _imgSubtype(img)),
+          ));
         }
       } catch (e) {
         debugPrint('[API] 이미지 처리 오류: $e');
@@ -242,23 +216,18 @@ Future<Map<String, dynamic>?> updateProduct(
   }
 
   productData.forEach((k, v) {
-    if (k != 'images' && v != null) {
-      request.fields[k] = v.toString();
-    }
+    if (k != 'images' && v != null) req.fields[k] = v.toString();
   });
 
   try {
-    final streamed = await request.send();
-    final response = await http.Response.fromStream(streamed);
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      if (data is Map && data['ok'] == true && data['data'] != null) {
-        debugPrint('✅ [API] 상품 수정 성공: ${data['data']}');
-        return data['data'] as Map<String, dynamic>;
-      }
+    final streamed = await req.send();
+    final resp = await http.Response.fromStream(streamed);
+    if (resp.statusCode == 200) {
+      final body = _parseJsonResponse(resp);
+      final data = _get<Map>(body, 'data');
+      if (data != null) return data.cast<String, dynamic>();
     }
-    debugPrint('❌ [API] 상품 수정 실패: ${response.statusCode} ${response.body}');
+    debugPrint('❌ [API] 상품 수정 실패: ${resp.statusCode} ${resp.body}');
     return null;
   } catch (e, st) {
     debugPrint('💥 [API] 상품 수정 예외: $e\n$st');
@@ -271,12 +240,11 @@ Future<Map<String, dynamic>?> updateProductApi(
   String productId,
   Map<String, dynamic> productData,
   String token,
-) async {
-  return updateProduct(productId, productData, token);
-}
+) async =>
+    updateProduct(productId, productData, token);
 
 // 이미지 MIME subtype 추론
-String _getImageSubtype(String pathOrName) {
+String _imgSubtype(String pathOrName) {
   final ext = pathOrName.split('.').last.toLowerCase();
   switch (ext) {
     case 'jpg':
@@ -292,24 +260,18 @@ String _getImageSubtype(String pathOrName) {
 }
 
 // -------------------------------------------
-// 📥 상품 리스트 조회 (견고한 파싱)
+// 📥 상품 리스트 조회
 // -------------------------------------------
 Future<List<Product>> fetchProducts(String token) async {
-  final url = Uri.parse('$baseUrl/products');
+  final url = apiUrl('/products');    // ✅
   try {
-    final response = await http.get(url, headers: {'Authorization': 'Bearer $token'});
-
-    if (response.statusCode != 200) {
-      debugPrint('[API] 상품 조회 실패: ${response.statusCode} ${response.body}');
+    final resp = await http.get(url, headers: {'Authorization': 'Bearer $token'});
+    if (resp.statusCode != 200) {
+      debugPrint('[API] 상품 조회 실패: ${resp.statusCode} ${resp.body}');
       return [];
     }
 
-    final decoded = jsonDecode(response.body);
-    if (decoded == null || decoded is! Map<String, dynamic>) {
-      debugPrint('[API] 상품 조회: 응답 형식이 Map이 아님 -> $decoded');
-      return [];
-    }
-
+    final decoded = _parseJsonResponse(resp);
     final raw = decoded['data'];
     List<dynamic> items;
 

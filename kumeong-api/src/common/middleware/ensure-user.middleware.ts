@@ -1,4 +1,4 @@
-// src/common/middleware/ensure-user.middleware.ts
+// C:\Users\82105\KU-meong Store\kumeong-api\src\common\middleware\ensure-user.middleware.ts
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { normalizeId } from '../utils/ids';

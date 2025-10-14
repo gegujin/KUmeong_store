@@ -1,4 +1,4 @@
-// src/modules/products/dto/create-product.dto.ts
+// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\dto\create-product.dto.ts
 import {
   IsArray,
   ArrayMaxSize,
@@ -40,7 +40,7 @@ export class CreateProductDto {
 
   @ApiPropertyOptional({
     enum: ProductStatus,
-    example: ProductStatus.LISTED,
+    example: ProductStatus.ON_SALE, // ✅ LISTED → ON_SALE
     description: '상품 상태',
   })
   @IsOptional()

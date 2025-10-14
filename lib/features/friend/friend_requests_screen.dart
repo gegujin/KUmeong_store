@@ -42,7 +42,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
 
   // box: incoming | outgoing
   Future<List<FriendRequestItem>> _fetchBox(String box) async {
-    final uri = Uri.parse('${apiBaseUrl()}/v1/friends/requests?box=$box');
+    final uri = apiUrl('/friends/requests');
     final res = await http
         .get(uri, headers: await _authHeaders())
         .timeout(const Duration(seconds: 15));
@@ -82,7 +82,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
 
   Future<String?> _postAction(String path) async {
     try {
-      final uri = Uri.parse('${apiBaseUrl()}$path');
+      final uri = apiUrl('/friends/requests');
       final res = await http
           .post(uri, headers: await _authHeaders())
           .timeout(const Duration(seconds: 15));
@@ -141,7 +141,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                 return;
               }
               // ✅ 백엔드가 이메일을 받아 내부에서 toUserId 조회
-              final uri = Uri.parse('${apiBaseUrl()}/v1/friends/requests');
+              final uri = apiUrl('/friends/requests');
               final res = await http.post(
                 uri,
                 headers: await _authHeaders(),

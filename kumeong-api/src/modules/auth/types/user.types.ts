@@ -1,7 +1,7 @@
 import type { UserRole } from '../../users/entities/user.entity';
 
 export type SafeUser = {
-  id: number;          // ← number로 변경
+  id: string;          // ← number로 변경
   email: string;
   role: UserRole;
   name?: string;

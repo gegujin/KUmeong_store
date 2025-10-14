@@ -1,5 +1,5 @@
-// src/modules/products/products.service.ts
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\products.service.ts
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, Repository } from 'typeorm';
 import { Product, ProductStatus } from './entities/product.entity';
@@ -43,7 +43,7 @@ export class ProductsService {
     const [items, total] = await qb.getManyAndCount();
     const pages = Math.max(1, Math.ceil(total / limit));
     return { items, page, limit, total, pages };
-  }
+    }
 
   /** 단건 조회 (PK는 uuid 문자열) */
   async findOne(id: string): Promise<Product> {
@@ -52,17 +52,12 @@ export class ProductsService {
     return item;
   }
 
-  /** 생성: ownerId는 컨트롤러에서 @CurrentUser로 받아 주입 */
-  async createProduct(ownerId: number | string, dto: CreateProductDto): Promise<Product> {
-    const ownerIdNum = Number(ownerId);
-    if (!Number.isFinite(ownerIdNum)) {
-      throw new BadRequestException('ownerId must be a number');
-    }
-
+  /** 생성: ownerId는 컨트롤러에서 @CurrentUser로 받아 주입 (UUID string) */
+  async createProduct(ownerId: string, dto: CreateProductDto): Promise<Product> {
     const entity = this.repo.create({
       ...(dto as unknown as DeepPartial<Product>),
-      ownerId: ownerIdNum,
-      // images 배열도 그대로 저장
+      ownerId, // ← UUID 문자열
+      status: dto.status ?? ProductStatus.ON_SALE,
       images: dto.images?.length ? dto.images : [],
     });
 
@@ -70,7 +65,7 @@ export class ProductsService {
   }
 
   /** 컨트롤러 호환용 래퍼 */
-  async createWithOwner(dto: CreateProductDto, ownerId: number | string): Promise<Product> {
+  async createWithOwner(dto: CreateProductDto, ownerId: string): Promise<Product> {
     return this.createProduct(ownerId, dto);
   }
 

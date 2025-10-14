@@ -2,20 +2,38 @@
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 
-/// 백엔드에서 main.ts에 `app.setGlobalPrefix('api')`
-/// 와 `app.enableVersioning({ type: URI, defaultVersion: '1' })`
-/// 두 가지가 있으므로, 실제 엔드포인트는 "/api/v1" 입니다.
-/// 따라서 baseUrl은 "/api"까지만 반환해야 함.
-String apiBaseUrl() {
-  const port = 3000;
-  const prefix = '/api'; // ✅ 여기까지만 (v1은 각 API 내부에서 붙임)
-  if (kIsWeb) {
-    return 'http://localhost:$port$prefix';
-  }
-  if (Platform.isAndroid) {
-    // Android 에뮬레이터 → 호스트 PC 접근
-    return 'http://10.0.2.2:$port$prefix';
-  }
-  // iOS 시뮬레이터/데스크톱
-  return 'http://127.0.0.1:$port$prefix';
+/// ===============================
+/// ORIGIN 결정 (환경변수 > 플랫폼별 기본)
+/// ===============================
+/// 빌드 시 --dart-define=API_ORIGIN=http://192.168.0.5:3000 식으로 덮어쓰기 가능.
+const String _envOrigin =
+    String.fromEnvironment('API_ORIGIN', defaultValue: '');
+
+String _autoOrigin() {
+  if (kIsWeb) return 'http://localhost:3000';
+  if (Platform.isAndroid) return 'http://10.0.2.2:3000'; // Android emulator
+  return 'http://127.0.0.1:3000'; // iOS Simulator / desktop
+}
+
+String apiOrigin() => _envOrigin.isNotEmpty ? _envOrigin : _autoOrigin();
+
+/// ===============================
+/// REST API URL 빌더
+/// ===============================
+/// 서버가 /api + (v1 버전 경로)를 사용하므로, 클라이언트는 /api/v1로 고정 호출.
+Uri apiUrl(String path, [Map<String, dynamic>? query]) {
+  final base = '${apiOrigin()}/api/v1';
+  final uri = Uri.parse('$base$path');
+  if (query == null || query.isEmpty) return uri;
+  return uri.replace(
+    queryParameters: query.map((k, v) => MapEntry(k, '$v')),
+  );
+}
+
+/// ===============================
+/// WebSocket URL
+/// ===============================
+String wsUrl({required String meUserId}) {
+  final wsOrigin = apiOrigin().replaceFirst(RegExp('^http'), 'ws');
+  return '$wsOrigin/ws/realtime?me=$meUserId';
 }

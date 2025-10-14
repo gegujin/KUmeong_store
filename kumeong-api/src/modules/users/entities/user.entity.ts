@@ -1,60 +1,63 @@
-// src/modules/users/entities/user.entity.ts
+// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\users\entities\user.entity.ts
 import {
   Entity,
-  PrimaryColumn,
   Column,
+  PrimaryColumn,
   OneToMany,
   CreateDateColumn,
   UpdateDateColumn,
   DeleteDateColumn,
+  BeforeInsert,
 } from 'typeorm';
+import { randomUUID } from 'crypto';
 import { Product } from '../../products/entities/product.entity';
-import { v4 as uuidv4 } from 'uuid';
 
 export enum UserRole {
   USER = 'USER',
   ADMIN = 'ADMIN',
 }
 
-@Entity('users')
+@Entity({ name: 'users' })
 export class User {
-  @PrimaryColumn({ type: 'char', length: 36 })
-  id: string = uuidv4(); // ✅ UUID 기본값
+  @PrimaryColumn('char', { length: 36 })
+  id!: string;
+
+  @Column({ type: 'varchar', length: 120, unique: true })
+  email!: string;
+
+  @Column({ type: 'varchar', length: 100 })
+  name!: string;
+
+  @Column({ type: 'varchar', length: 255 })
+  passwordHash!: string;
+
+  @Column({ type: 'int', default: 0 })
+  reputation!: number;
+
+  @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
+  role!: UserRole;
 
   @Column({ type: 'varchar', length: 64, nullable: true })
   universityName?: string | null;
 
-  @Column({ type: 'boolean', default: false })
-  universityVerified: boolean;
+  @Column({ type: 'tinyint', width: 1, default: 0 })
+  universityVerified!: boolean;
 
-  @Column({ type: 'varchar', length: 120, unique: true })
-  email: string;
+  @CreateDateColumn({ type: 'datetime', precision: 6 })
+  createdAt!: Date;
 
-  @Column({ type: 'varchar', length: 100 })
-  name: string;
+  @UpdateDateColumn({ type: 'datetime', precision: 6 })
+  updatedAt!: Date;
 
-  @Column({ name: 'password_hash', select: false })
-  passwordHash: string;
-
-  @Column({ type: 'int', default: 0 })
-  reputation: number;
-
-  @Column({
-    type: 'simple-enum',
-    enum: UserRole,
-    default: UserRole.USER,
-  })
-  role: UserRole;
-
-  @OneToMany(() => Product, (p) => p.owner, { cascade: false })
-  products: Product[];
-
-  @CreateDateColumn({ name: 'created_at', type: 'datetime' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ name: 'updated_at', type: 'datetime' })
-  updatedAt: Date;
-
-  @DeleteDateColumn({ name: 'deleted_at', type: 'datetime', nullable: true })
+  @DeleteDateColumn({ type: 'datetime', precision: 6, nullable: true })
   deletedAt?: Date | null;
+
+  // ✅ Product.owner 와 짝을 맞춘다 (기존 u.products 사용 코드는 그대로)
+  @OneToMany(() => Product, (p) => p.owner, { cascade: false })
+  products!: Product[];
+
+  @BeforeInsert()
+  assignId() {
+    if (!this.id) this.id = randomUUID();
+  }
 }

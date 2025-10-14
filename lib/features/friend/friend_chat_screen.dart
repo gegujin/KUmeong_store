@@ -531,36 +531,40 @@
 
 
 // C:\Users\82105\KU-meong Store\lib\features\friend\friend_chat_screen.dart
+// lib/features/friend/friend_chat_screen.dart
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../core/chat_api.dart';
 import '../../core/base_url.dart';
 import 'friend_screen.dart';
 
 class FriendChatPage extends StatefulWidget {
   final String friendName;
-  final String meUserId;   // 숫자/UUID 모두 가능 → 헤더 X-User-Id용
-  final String peerUserId; // URL 파라미터로만 사용
+
+  /// 숫자/UUID 모두 가능 → 헤더 X-User-Id용
+  final String meUserId;
+
+  /// ✅ 방 기준으로 통신(REST/WS 모두 roomId 사용)
+  final String roomId;
 
   const FriendChatPage({
     super.key,
     required this.friendName,
     required this.meUserId,
-    required this.peerUserId,
+    required this.roomId,
   });
 
   @override
   State<FriendChatPage> createState() => _FriendChatPageState();
 }
 
-enum _MenuAction { reload, report, block, leave }
+enum _MenuAction { reload, leave }
 
 class _FriendChatPageState extends State<FriendChatPage> {
   final _controller = TextEditingController();
   final _scroll = ScrollController();
 
   late final ChatApi _api;
-  List<ChatMessageDto> _messages = [];
+  List<ChatMessage> _messages = [];
   bool _loading = true;
   String? _error;
 
@@ -568,7 +572,7 @@ class _FriendChatPageState extends State<FriendChatPage> {
   DateTime? _lastFetchAt;
   bool _busyAction = false;
 
-  // ───────────────── UUID 정규화 유틸 ─────────────────
+  // ── UUID 정규화(서버 규칙과 동일) ──
   static final RegExp _uuidRe = RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
     caseSensitive: false,
@@ -579,7 +583,7 @@ class _FriendChatPageState extends State<FriendChatPage> {
     if (need <= 0) return s;
     final b = StringBuffer();
     for (var i = 0; i < need; i++) {
-      b.writeCharCode(48); // '0'
+      b.writeCharCode(48);
     }
     b.write(s);
     return b.toString();
@@ -590,7 +594,7 @@ class _FriendChatPageState extends State<FriendChatPage> {
     if (s.isEmpty) return '';
     if (_uuidRe.hasMatch(s)) return s.toLowerCase();
 
-    // 숫자만 추출
+    // 숫자만 추출 → 마지막 12자리 UUID로 변환
     final buf = StringBuffer();
     for (var i = 0; i < s.length; i++) {
       final c = s.codeUnitAt(i);
@@ -605,28 +609,25 @@ class _FriendChatPageState extends State<FriendChatPage> {
     return '00000000-0000-0000-0000-$padded';
   }
 
-  late final String _meUuid;   // 정규화된 내 ID
-  late final String _peerUuid; // 정규화된 상대 ID
+  late final String _meUuid;
 
   @override
   void initState() {
     super.initState();
 
+    // ✅ ChatApi는 userId만 받도록 변경된 버전 사용
     _meUuid = _normalizeId(widget.meUserId);
-    _peerUuid = _normalizeId(widget.peerUserId);
-
-    // 자기 자신 채팅 가드(설계상 없지만 혹시 대비)
-    if (_meUuid.isEmpty || _peerUuid.isEmpty || _meUuid == _peerUuid) {
+    if (_meUuid.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('자기 자신과는 대화를 시작할 수 없어요.')),
+          const SnackBar(content: Text('올바르지 않은 사용자 ID입니다.')),
         );
         Navigator.of(context).maybePop();
       });
       return;
     }
 
-    _api = ChatApi(baseUrl: apiBaseUrl(), meUserId: _meUuid);
+    _api = ChatApi(_meUuid);
     _loadInitial();
   }
 
@@ -656,8 +657,13 @@ class _FriendChatPageState extends State<FriendChatPage> {
     }
 
     try {
-      final fetched = await _api.fetchMessagesWithPeer(_peerUuid);
-      fetched.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      // sinceSeq=0 → 최근 limit개
+      final fetched = await _api.fetchMessagesSinceSeq(
+        roomId: widget.roomId,
+        sinceSeq: 0,
+        limit: 50,
+      );
+      fetched.sort((a, b) => a.timestamp.compareTo(b.timestamp));
       if (mounted) {
         setState(() => _messages = fetched);
       }
@@ -667,15 +673,14 @@ class _FriendChatPageState extends State<FriendChatPage> {
         _scroll.jumpTo(_scroll.position.maxScrollExtent);
       }
 
-      // 내가 받은 메시지들은 읽음 처리(실패해도 무시)
+      // 읽음 처리(실패 무시)
       if (_messages.isNotEmpty) {
-        _api.markReadUpTo(_peerUuid, _messages.last.id).catchError((_) {});
+        _api
+            .markRead(roomId: widget.roomId, lastMessageId: _messages.last.id)
+            .catchError((_) {});
       }
     } catch (e) {
-      if (mounted) {
-        setState(() =>
-            _error = '메시지 불러오기 실패: $e\n(me=$_meUuid, peer=$_peerUuid)');
-      }
+      if (mounted) setState(() => _error = '메시지 불러오기 실패: $e');
     } finally {
       _fetching = false;
       if (mounted) setState(() => _loading = false);
@@ -688,19 +693,23 @@ class _FriendChatPageState extends State<FriendChatPage> {
     _controller.clear();
 
     try {
-      // 저장된 메시지(대개 readByPeer=false/null)를 즉시 append
-      final saved = await _api.sendToPeer(_peerUuid, text);
-      if (mounted) {
-        setState(() => _messages.add(saved));
-      }
+      final saved = await _api.sendMessage(
+        roomId: widget.roomId,
+        text: text,
+      );
+      if (!mounted) return;
+
+      setState(() => _messages.add(saved));
 
       await Future.delayed(const Duration(milliseconds: 20));
       if (_scroll.hasClients) {
         _scroll.jumpTo(_scroll.position.maxScrollExtent);
       }
 
-      // 선택: 보낸 뒤에도 내 쪽 읽음 커서를 업데이트(무시 가능)
-      _api.markReadUpTo(_peerUuid, saved.id).catchError((_) {});
+      // 보낸 뒤에도 내 읽음 커서를 마지막으로(실패 무시)
+      _api
+          .markRead(roomId: widget.roomId, lastMessageId: saved.id)
+          .catchError((_) {});
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -709,18 +718,11 @@ class _FriendChatPageState extends State<FriendChatPage> {
     }
   }
 
-  // ====== 상단 더보기 메뉴 처리 ======
   Future<void> _onSelectMenu(_MenuAction action) async {
     if (_busyAction) return;
     switch (action) {
       case _MenuAction.reload:
         await _loadInitial();
-        break;
-      case _MenuAction.report:
-        await _reportPeer();
-        break;
-      case _MenuAction.block:
-        await _blockPeer();
         break;
       case _MenuAction.leave:
         final ok = await _confirm(
@@ -729,90 +731,16 @@ class _FriendChatPageState extends State<FriendChatPage> {
           confirmText: '나가기',
         );
         if (ok == true) {
-          await _leaveChat();
+          if (mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (_) => FriendScreen(meUserId: widget.meUserId),
+              ),
+              (route) => false,
+            );
+          }
         }
         break;
-    }
-  }
-
-  bool _ok(int s) => s >= 200 && s < 300;
-
-  Future<void> _reportPeer() async {
-    if (_busyAction) return;
-    _busyAction = true;
-    try {
-      final url = Uri.parse('${apiBaseUrl()}/chats/$_peerUuid/report');
-      final r = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': _meUuid,
-        },
-        body: '{"reason":"abuse"}',
-      );
-      if (_ok(r.statusCode)) {
-        _toast('신고가 접수되었습니다.');
-      } else {
-        _toast('신고 실패 (${r.statusCode})');
-      }
-    } catch (e) {
-      _toast('신고 중 오류: $e');
-    } finally {
-      _busyAction = false;
-    }
-  }
-
-  Future<void> _blockPeer() async {
-    if (_busyAction) return;
-    _busyAction = true;
-    try {
-      final url = Uri.parse('${apiBaseUrl()}/chats/$_peerUuid/block');
-      final r = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': _meUuid,
-        },
-      );
-      if (_ok(r.statusCode)) {
-        _toast('상대가 차단되었습니다.');
-      } else {
-        _toast('차단 실패 (${r.statusCode})');
-      }
-    } catch (e) {
-      _toast('차단 중 오류: $e');
-    } finally {
-      _busyAction = false;
-    }
-  }
-
-  Future<void> _leaveChat() async {
-    if (_busyAction) return;
-    _busyAction = true;
-    try {
-      final url = Uri.parse('${apiBaseUrl()}/chats/$_peerUuid');
-      final r = await http.delete(
-        url,
-        headers: {'X-User-Id': _meUuid},
-      );
-      if (_ok(r.statusCode)) {
-        if (mounted) setState(() => _messages.clear());
-        _toast('채팅방을 나갔습니다.');
-        if (mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (_) => FriendScreen(meUserId: widget.meUserId),
-            ),
-            (route) => false,
-          );
-        }
-      } else {
-        _toast('채팅방 나가기 실패 (${r.statusCode})');
-      }
-    } catch (e) {
-      _toast('채팅방 나가기 중 오류: $e');
-    } finally {
-      _busyAction = false;
     }
   }
 
@@ -841,28 +769,10 @@ class _FriendChatPageState extends State<FriendChatPage> {
     );
   }
 
-  // ======================
-
-  void _toast(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
-
-  // 🔎 내 메시지가 아직 "상대가 안 읽음"인지 판별
-  bool _isUnreadByPeer(ChatMessageDto m) {
-    final senderId = _normalizeId(m.senderId);
-    final isMine = senderId == _meUuid;
-    if (!isMine) return false;
-    // readByPeer == true 이면 읽음, 그 외(null/false)는 "안 읽음"
-    return !(m.readByPeer ?? false);
-  }
-
-  // 💬 말풍선 + (내 메시지일 때) 왼쪽에 '1' 뱃지
-  Widget _buildBubble(ChatMessageDto m) {
+  Widget _buildBubble(ChatMessage m) {
     final mainColor = Theme.of(context).colorScheme.primary;
 
-    final senderId = _normalizeId(m.senderId);
-    final isMine = senderId == _meUuid;
-    final unreadByPeer = _isUnreadByPeer(m);
+    final isMine = _normalizeId(m.senderId) == _meUuid;
 
     final bubble = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -872,7 +782,7 @@ class _FriendChatPageState extends State<FriendChatPage> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        m.content,
+        m.text,
         style: TextStyle(
           color: isMine ? Colors.white : Colors.black87,
           fontSize: 16,
@@ -880,38 +790,8 @@ class _FriendChatPageState extends State<FriendChatPage> {
       ),
     );
 
-    // 카톡 스타일: 내 메시지 줄의 "왼쪽"에 1
-    if (isMine) {
-      return Align(
-        alignment: Alignment.centerRight,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              if (unreadByPeer)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: Text(
-                    '1',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.blueGrey.shade600,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              bubble,
-            ],
-          ),
-        ),
-      );
-    }
-
-    // 상대 메시지는 그대로
     return Align(
-      alignment: Alignment.centerLeft,
+      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: bubble,
@@ -938,22 +818,6 @@ class _FriendChatPageState extends State<FriendChatPage> {
                 child: ListTile(
                   leading: Icon(Icons.refresh),
                   title: Text('새로고침'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuItem(
-                value: _MenuAction.report,
-                child: ListTile(
-                  leading: Icon(Icons.flag_outlined),
-                  title: Text('신고하기'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuItem(
-                value: _MenuAction.block,
-                child: ListTile(
-                  leading: Icon(Icons.block),
-                  title: Text('차단하기'),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
@@ -996,13 +860,6 @@ class _FriendChatPageState extends State<FriendChatPage> {
             child: Row(
               children: [
                 const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  tooltip: '첨부',
-                  onPressed: () {
-                    // 필요시 첨부 시트 다시 연결
-                  },
-                ),
                 Expanded(
                   child: TextField(
                     controller: _controller,

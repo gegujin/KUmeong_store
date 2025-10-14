@@ -1,3 +1,4 @@
+// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\dto\product.responses.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProductStatus } from '../entities/product.entity';
 
@@ -5,7 +6,7 @@ export class ProductDto {
   @ApiProperty({ example: 'uuid' }) id!: string;
   @ApiProperty({ example: '캠퍼스 패딩' }) title!: string;
   @ApiProperty({ example: 30000 }) price!: number;
-  @ApiProperty({ enum: ProductStatus, example: ProductStatus.LISTED }) status!: ProductStatus;
+  @ApiProperty({ enum: ProductStatus, example: ProductStatus.ON_SALE }) status!: ProductStatus; // ✅ LISTED → ON_SALE
 
   @ApiPropertyOptional({ example: '거의 새상품입니다.', nullable: true })
   description?: string | null;
