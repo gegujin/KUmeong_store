@@ -1,28 +1,25 @@
+// lib/features/product/product_edit_screen.dart
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/post.dart';
 import '../../api_service.dart';
-import 'package:kumeong_store/core/theme.dart';
-import 'dart:html' as html;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:jwt_decode/jwt_decode.dart';
+import 'package:kumeong_store/utils/storage.dart';
+import 'package:kumeong_store/core/theme.dart';
 
 const String baseUrl = 'http://localhost:3000/api/v1';
 
 class ProductEditScreen extends StatefulWidget {
-  const ProductEditScreen({
-    super.key,
-    required this.productId,
-    this.initialProduct,
-  });
-
+  const ProductEditScreen(
+      {super.key, required this.productId, this.initialProduct});
   final String productId;
   final Product? initialProduct;
 
@@ -34,14 +31,14 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
   static const int _maxTags = 8;
   static const int _maxImages = 10;
   String? _userId;
+  String? _token;
 
   final _titleCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
-  final _picker = ImagePicker();
   final _locationCtrl = TextEditingController();
-
-  final List<dynamic> _images = []; // Web: XFile, Mobile: File
+  final _picker = ImagePicker();
+  final List<dynamic> _images = [];
   final List<String> _tags = [];
   bool _isLoading = false;
 
@@ -51,32 +48,25 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     _loadUserId();
     final p = widget.initialProduct;
     if (p != null) {
-      _titleCtrl.text = p.title;
-      _priceCtrl.text = p.price.toString();
-      _descCtrl.text = p.description ?? '';
-      _tags.addAll(p.category?.split(',') ?? []);
+      _titleCtrl.text = p.title?.toString() ?? '';
+      _priceCtrl.text = p.price?.toString() ?? '';
+      _descCtrl.text = p.description?.toString() ?? '';
+
+      final categoryStr = p.category?.toString() ?? '';
+      _tags.addAll(categoryStr.isEmpty ? [] : categoryStr.split(','));
+
       if (p.imageUrls.isNotEmpty) _images.addAll(p.imageUrls);
+
+      _locationCtrl.text = p.location?.toString() ?? '';
     }
   }
 
-  /// Web/Mobile 공용: 로그인 토큰에서 userId 추출
   Future<void> _loadUserId() async {
-    String? token;
-    if (kIsWeb) {
-      token = html.window.localStorage['accessToken'];
-    } else {
-      final prefs = await SharedPreferences.getInstance();
-      token = prefs.getString('accessToken'); // 🔹 SharedPreferences에서 토큰 읽기
-    }
-
-    if (token != null && token.isNotEmpty) {
-      try {
-        final payload = Jwt.parseJwt(token);
-        _userId = payload['id']?.toString(); // 🔹 JWT에서 userId 추출
-        debugPrint('💬 Loaded userId: $_userId');
-      } catch (e) {
-        debugPrint('❌ JWT decode 실패: $e');
-      }
+    _token = await TokenStorage.getToken();
+    if (_token != null && _token!.isNotEmpty) {
+      final payload = Jwt.parseJwt(_token!);
+      _userId = payload['sub']?.toString() ?? '';
+      debugPrint('Loaded userId: $_userId');
     }
   }
 
@@ -86,173 +76,204 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     if (x != null) setState(() => _images.add(x));
   }
 
-  /// Web/Mobile 공용 이미지 + 데이터 업로드 (ownerId 포함)
-  Future<Map<String, dynamic>?> createProductWithImages(
-      Map<String, dynamic> data, List<dynamic> images, String token) async {
-    final uri = Uri.parse('$baseUrl/products');
-    var request = http.MultipartRequest('POST', uri);
-    request.headers['Authorization'] = 'Bearer $token';
+  Future<Map<String, dynamic>?> createProductWithImagesSafe(
+    Map<String, dynamic> data,
+    List<dynamic> images,
+    String token, {
+    bool isUpdate = false,
+    String? productId,
+  }) async {
+    final uri = isUpdate
+        ? Uri.parse('$baseUrl/products/$productId')
+        : Uri.parse('$baseUrl/products');
 
-    // 필드 추가
-    request.fields['title'] = data['title'];
-    request.fields['price'] = data['price'].toString();
-    if (data['description'] != null)
-      request.fields['description'] = data['description'];
-    if (data['category'] != null) request.fields['category'] = data['category'];
-    if (data['location'] != null)
-      request.fields['location'] = jsonEncode(data['location']);
-    if (data['ownerId'] != null)
-      request.fields['ownerId'] = data['ownerId'].toString();
+    final request = http.MultipartRequest(isUpdate ? 'PUT' : 'POST', uri);
+    request.headers['Authorization'] =
+        'Bearer ${token.replaceAll('\n', '').trim()}';
 
-    // 이미지 처리
-    for (var img in images) {
-      if (kIsWeb && img is XFile) {
-        final bytes = await img.readAsBytes();
-        final multipartFile = http.MultipartFile.fromBytes(
-          'images',
-          bytes,
-          filename: img.name,
-          contentType: MediaType('image', 'jpeg'),
-        );
-        request.files.add(multipartFile);
-      } else if (!kIsWeb && img is File) {
-        final stream = http.ByteStream(img.openRead());
-        final length = await img.length();
-        final multipartFile = http.MultipartFile(
-          'images',
-          stream,
-          length,
-          filename: img.path.split('/').last,
-          contentType: MediaType('image', 'jpeg'),
-        );
-        request.files.add(multipartFile);
+    // -----------------------------
+    // 필수/선택 필드 안전 변환
+    // -----------------------------
+    final title = (data['title']?.toString().trim() ?? '');
+    if (title.isEmpty || title.length > 100) {
+      debugPrint('❌ title validation failed: "$title"');
+      return null;
+    }
+
+    final priceWon = data['priceWon'] is int
+        ? data['priceWon'] as int
+        : int.tryParse(
+                data['priceWon']?.toString().replaceAll(',', '') ?? '') ??
+            -1;
+    if (priceWon < 0) {
+      debugPrint('❌ priceWon validation failed: $priceWon');
+      return null;
+    }
+
+    final description = (data['description']?.toString().trim());
+    final category = (data['category']?.toString().trim());
+    final locationName = (data['location']?.toString().trim());
+
+    // -----------------------------
+// 서버 전송 필드 설정
+// -----------------------------
+    request.fields['title'] = title;
+    request.fields['priceWon'] = priceWon.toString();
+
+// description은 항상 fields로 전송
+    if (data['description'] != null &&
+        data['description'].toString().isNotEmpty) {
+      request.fields['description'] = data['description']!.toString();
+    }
+
+    if (category != null && category.isNotEmpty)
+      request.fields['category'] = category;
+    if (locationName != null && locationName.isNotEmpty)
+      request.fields['location'] = locationName;
+
+    // -----------------------------
+    // 이미지 첨부
+    // -----------------------------
+    for (final image in images) {
+      try {
+        if (kIsWeb && image is XFile) {
+          final bytes = await image.readAsBytes();
+          request.files.add(http.MultipartFile.fromBytes(
+            'images',
+            bytes,
+            filename: image.name,
+            contentType: MediaType('image', 'jpeg'),
+          ));
+        } else if (!kIsWeb && image is File) {
+          if (kIsWeb && image is XFile) {
+            final bytes = await image.readAsBytes();
+            request.files.add(http.MultipartFile.fromBytes(
+              'images',
+              bytes,
+              filename: image.path.split('/').last,
+              contentType: MediaType('image', 'jpeg'),
+            ));
+          } else if (!kIsWeb && image is File) {
+            final stream = http.ByteStream(image.openRead());
+            final length = await image.length();
+            request.files.add(http.MultipartFile(
+              'images',
+              stream,
+              length,
+              filename: image.path.split('/').last,
+              contentType: MediaType('image', 'jpeg'),
+            ));
+          }
+        }
+      } catch (e) {
+        debugPrint('❌ 이미지 첨부 실패: $e');
       }
     }
 
+    // -----------------------------
+    // 요청 전송
+    // -----------------------------
     try {
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final body = jsonDecode(response.body);
-        if (body is Map<String, dynamic>) return body;
+      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        debugPrint('✅ 상품 등록/수정 성공');
+        final body = jsonDecode(responseBody);
+        return (body['data'] ?? body) as Map<String, dynamic>;
       } else {
-        debugPrint('❌ 이미지 등록 실패: ${response.body}');
+        debugPrint('❌ 서버 validation 실패: $responseBody');
+        return null;
       }
-    } catch (e) {
-      debugPrint('❌ 이미지 등록 예외: $e');
+    } catch (e, st) {
+      debugPrint('💥 상품 등록 예외: $e\n$st');
+      return null;
     }
-    return null;
   }
 
-  /// 상품 등록
-  Future<void> createProduct(String token) async {
-    if (_userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content:
-              Text('사용자 정보가 없습니다. 로그인 후 다시 시도해주세요.'))); // 🔹 로그인 안되어 있으면 메시지
+// -----------------------------
+// _submitSafe() 최종 안전 버전
+// -----------------------------
+  Future<void> _submitSafe() async {
+    final title = _titleCtrl.text.trim();
+    final priceText = _priceCtrl.text.trim();
+
+    if (title.isEmpty || priceText.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('제목과 가격을 반드시 입력해야 합니다.')));
+      }
       return;
     }
 
-    final productData = {
-      'title': _titleCtrl.text.trim(),
-      'price': int.tryParse(_priceCtrl.text.trim()) ?? 0,
-      'description':
-          _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
-      'category': _tags.isEmpty ? null : _tags.join(','),
-      'location': {'name': _locationCtrl.text.trim()},
-      'ownerId': _userId,
-    };
-
-    final result = await createProductWithImages(productData, _images, token);
-    if (result != null) {
-      debugPrint('✅ 상품 등록 성공');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('상품이 등록되었습니다!')));
-      final newProduct = Product.fromJson(result);
-      if (mounted) context.pop(newProduct);
-    } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('상품 등록 실패')));
+    if (title.length > 100) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('제목은 100자 이하로 입력해야 합니다.')));
+      }
+      return;
     }
-  }
 
-  /// 상품 수정
-  Future<void> updateProduct(String token) async {
-    if (widget.initialProduct == null) return;
-
-    final productData = {
-      'title': _titleCtrl.text.trim(),
-      'price': int.tryParse(_priceCtrl.text.trim()) ?? 0,
-      'description':
-          _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
-      'category': _tags.isEmpty ? null : _tags.join(','),
-      'location': {'name': _locationCtrl.text.trim()},
-    };
-
-    final result = await updateProductApi(widget.productId, productData, token);
-    if (result != null) {
-      debugPrint('✅ 상품 수정 성공');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('상품 수정 완료!')));
-      final updatedProduct = Product.fromJson(result);
-      if (mounted) context.pop(updatedProduct);
-    } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('상품 수정 실패')));
+    final priceWon = int.tryParse(priceText.replaceAll(',', ''));
+    if (priceWon == null || priceWon < 0) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('가격은 0 이상의 정수여야 합니다.')));
+      }
+      return;
     }
-  }
 
-  /// _submit() 수정: ownerId 자동 포함 + 로그인/라우팅 안전 처리
-  Future<void> _submit() async {
-    if (_titleCtrl.text.isEmpty || _priceCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('제목과 가격을 입력해주세요.')));
+    if (_userId == null || _token == null) await _loadUserId();
+    if (_token == null || _token!.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('로그인이 필요합니다.')));
+        context.go('/');
+      }
       return;
     }
 
     setState(() => _isLoading = true);
 
-    try {
-      // 🔹 토큰 읽기 (Web/Mobile 통합)
-      String? token;
-      if (kIsWeb) {
-        token = html.window.localStorage['accessToken'];
-      } else {
-        final prefs = await SharedPreferences.getInstance();
-        token = prefs.getString('accessToken');
-      }
+    final productData = {
+      'title': title,
+      'priceWon': priceWon,
+      if (_descCtrl.text.trim().isNotEmpty)
+        'description': _descCtrl.text.trim(),
+      if (_tags.isNotEmpty) 'category': _tags.join(','),
+      if (_locationCtrl.text.trim().isNotEmpty)
+        'location': _locationCtrl.text.trim(),
+    };
 
-      // 🔹 로그인 상태 체크
-      if (token == null || token.isEmpty) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('로그인이 필요합니다.')));
-        context.go('/'); // 로그인 화면 이동
-        return;
-      }
+    Map<String, dynamic>? result;
+    if (widget.initialProduct == null) {
+      result = await createProductWithImagesSafe(productData, _images, _token!);
+    } else {
+      result = await createProductWithImagesSafe(
+        productData,
+        _images,
+        _token!,
+        isUpdate: true,
+        productId: widget.productId,
+      );
+    }
 
-      // 🔹 JWT에서 userId 추출
-      if (_userId == null) {
-        final payload = Jwt.parseJwt(token);
-        _userId = payload['id']?.toString();
+    if (result != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content:
+                Text(widget.initialProduct == null ? '상품 등록 완료' : '상품 수정 완료')));
+        final product = Product.fromJson(result);
+        context.pop(product);
       }
-
-      // 🔹 상품 등록 / 수정 분기
-      if (widget.initialProduct == null) {
-        await createProduct(token); // 🔹 상품 등록
-      } else {
-        await updateProduct(token); // 🔹 상품 수정
-      }
-    } catch (e) {
-      debugPrint('❌ 상품 등록/수정 예외: $e');
+    } else {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('오류 발생: $e')));
+            .showSnackBar(const SnackBar(content: Text('상품 등록/수정 실패')));
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
+
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
@@ -278,9 +299,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
             style: TextStyle(color: cs.onPrimary)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            context.pop();
-          },
+          onPressed: () => context.pop(),
         ),
       ),
       body: Stack(
@@ -290,28 +309,28 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildImagePicker(context, cs, ext),
+                _buildImagePicker(cs, ext),
                 const SizedBox(height: 24),
-                _buildLabel(context, '제목'),
+                _buildLabel('제목', cs),
                 const SizedBox(height: 4),
                 _buildTextField(_titleCtrl, '제목 작성', cs, ext),
                 const SizedBox(height: 16),
-                _buildLabel(context, '가격'),
+                _buildLabel('가격', cs),
                 const SizedBox(height: 4),
                 _buildTextField(_priceCtrl, '원', cs, ext,
                     keyboardType: TextInputType.number),
                 const SizedBox(height: 16),
-                _buildLabel(context, '상세설명'),
+                _buildLabel('상세설명', cs),
                 const SizedBox(height: 4),
-                _buildTextField(_descCtrl, '제품 설명, 상세설명', cs, ext, maxLines: 6),
+                _buildTextField(_descCtrl, '제품 설명', cs, ext, maxLines: 6),
                 const SizedBox(height: 16),
-                _buildLabel(context, '거래 위치'),
+                _buildLabel('거래 위치', cs),
                 const SizedBox(height: 4),
                 _buildTextField(_locationCtrl, '예: 서울 강남구 역삼동', cs, ext),
                 const SizedBox(height: 32),
-                _buildLabel(context, '태그'),
+                _buildLabel('태그', cs),
                 const SizedBox(height: 8),
-                _buildTagSelector(context, cs, ext),
+                _buildTagSelector(cs, ext),
               ],
             ),
           ),
@@ -325,22 +344,49 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: FilledButton(
+          onPressed: _submitSafe,
           style: FilledButton.styleFrom(
             backgroundColor: cs.primary,
             foregroundColor: cs.onPrimary,
             minimumSize: const Size.fromHeight(48),
-            shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.all(Radius.circular(8))),
           ),
-          onPressed: _submit,
-          child: Text(isEditing ? '수정하기' : '등록하기',
-              style: TextStyle(fontSize: 18, color: cs.onPrimary)),
+          child:
+              Text(isEditing ? '수정하기' : '등록하기', style: TextStyle(fontSize: 18)),
         ),
       ),
     );
   }
 
-  Widget _buildImagePicker(BuildContext context, ColorScheme cs, KuColors ext) {
+  Widget _buildLabel(String text, ColorScheme cs) => Text(text,
+      style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface));
+
+  Widget _buildTextField(TextEditingController controller, String hintText,
+      ColorScheme cs, KuColors ext,
+      {int maxLines = 1, TextInputType? keyboardType}) {
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      decoration: InputDecoration(
+        hintText: hintText,
+        filled: true,
+        fillColor: cs.surface,
+        border: OutlineInputBorder(
+            borderRadius: const BorderRadius.all(Radius.circular(8)),
+            borderSide: BorderSide(color: ext.accentSoft)),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: const BorderRadius.all(Radius.circular(8)),
+            borderSide: BorderSide(color: ext.accentSoft)),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: const BorderRadius.all(Radius.circular(8)),
+            borderSide: BorderSide(color: cs.primary, width: 2)),
+        isDense: true,
+      ),
+      style: TextStyle(color: cs.onSurface),
+    );
+  }
+
+  Widget _buildImagePicker(ColorScheme cs, KuColors ext) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -390,9 +436,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                       onTap: () => setState(() => _images.remove(img)),
                       child: Container(
                         decoration: const BoxDecoration(
-                          color: Colors.black54,
-                          shape: BoxShape.circle,
-                        ),
+                            color: Colors.black54, shape: BoxShape.circle),
                         child: const Icon(Icons.close,
                             size: 20, color: Colors.white),
                       ),
@@ -409,10 +453,9 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                   width: 100,
                   height: 100,
                   decoration: BoxDecoration(
-                    color: cs.surface,
-                    border: Border.all(color: ext.accentSoft),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                      color: cs.surface,
+                      border: Border.all(color: ext.accentSoft),
+                      borderRadius: BorderRadius.circular(8)),
                   child: Icon(Icons.add, size: 36, color: cs.onSurfaceVariant),
                 ),
               ),
@@ -425,42 +468,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     );
   }
 
-  Widget _buildLabel(BuildContext context, String text) {
-    final cs = Theme.of(context).colorScheme;
-    return Text(text,
-        style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface));
-  }
-
-  Widget _buildTextField(TextEditingController controller, String hintText,
-      ColorScheme cs, KuColors ext,
-      {int maxLines = 1, TextInputType? keyboardType}) {
-    return TextField(
-      controller: controller,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
-      decoration: InputDecoration(
-        hintText: hintText,
-        filled: true,
-        fillColor: cs.surface,
-        border: OutlineInputBorder(
-          borderRadius: const BorderRadius.all(Radius.circular(8)),
-          borderSide: BorderSide(color: ext.accentSoft),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: const BorderRadius.all(Radius.circular(8)),
-          borderSide: BorderSide(color: ext.accentSoft),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: const BorderRadius.all(Radius.circular(8)),
-          borderSide: BorderSide(color: cs.primary, width: 2),
-        ),
-        isDense: true,
-      ),
-      style: TextStyle(color: cs.onSurface),
-    );
-  }
-
-  Widget _buildTagSelector(BuildContext context, ColorScheme cs, KuColors ext) {
+  Widget _buildTagSelector(ColorScheme cs, KuColors ext) {
     return SizedBox(
       height: 40,
       child: ListView(
@@ -496,13 +504,10 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
           const SizedBox(width: 8),
           ..._tags.map(
             (t) => Padding(
-              padding: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.only(right: 4),
               child: Chip(
-                label: Text(t, style: TextStyle(color: cs.onSurface)),
-                backgroundColor: ext.accentSoft.withAlpha(50),
-                shape: StadiumBorder(side: BorderSide(color: ext.accentSoft)),
-                deleteIcon:
-                    Icon(Icons.close, size: 18, color: cs.onSurfaceVariant),
+                label: Text(t),
+                deleteIcon: const Icon(Icons.close),
                 onDeleted: () => setState(() => _tags.remove(t)),
               ),
             ),
@@ -513,6 +518,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
   }
 }
 
+// CategoryDialog 그대로 사용
 class CategoryDialog extends StatelessWidget {
   const CategoryDialog({super.key});
 

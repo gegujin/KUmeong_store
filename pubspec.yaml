@@ -14,12 +14,14 @@ dependencies:
     sdk: flutter
   
   # 데이터 통신
-  http: ^0.13.5
+  http: ^1.1.0
+  http_parser: ^4.0.2
   web_socket_channel: ^2.4.5 # ✅ 요청하신 버전 적용
   jwt_decode: ^0.3.1
 
   # 상태/데이터 관리
-  shared_preferences: ^2.3.2 # ✅ 요청하신 버전으로 업데이트 및 적용
+  localstorage: ^5.0.0
+  shared_preferences: ^2.2.3 # ✅ 요청하신 버전으로 업데이트 및 적용
   
   # 라우팅
   go_router: ^16.1.0 # StatefulShellRoute 기반 탭 라우팅
@@ -35,6 +37,7 @@ dependencies:
   geolocator: ^9.0.2 # 위치 정보
   url_launcher: ^6.3.0 # URL 열기 (외부 앱/브라우저)
   image_picker: ^1.1.2 # 이미지 선택
+
 
 # ---
 # 🛠 개발 종속성 (Dev Dependencies)
