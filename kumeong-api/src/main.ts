@@ -5,6 +5,7 @@ import {
   ValidationPipe,
   Logger,
   VersioningType,
+  BadRequestException, // ← (선택) exceptionFactory 사용 시
 } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
@@ -44,31 +45,38 @@ async function bootstrap() {
   // ===== 글로벌 ValidationPipe (타입 변환 + DTO 검증) =====
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // DTO에 없는 필드 제거
-      forbidNonWhitelisted: true, // DTO에 정의되지 않은 필드는 에러
-      transform: true, // 🔥 요청 데이터를 DTO로 변환 활성화
-      transformOptions: {
-        enableImplicitConversion: true, // 🔥 문자열 -> 숫자, boolean 자동 변환
+      whitelist: true,               // DTO에 없는 필드 제거
+      forbidNonWhitelisted: false,
+      transform: true,               // 요청 → DTO로 변환
+      transformOptions: { enableImplicitConversion: true }, // "123" → number
+      validateCustomDecorators: true,
+      // (선택) 프런트 일관 포맷 원하면 사용
+      exceptionFactory: (errors) => {
+        const details = errors.map((e) => ({
+          field: e.property,
+          constraints: e.constraints,
+          children: e.children?.length ? e.children : undefined,
+        }));
+        return new BadRequestException({
+          statusCode: 400,
+          message: 'Validation failed',
+          errors: details,
+        });
       },
-      validateCustomDecorators: true, // @Transform 커스텀 변환 적용
     }),
   );
 
-  await app.listen(3000);
-
+  // ===== Global Interceptors / Filters (★ listen 전에 등록) =====
   app.useGlobalInterceptors(new SuccessResponseInterceptor());
   app.useGlobalFilters(new GlobalExceptionFilter());
 
-  // ===== Swagger 설정 =====
+  // ===== Swagger =====
   const swaggerConfig = new DocumentBuilder()
     .setTitle('KU멍가게 API')
     .setDescription('캠퍼스 중고거래/배달(KU대리) 백엔드 v1')
     .setVersion('1.0.0')
-    .addServer(`/api`)
-    .addBearerAuth(
-      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-      'bearer',
-    )
+    .addServer(`/${apiPrefix}`)
+    .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'bearer')
     .build();
   const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig, {
     operationIdFactory: (_controllerKey, methodKey) => methodKey,
@@ -86,6 +94,9 @@ async function bootstrap() {
   } catch (e) {
     Logger.error(`[DB] startup check failed: ${(e as Error).message}`);
   }
+
+  // ★★★ 중요: 여기서 app.listen 하지 않습니다. (중복 listen 제거)
+  // await app.listen(3000);  ← 삭제
 
   await app.init();
 
@@ -164,9 +175,11 @@ async function bootstrap() {
     }
   }
 
-  // ===== 서버 시작 =====
+  // ===== 서버 시작 (단일 listen) =====
   const port = Number(cfg.get<string>('PORT') ?? 3000);
-  await new Promise<void>((resolve) => server.listen(port, '0.0.0.0', () => resolve()));
+  await new Promise<void>((resolve) =>
+    server.listen(port, '0.0.0.0', () => resolve()),
+  );
 
   Logger.log(`🚀 Server running at http://localhost:${port}/api/v1`);
   Logger.log(`📘 Swagger:        http://localhost:${port}/${apiPrefix}/docs`);
