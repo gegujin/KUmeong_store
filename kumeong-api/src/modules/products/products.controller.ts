@@ -1,27 +1,52 @@
-import { 
-  Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, BadRequestException, UseInterceptors, UploadedFiles 
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  Req,
+  UseGuards,
+  BadRequestException,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiTags,
+  ApiOperation,
+  ApiConsumes,
+} from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import type { Multer } from 'multer';
+import * as multer from 'multer';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
-// Multer 파일 타입 정의
-interface MulterFile {
-  fieldname: string;
-  originalname: string;
-  encoding: string;
-  mimetype: string;
-  size: number;
-  destination?: string;
-  filename: string;
-  path?: string;
-  buffer?: Buffer;
-}
+// Multer 옵션: 메모리 저장 + 파일/사이즈 필터
+const upload = {
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 10,
+    fileSize: 5 * 1024 * 1024, // 5MB
+  },
+  fileFilter: (
+    _req: any,
+    file: Express.Multer.File,
+    cb: (err: any, accept: boolean) => void,
+  ) => {
+    // 이미지 계열만 허용
+    if (!file.mimetype?.startsWith('image/')) {
+      return cb(new BadRequestException('only_image_allowed'), false);
+    }
+    cb(null, true);
+  },
+};
 
 @ApiTags('products')
 @ApiBearerAuth()
@@ -43,22 +68,31 @@ export class ProductsController {
   }
 
   @ApiOperation({ summary: '상품 등록' })
-  @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FilesInterceptor('images', 10)) // 최대 10장 이미지
-  @Post()
-  async create(
-    @Body() dto: CreateProductDto,
-    @UploadedFiles() files?: Express.Multer.File[],
-    @Req() req?: any,
-    @CurrentUser() u?: { id: string | number },
-  ) {
-    const ownerId = ((u?.id ?? req?.header('X-User-Id') ?? '') as any).toString().toLowerCase();
-    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRe.test(ownerId)) throw new BadRequestException('invalid_owner_id');
-
-    const created = await this.productsService.createWithOwner(dto, ownerId, files);
-    return { ok: true, data: created };
+@ApiConsumes('multipart/form-data')
+@UseGuards(JwtAuthGuard) // ✅ JWT 인증 필수
+@UseInterceptors(FilesInterceptor('images', 10, upload))
+@Post()
+async create(
+  @Body() dto: CreateProductDto,
+  @UploadedFiles() files: Express.Multer.File[],
+  @Req() req: any,
+  @CurrentUser() user?: { id: string },
+) {
+  const sellerId = user?.id ?? req?.user?.id;
+  if (!sellerId) {
+    throw new BadRequestException('로그인된 사용자 정보가 없습니다.');
   }
+
+  const uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRe.test(sellerId)) {
+    throw new BadRequestException('Invalid seller UUID');
+  }
+
+  const created = await this.productsService.createWithOwner(dto, sellerId, files);
+  return { ok: true, data: created };
+}
+
 
   @ApiOperation({ summary: '상품 수정' })
   @Patch(':id')
