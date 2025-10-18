@@ -1,11 +1,13 @@
-// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\products.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DeepPartial, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Product, ProductStatus } from './entities/product.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { QueryProductDto } from './dto/query-product.dto';
+import * as fs from 'fs';
+import * as path from 'path';
+import { v4 as uuidv4 } from 'uuid';
+import type { Express } from 'express';
 
 @Injectable()
 export class ProductsService {
@@ -14,73 +16,71 @@ export class ProductsService {
     private readonly repo: Repository<Product>,
   ) {}
 
-  /** 목록: 페이지네이션/정렬/검색/필터 */
-  async findAll(
-    q: QueryProductDto,
-  ): Promise<{ items: Product[]; page: number; limit: number; total: number; pages: number }> {
+  async findAll(q: any) {
     const page = Math.max(1, Number(q?.page ?? 1));
     const limit = Math.min(100, Math.max(1, Number(q?.limit ?? 20)));
 
-    // 정렬 필드/방향 화이트리스트
-    const allowedSort: Array<keyof Product> = ['createdAt', 'price', 'title'];
-    const orderField = (allowedSort.includes(q?.sort as any) ? q?.sort : 'createdAt') as
-      | 'createdAt'
-      | 'price'
-      | 'title';
-    const orderDir: 'ASC' | 'DESC' =
-      ((q?.order ?? 'DESC').toString().toUpperCase() === 'ASC' ? 'ASC' : 'DESC');
-
     const qb = this.repo.createQueryBuilder('p').where('1=1');
-
     if (q?.q) qb.andWhere('(p.title LIKE :kw OR p.description LIKE :kw)', { kw: `%${q.q}%` });
     if (q?.category) qb.andWhere('p.category = :category', { category: q.category });
-    if (q?.status) qb.andWhere('p.status = :status', { status: q.status as ProductStatus });
-    if (q?.priceMin != null) qb.andWhere('p.price >= :min', { min: Number(q.priceMin) });
-    if (q?.priceMax != null) qb.andWhere('p.price <= :max', { max: Number(q.priceMax) });
+    if (q?.status) qb.andWhere('p.status = :status', { status: q.status });
+    if (q?.priceMin != null) qb.andWhere('p.priceWon >= :min', { min: Number(q.priceMin) });
+    if (q?.priceMax != null) qb.andWhere('p.priceWon <= :max', { max: Number(q.priceMax) });
 
-    qb.orderBy(`p.${orderField}`, orderDir).skip((page - 1) * limit).take(limit);
+    qb.orderBy('p.createdAt', 'DESC').skip((page - 1) * limit).take(limit);
 
     const [items, total] = await qb.getManyAndCount();
     const pages = Math.max(1, Math.ceil(total / limit));
     return { items, page, limit, total, pages };
-    }
+  }
 
-  /** 단건 조회 (PK는 uuid 문자열) */
   async findOne(id: string): Promise<Product> {
     const item = await this.repo.findOne({ where: { id } });
     if (!item) throw new NotFoundException('Product not found');
     return item;
   }
 
-  /** 생성: ownerId는 컨트롤러에서 @CurrentUser로 받아 주입 (UUID string) */
-  async createProduct(ownerId: string, dto: CreateProductDto): Promise<Product> {
+  async createWithOwner(dto: CreateProductDto, ownerId: string, files?: Express.Multer.File[]): Promise<Product> {
+    const imageUrls: string[] = [];
+
+    if (files?.length) {
+      const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+      for (const file of files) {
+        if (!file.buffer) continue; // 안전 체크
+        const filename = `${uuidv4()}_${file.originalname}`;
+        const filePath = path.join(uploadsDir, filename);
+        fs.writeFileSync(filePath, file.buffer);
+        imageUrls.push(`/uploads/${filename}`);
+      }
+    }
+
     const entity = this.repo.create({
-      ...(dto as unknown as DeepPartial<Product>),
-      ownerId, // ← UUID 문자열
+      title: dto.title,
+      priceWon: dto.priceWon, // price -> priceWon
+      description: dto.description,
+      category: dto.category,
+      sellerId: ownerId,       // ownerId -> sellerId
       status: dto.status ?? ProductStatus.ON_SALE,
-      images: dto.images?.length ? dto.images : [],
+      images: imageUrls,
     });
 
     return this.repo.save(entity);
   }
 
-  /** 컨트롤러 호환용 래퍼 */
-  async createWithOwner(dto: CreateProductDto, ownerId: string): Promise<Product> {
-    return this.createProduct(ownerId, dto);
-  }
-
-  /** 수정 */
   async update(id: string, dto: UpdateProductDto): Promise<Product> {
-    const exists = await this.repo.findOne({ where: { id } });
-    if (!exists) throw new NotFoundException('Product not found');
-    const merged = this.repo.merge(exists, dto as DeepPartial<Product>);
-    return this.repo.save(merged);
+    const product = await this.repo.findOne({ where: { id } });
+    if (!product) throw new NotFoundException('Product not found');
+
+    Object.assign(product, dto);
+    return this.repo.save(product);
   }
 
-  /** 삭제 */
   async remove(id: string): Promise<{ deleted: true; id: string }> {
-    const exists = await this.repo.findOne({ where: { id } });
-    if (!exists) throw new NotFoundException('Product not found');
+    const product = await this.repo.findOne({ where: { id } });
+    if (!product) throw new NotFoundException('Product not found');
+
     await this.repo.delete(id);
     return { deleted: true, id };
   }
