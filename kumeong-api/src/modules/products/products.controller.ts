@@ -25,6 +25,7 @@ import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
+import { FindProductsDto } from './dto/find-products.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import * as multer from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -133,5 +134,6 @@ export class ProductsController {
   async remove(@Param('id') id: string) {
     return { ok: true, data: await this.productsService.remove(id) };
   }
+  
 }
 

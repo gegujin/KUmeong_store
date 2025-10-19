@@ -330,6 +330,7 @@ class Product {
   int likes;
   int views;
   bool isLiked;
+  int get priceKRW => priceWon ?? price;
 
   Product({
     required this.id,

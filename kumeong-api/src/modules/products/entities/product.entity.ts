@@ -1,4 +1,5 @@
 import {
+  Index,
   Entity,
   Column,
   PrimaryColumn,
@@ -18,6 +19,7 @@ export enum ProductStatus {
   SOLD = 'SOLD',
 }
 
+@Index('idx_products_category', ['category'])
 @Entity({ name: 'products' })
 export class Product {
   @PrimaryColumn('char', { length: 36 })
@@ -35,8 +37,8 @@ export class Product {
   @Column({ type: 'text', nullable: true })
   description?: string;
 
-  @Column({ length: 50, nullable: true })
-  category?: string;
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  category!: string | null;
 
   // 이미지 URL 배열
   @Column('simple-array', { nullable: true })
