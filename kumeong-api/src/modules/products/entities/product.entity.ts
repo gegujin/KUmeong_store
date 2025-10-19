@@ -58,6 +58,10 @@ export class Product {
   @Column({ type: 'datetime', nullable: true })
   deletedAt?: Date;
 
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  locationText?: string;
+
+
   @BeforeInsert()
   assignId() {
     if (!this.id) this.id = randomUUID();
