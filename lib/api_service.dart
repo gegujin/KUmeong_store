@@ -149,30 +149,41 @@ Future<Map<String, dynamic>?> createProductWithImages(
   }
 
   // ---------------------------------
-  // 📦 필드 추가 (null, 공백 제거)
+  // 📦 필드 매핑 (서버가 받는 키로 정규화)
   // ---------------------------------
-  productData.forEach((k, v) {
-    if (v == null) return;
-    if (k == 'location' && v is Map) {
-      v.forEach((subKey, subVal) {
-        req.fields['location.$subKey'] = subVal.toString();
-      });
-    } else {
-      req.fields[k] = v.toString().trim();
-    }
-  });
+  // title
+  final title = productData['title']?.toString().trim();
+  if (title != null && title.isNotEmpty) req.fields['title'] = title;
 
-  // ✅ price 검증 (서버 요구사항 충족)
-  if (productData.containsKey('price')) {
-    final parsedPrice = int.tryParse(productData['price'].toString()) ?? 0;
-    req.fields['price'] = parsedPrice.toString();
+  // priceWon (문자/쉼표 허용)
+  final rawPrice =
+      (productData['priceWon'] ?? productData['price'])?.toString();
+  final priceNum = rawPrice == null
+      ? 0
+      : int.tryParse(rawPrice.replaceAll(RegExp(r'[, ]'), '')) ?? 0;
+  req.fields['priceWon'] = priceNum.toString();
+
+  // description / category
+  final desc = productData['description']?.toString().trim();
+  if (desc?.isNotEmpty == true) req.fields['description'] = desc!;
+  final category = productData['category']?.toString().trim();
+  if (category?.isNotEmpty == true) req.fields['category'] = category!;
+
+  // ✅ locationText (location으로 들어오면 자동 매핑)
+  final locationText = (productData['locationText'] ??
+          (productData['location'] is String ? productData['location'] : null))
+      ?.toString()
+      .trim();
+  if (locationText != null && locationText.isNotEmpty) {
+    req.fields['locationText'] = locationText;
   }
 
-  // ---------------------------------
-  // 🧩 디버그 로그
-  // ---------------------------------
+  // status (LISTED/RESERVED/SOLD 등)
+  final status = productData['status']?.toString().trim();
+  if (status?.isNotEmpty == true) req.fields['status'] = status!;
+
   if (kDebugMode) {
-    debugPrint('🧾 전송 필드: ${req.fields}');
+    debugPrint('🧾 전송 필드(create): ${req.fields}');
     debugPrint('🖼 첨부 이미지 수: ${req.files.length}');
   }
 
@@ -209,10 +220,10 @@ Future<Map<String, dynamic>?> updateProductWithImages(
   String token,
 ) async {
   final uri = apiUrl('/products/$productId');
-  final req = http.MultipartRequest('PUT', uri);
+  final req = http.MultipartRequest('PATCH', uri); // ✅ PATCH로 변경
   req.headers['Authorization'] = 'Bearer $token';
 
-  // 이미지 첨부
+  // 🖼 이미지 첨부
   for (final img in images) {
     try {
       if (img is XFile) {
@@ -231,18 +242,52 @@ Future<Map<String, dynamic>?> updateProductWithImages(
             contentType: MediaType('image', _imgSubtype(img.path)),
           ));
         }
+      } else if (img is String) {
+        req.files.add(await http.MultipartFile.fromPath(
+          'images',
+          img,
+          contentType: MediaType('image', _imgSubtype(img)),
+        ));
       }
     } catch (e) {
       debugPrint('[API] 이미지 첨부 오류: $e');
     }
   }
 
-  // 필드 세팅
-  productData.forEach((k, v) {
-    if (v != null) req.fields[k] = v.toString().trim();
-  });
+  // 📦 필드 매핑
+  final title = productData['title']?.toString().trim();
+  if (title?.isNotEmpty == true) req.fields['title'] = title!;
 
-  // 요청
+  final rawPrice =
+      (productData['priceWon'] ?? productData['price'])?.toString();
+  if (rawPrice != null) {
+    final priceNum =
+        int.tryParse(rawPrice.replaceAll(RegExp(r'[, ]'), '')) ?? 0;
+    req.fields['priceWon'] = priceNum.toString();
+  }
+
+  final desc = productData['description']?.toString().trim();
+  if (desc?.isNotEmpty == true) req.fields['description'] = desc!;
+  final category = productData['category']?.toString().trim();
+  if (category?.isNotEmpty == true) req.fields['category'] = category!;
+
+  // ✅ locationText 매핑
+  final locationText = (productData['locationText'] ??
+          (productData['location'] is String ? productData['location'] : null))
+      ?.toString()
+      .trim();
+  if (locationText != null && locationText.isNotEmpty) {
+    req.fields['locationText'] = locationText;
+  }
+
+  final status = productData['status']?.toString().trim();
+  if (status?.isNotEmpty == true) req.fields['status'] = status!;
+
+  if (kDebugMode) {
+    debugPrint('🧾 전송 필드(update): ${req.fields}');
+    debugPrint('🖼 첨부 이미지 수: ${req.files.length}');
+  }
+
   try {
     final streamed = await req.send();
     final resp = await http.Response.fromStream(streamed);

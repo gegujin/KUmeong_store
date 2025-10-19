@@ -15,6 +15,9 @@ import 'package:kumeong_store/core/widgets/app_bottom_nav.dart';
 import '../../core/theme.dart';
 import '../../api_service.dart';
 import 'dart:html' as html; // Web 전용 localStorage
+import 'package:http/http.dart' as http;
+
+const String _apiBase = 'http://localhost:3000/api/v1';
 
 const Color kuInfo = Color(0xFF147AD6);
 
@@ -38,7 +41,94 @@ class _HomePageState extends State<HomePage>
     _loadTokenAndProducts();
   }
 
-  /// ✅ 수정 ①: 비동기 로딩 구조 개선
+  // =========================
+  // ✅ [추가] 헬퍼들
+  // =========================
+
+  // 상대경로(/uploads/...) → 절대 URL
+  String? _absUrl(String? p) {
+    if (p == null || p.isEmpty) return null;
+    if (p.startsWith('http')) return p;
+    if (p.startsWith('/uploads/')) return 'http://localhost:3000$p';
+    return p;
+  }
+
+  // 숫자 → "n원"
+  String _formatWon(dynamic v) {
+    final n = (v is num) ? v.toInt() : int.tryParse('$v') ?? 0;
+    return '${n.toString()}원';
+  }
+
+  // createdAt → “방금 전/분/시간/일 전”
+  String _relativeTime(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    DateTime? dt;
+    try {
+      dt = DateTime.parse(iso).toLocal();
+    } catch (_) {}
+    if (dt == null) return '';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return '방금 전';
+    if (diff.inHours < 1) return '${diff.inMinutes}분 전';
+    if (diff.inDays < 1) return '${diff.inHours}시간 전';
+    return '${diff.inDays}일 전';
+  }
+
+  // 서버 product JSON → 홈 카드용 표준 Map
+  Map<String, dynamic> _normalizeServerProduct(Map<String, dynamic> p) {
+    // 이미지
+    List<String> images = [];
+    final rawImages = p['images'] ?? p['imageUrls'] ?? [];
+    if (rawImages is List) {
+      images = rawImages.map((e) => _absUrl('$e')).whereType<String>().toList();
+    } else if (rawImages is String) {
+      final a = _absUrl(rawImages);
+      if (a != null) images = [a];
+    }
+    final thumb = _absUrl(p['thumbnailUrl']?.toString()) ??
+        (images.isNotEmpty ? images.first : null);
+
+    // 위치/가격/시간
+    final loc =
+        p['location'] ?? p['locationText'] ?? p['seller']?['locationName'];
+    final price = p['price'] ?? p['priceWon'] ?? 0;
+
+    return {
+      'id': p['id'] ?? p['_id'] ?? '',
+      'title': p['title'] ?? '',
+      'imageUrls': images, // ✅ 카드가 기대하는 키
+      'thumbnailUrl': thumb,
+      'location':
+          (loc is String && loc.isNotEmpty) ? loc : '위치 정보 없음', // ✅ 위치 기본값
+      'time': _relativeTime(p['createdAt']?.toString()), // ✅ 상대시간
+      'price': price, // 숫자 보관(표시할 때 포맷)
+      'likes': p['likes'] ?? 0,
+      'views': p['views'] ?? 0,
+    };
+  }
+
+  // 서버 목록을 직접 호출하는 fallback
+  Future<List<Map<String, dynamic>>> _fetchProductsRaw(String? token) async {
+    final uri = Uri.parse('$_apiBase/products');
+    final res = await http.get(uri, headers: {
+      if (token != null) 'Authorization': 'Bearer $token',
+    });
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      debugPrint('fallback fetch failed: ${res.statusCode} ${res.body}');
+      return [];
+    }
+    final json = jsonDecode(res.body);
+    final data = json['data'];
+    final list = (data is Map && data['items'] is List)
+        ? data['items'] as List
+        : (data is List ? data : []);
+    return list
+        .whereType<Map>()
+        .map((m) => _normalizeServerProduct(m.cast<String, dynamic>()))
+        .toList();
+  }
+
+  /// ✅ 수정 ①: 비동기 로딩 구조 + 표준화 + fallback
   Future<void> _loadTokenAndProducts() async {
     if (kIsWeb) {
       token = html.window.localStorage['accessToken'];
@@ -49,16 +139,55 @@ class _HomePageState extends State<HomePage>
 
     final products = <Map<String, dynamic>>[demoProduct.toMapForHome()];
 
+    bool added = false;
     if (token != null) {
       try {
-        final productsFromApi = await fetchProducts(token!);
-        products.addAll(productsFromApi.map((p) => p.toMapForHome()));
+        // 기존 API 클라이언트 사용
+        final productsFromApi = await fetchProducts(token!); // List<Product>
+        if (productsFromApi.isNotEmpty) {
+          products.addAll(productsFromApi.map((p) {
+            final m = p.toMapForHome();
+            // ✅ 누락키 보정: 이미지/가격/위치/시간
+            final imgList = (m['imageUrls'] is List &&
+                    (m['imageUrls'] as List).isNotEmpty)
+                ? (m['imageUrls'] as List).map((e) => _absUrl('$e')).toList()
+                : (m['images'] is List && (m['images'] as List).isNotEmpty)
+                    ? (m['images'] as List).map((e) => _absUrl('$e')).toList()
+                    : (m['thumbnailUrl'] != null
+                            ? [_absUrl(m['thumbnailUrl'])]
+                            : <String?>[])
+                        .whereType<String>()
+                        .toList();
+            final thumb = m['thumbnailUrl'] != null
+                ? _absUrl('${m['thumbnailUrl']}')
+                : (imgList.isNotEmpty ? imgList.first : null);
+            return {
+              ...m,
+              'imageUrls': imgList,
+              'thumbnailUrl': thumb,
+              'price': m['price'] ?? m['priceWon'] ?? 0,
+              'location': m['location'] ?? m['locationText'] ?? '위치 정보 없음',
+              'time': m['time'] ?? _relativeTime(m['createdAt']?.toString()),
+            };
+          }));
+          added = true;
+        }
       } catch (e) {
         debugPrint('상품 불러오기 오류: $e');
       }
     }
 
-    // 비동기 완료 후 한 번만 setState 호출
+    // ✅ 실패/빈 목록이면 서버 JSON을 직접 호출해 표준화
+    if (!added) {
+      try {
+        final raw = await _fetchProductsRaw(token);
+        products.addAll(raw);
+      } catch (e) {
+        debugPrint('fallback fetch 오류: $e');
+      }
+    }
+
+    if (!mounted) return;
     setState(() {
       allProducts = products;
     });
@@ -129,42 +258,32 @@ class _HomePageState extends State<HomePage>
               final product = filteredProducts[index];
               final liked = (product['isLiked'] ?? false) as bool;
 
-              final imageUrl = (product['imageUrls'] != null &&
-                      (product['imageUrls'] as List).isNotEmpty)
-                  ? (product['imageUrls'] as List).first
-                  : null;
+              // ✅ 이미지: thumbnailUrl 우선 → imageUrls[0]
+              final imageUrl = product['thumbnailUrl'] ??
+                  ((product['imageUrls'] != null &&
+                          (product['imageUrls'] as List).isNotEmpty)
+                      ? (product['imageUrls'] as List).first
+                      : null);
 
               final title = product['title'] as String? ?? '';
 
-              /// ✅ 수정: locationName이 비어있으면 seller.locationName 사용
-              final locationValue = product['location'];
+              // ✅ 위치: location → locationText → 기본
               String location = '';
-              if (locationValue is Map) {
-                location = (locationValue['name']?.toString().isNotEmpty ??
-                        false)
-                    ? locationValue['name']
-                    : (locationValue['locationName']?.toString().isNotEmpty ??
-                            false)
-                        ? locationValue['locationName']
-                        : (product['seller']?['locationName']
-                                    ?.toString()
-                                    .isNotEmpty ??
-                                false)
-                            ? product['seller']['locationName']
-                            : '위치 정보 없음';
-              } else if (locationValue is String && locationValue.isNotEmpty) {
-                location = locationValue;
+              final lv = product['location'];
+              if (lv is String && lv.isNotEmpty) {
+                location = lv;
+              } else if ((product['locationText']?.toString().isNotEmpty ??
+                  false)) {
+                location = product['locationText'];
               } else {
-                location = (product['seller']?['locationName']
-                            ?.toString()
-                            .isNotEmpty ??
-                        false)
-                    ? product['seller']['locationName']
-                    : '위치 정보 없음';
+                location = '위치 정보 없음';
               }
 
               final time = product['time'] as String? ?? '';
-              final price = product['price']?.toString() ?? '0원';
+
+              // ✅ 가격: price → priceWon → 라벨
+              final priceLabel =
+                  _formatWon(product['price'] ?? product['priceWon'] ?? 0);
 
               return InkWell(
                 onTap: () {
@@ -224,7 +343,7 @@ class _HomePageState extends State<HomePage>
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('가격 $price'),
+                                Text('가격 $priceLabel'),
                                 Text(
                                   '찜 ${product['likes'] ?? 0} 조회수 ${product['views'] ?? 0}',
                                   style: const TextStyle(color: Colors.grey),
@@ -255,7 +374,7 @@ class _HomePageState extends State<HomePage>
             },
           ),
 
-          /// ✅ FAB 외부 탭시 닫기 처리
+          // ✅ FAB 외부 탭시 닫기 처리
           if (_isMenuOpen)
             Positioned.fill(
               child: GestureDetector(
@@ -265,7 +384,7 @@ class _HomePageState extends State<HomePage>
               ),
             ),
 
-          /// ✅ FAB 메뉴
+          // ✅ FAB 메뉴
           AnimatedPositioned(
             duration: const Duration(milliseconds: 250),
             right: 16,
@@ -301,7 +420,7 @@ class _HomePageState extends State<HomePage>
                           pathParameters: {'productId': 'demo-product'},
                         );
 
-                        /// ✅ 수정 ②: 등록된 상품 즉시 반영
+                        // ✅ 등록 즉시 반영
                         if (newProduct != null && mounted) {
                           setState(() {
                             final newMap = newProduct.toMapForHome();

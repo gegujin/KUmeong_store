@@ -57,7 +57,9 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
 
       if (p.imageUrls.isNotEmpty) _images.addAll(p.imageUrls);
 
-      _locationCtrl.text = p.location?.toString() ?? '';
+      _locationCtrl.text = p.location?.toString().isNotEmpty == true
+          ? p.location!.toString()
+          : (p.locationText?.toString() ?? '');
     }
   }
 
@@ -87,7 +89,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
         ? Uri.parse('$baseUrl/products/$productId')
         : Uri.parse('$baseUrl/products');
 
-    final request = http.MultipartRequest(isUpdate ? 'PUT' : 'POST', uri);
+    // ✅ PATCH로 변경 (백엔드 컨트롤러 @Patch(':id')와 일치)
+    final request = http.MultipartRequest(isUpdate ? 'PATCH' : 'POST', uri);
     request.headers['Authorization'] =
         'Bearer ${token.replaceAll('\n', '').trim()}';
 
@@ -100,70 +103,72 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
       return null;
     }
 
-    final priceWon = data['priceWon'] is int
-        ? data['priceWon'] as int
-        : int.tryParse(
-                data['priceWon']?.toString().replaceAll(',', '') ?? '') ??
-            -1;
+    final rawPrice = (data['priceWon'] ?? data['price'])?.toString() ?? '';
+    final priceWon =
+        int.tryParse(rawPrice.replaceAll(RegExp(r'[,\s]'), '')) ?? -1;
     if (priceWon < 0) {
-      debugPrint('❌ priceWon validation failed: $priceWon');
+      debugPrint('❌ priceWon validation failed: "$rawPrice"');
       return null;
     }
 
-    final description = (data['description']?.toString().trim());
-    final category = (data['category']?.toString().trim());
-    final locationName = (data['location']?.toString().trim());
+    final description = data['description']?.toString().trim();
+    final category = data['category']?.toString().trim();
+
+    // ✅ location → locationText로 정규화
+    final locationText = (data['locationText'] ??
+            (data['location'] is String ? data['location'] : null))
+        ?.toString()
+        .trim();
+
+    final status = data['status']?.toString().trim();
 
     // -----------------------------
-// 서버 전송 필드 설정
-// -----------------------------
+    // 서버 전송 필드 설정
+    // -----------------------------
     request.fields['title'] = title;
     request.fields['priceWon'] = priceWon.toString();
-
-// description은 항상 fields로 전송
-    if (data['description'] != null &&
-        data['description'].toString().isNotEmpty) {
-      request.fields['description'] = data['description']!.toString();
+    if (description?.isNotEmpty == true)
+      request.fields['description'] = description!;
+    if (category?.isNotEmpty == true) request.fields['category'] = category!;
+    if (locationText != null && locationText.isNotEmpty) {
+      // ✅ 백엔드 DTO가 받는 키
+      request.fields['locationText'] = locationText;
     }
-
-    if (category != null && category.isNotEmpty)
-      request.fields['category'] = category;
-    if (locationName != null && locationName.isNotEmpty)
-      request.fields['location'] = locationName;
+    if (status?.isNotEmpty == true) request.fields['status'] = status!;
 
     // -----------------------------
-    // 이미지 첨부
+    // 이미지 첨부 (XFile / File / String(URL)은 재업로드 생략)
     // -----------------------------
     for (final image in images) {
       try {
-        if (kIsWeb && image is XFile) {
-          final bytes = await image.readAsBytes();
-          request.files.add(http.MultipartFile.fromBytes(
-            'images',
-            bytes,
-            filename: image.name,
-            contentType: MediaType('image', 'jpeg'),
-          ));
-        } else if (!kIsWeb && image is File) {
-          if (kIsWeb && image is XFile) {
+        if (image is XFile) {
+          if (kIsWeb) {
             final bytes = await image.readAsBytes();
             request.files.add(http.MultipartFile.fromBytes(
               'images',
               bytes,
-              filename: image.path.split('/').last,
-              contentType: MediaType('image', 'jpeg'),
+              filename: image.name,
+              contentType: MediaType('image', _imgSubtype(image.name)),
             ));
-          } else if (!kIsWeb && image is File) {
-            final stream = http.ByteStream(image.openRead());
-            final length = await image.length();
-            request.files.add(http.MultipartFile(
+          } else {
+            request.files.add(await http.MultipartFile.fromPath(
               'images',
-              stream,
-              length,
-              filename: image.path.split('/').last,
-              contentType: MediaType('image', 'jpeg'),
+              image.path,
+              contentType: MediaType('image', _imgSubtype(image.path)),
             ));
           }
+        } else if (!kIsWeb && image is File) {
+          final stream = http.ByteStream(image.openRead());
+          final length = await image.length();
+          request.files.add(http.MultipartFile(
+            'images',
+            stream,
+            length,
+            filename: image.path.split('/').last,
+            contentType: MediaType('image', _imgSubtype(image.path)),
+          ));
+        } else if (image is String && image.startsWith('http')) {
+          // 이미 서버에 있는 URL이면 재업로드 생략
         }
       } catch (e) {
         debugPrint('❌ 이미지 첨부 실패: $e');
@@ -174,6 +179,12 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     // 요청 전송
     // -----------------------------
     try {
+      if (kDebugMode) {
+        debugPrint(
+            '🧾 전송 필드(${isUpdate ? 'update' : 'create'}): ${request.fields}');
+        debugPrint('🖼 첨부 이미지 수: ${request.files.length}');
+      }
+
       final response = await request.send();
       final responseBody = await response.stream.bytesToString();
 
@@ -186,7 +197,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
         return null;
       }
     } catch (e, st) {
-      debugPrint('💥 상품 등록 예외: $e\n$st');
+      debugPrint('💥 상품 등록/수정 예외: $e\n$st');
       return null;
     }
   }
@@ -241,8 +252,9 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
       if (_descCtrl.text.trim().isNotEmpty)
         'description': _descCtrl.text.trim(),
       if (_tags.isNotEmpty) 'category': _tags.join(','),
+      // ✅ 여기! locationText 키로 넣기
       if (_locationCtrl.text.trim().isNotEmpty)
-        'location': _locationCtrl.text.trim(),
+        'locationText': _locationCtrl.text.trim(),
     };
 
     Map<String, dynamic>? result;
@@ -566,5 +578,24 @@ class CategoryDialog extends StatelessWidget {
         );
       }).toList(),
     );
+  }
+}
+
+// lib/features/product/product_edit_screen.dart 맨 아래 아무 곳 (클래스 바깥)
+// 이미지 MIME subtype 추론
+String _imgSubtype(String pathOrName) {
+  final ext = pathOrName.split('.').last.toLowerCase();
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg':
+      return 'jpeg';
+    case 'png':
+      return 'png';
+    case 'gif':
+      return 'gif';
+    case 'webp':
+      return 'webp';
+    default:
+      return 'jpeg';
   }
 }
