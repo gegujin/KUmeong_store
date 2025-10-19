@@ -328,37 +328,67 @@ String _imgSubtype(String pathOrName) {
 }
 
 // ---------------------------------------------------------
-// 📥 상품 리스트 조회
+// 📥 상품 리스트 조회 (카테고리/검색/페이지 지원)
 // ---------------------------------------------------------
-Future<List<Product>> fetchProducts(String token) async {
-  final url = apiUrl('/products');
+Future<List<Product>> fetchProducts(
+  String token, {
+  String? category,
+  String? query,
+  int page = 1,
+  int limit = 20,
+  String? sortField, // 'createdAt' | 'price' | 'title'
+  String? order, // 'ASC' | 'DESC'
+}) async {
+  final params = <String, String>{
+    'page': '$page',
+    'limit': '$limit',
+  };
+  if (category != null && category.isNotEmpty) params['category'] = category;
+  if (query != null && query.isNotEmpty) params['query'] = query;
+  // ✅ 서버 검증을 통과하는 값만 전송
+  const allowedSort = {'createdAt', 'price', 'title'};
+  const allowedOrder = {'ASC', 'DESC'};
+  if (sortField != null && allowedSort.contains(sortField)) {
+    params['sort'] = sortField;
+  }
+  if (order != null && allowedOrder.contains(order)) {
+    params['order'] = order;
+  }
+
+  final base = apiUrl('/products');
+  final url = base.replace(queryParameters: params);
+
   try {
     final resp =
         await http.get(url, headers: {'Authorization': 'Bearer $token'});
     if (resp.statusCode != 200) {
+      // 🔁 방어적 재시도: sort/order로 400나면 정렬 제거 후 한 번 더
+      final body = resp.body;
+      final isSortError = resp.statusCode == 400 &&
+          body.contains('"sort"') &&
+          body.contains('must be one of');
+      if (isSortError &&
+          (params.containsKey('sort') || params.containsKey('order'))) {
+        final retryParams = Map<String, String>.from(params)
+          ..remove('sort')
+          ..remove('order');
+        final retryUrl = base.replace(queryParameters: retryParams);
+        final retry = await http
+            .get(retryUrl, headers: {'Authorization': 'Bearer $token'});
+        if (retry.statusCode == 200) {
+          final decoded = _parseJsonResponse(retry);
+          final raw = decoded['data'];
+          final items = _normalizeItems(raw);
+          return items.map((e) => Product.fromJson(e)).toList();
+        }
+      }
       debugPrint('[API] 상품 조회 실패: ${resp.statusCode} ${resp.body}');
       return [];
     }
 
     final decoded = _parseJsonResponse(resp);
     final raw = decoded['data'];
-    List<dynamic> items;
-
-    if (raw == null) {
-      items = [];
-    } else if (raw is List) {
-      items = raw;
-    } else if (raw is Map<String, dynamic>) {
-      if (raw['rows'] is List) {
-        items = raw['rows'] as List<dynamic>;
-      } else if (raw['items'] is List) {
-        items = raw['items'] as List<dynamic>;
-      } else {
-        items = [raw];
-      }
-    } else {
-      items = [];
-    }
+    final items = _normalizeItems(raw);
 
     return items
         .whereType<Map<String, dynamic>>()
@@ -368,4 +398,15 @@ Future<List<Product>> fetchProducts(String token) async {
     debugPrint('[API] 상품 조회 예외: $e\n$st');
     return [];
   }
+}
+
+List<dynamic> _normalizeItems(dynamic raw) {
+  if (raw == null) return const [];
+  if (raw is List) return raw;
+  if (raw is Map<String, dynamic>) {
+    if (raw['items'] is List) return raw['items'] as List;
+    if (raw['rows'] is List) return raw['rows'] as List;
+    return [raw];
+  }
+  return const [];
 }

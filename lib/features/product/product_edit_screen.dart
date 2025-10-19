@@ -41,6 +41,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
   final List<dynamic> _images = [];
   final List<String> _tags = [];
   bool _isLoading = false;
+  String? _primaryCategory;
 
   @override
   void initState() {
@@ -54,6 +55,12 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
 
       final categoryStr = p.category?.toString() ?? '';
       _tags.addAll(categoryStr.isEmpty ? [] : categoryStr.split(','));
+      // ✅ 수정 모드: 대표 카테고리 초기값
+      if (_tags.isNotEmpty) {
+        _primaryCategory = _tags.first;
+      } else if (p.category != null && p.category!.isNotEmpty) {
+        _primaryCategory = p.category;
+      }
 
       if (p.imageUrls.isNotEmpty) _images.addAll(p.imageUrls);
 
@@ -246,12 +253,21 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
 
     setState(() => _isLoading = true);
 
+    final cat = _primaryCategory
+        ?.replaceAll('\n', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
     final productData = {
       'title': title,
       'priceWon': priceWon,
       if (_descCtrl.text.trim().isNotEmpty)
         'description': _descCtrl.text.trim(),
-      if (_tags.isNotEmpty) 'category': _tags.join(','),
+      // ✅ 대표 카테고리(정리된 문자열)만 단일로 전송
+      if (cat != null && cat.isNotEmpty) 'category': cat,
+      'category': _primaryCategory,
+      // (옵션) 태그 전체를 별도 필드로 보낼 경우:
+      if (_tags.isNotEmpty) 'tags': _tags.join(','),
       // ✅ 여기! locationText 키로 넣기
       if (_locationCtrl.text.trim().isNotEmpty)
         'locationText': _locationCtrl.text.trim(),
@@ -509,18 +525,38 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                 }
                 return;
               }
-              setState(() => _tags.add(tag));
+              setState(() {
+                _tags.add(tag);
+                // ✅ 첫 선택은 자동으로 대표 카테고리로 지정
+                _primaryCategory ??= tag;
+              });
             },
             child: const Text('필터 +'),
           ),
           const SizedBox(width: 8),
+          // ✅ 칩: 탭=대표 변경, 삭제 아이콘=제거
           ..._tags.map(
             (t) => Padding(
               padding: const EdgeInsets.only(right: 4),
-              child: Chip(
-                label: Text(t),
-                deleteIcon: const Icon(Icons.close),
-                onDeleted: () => setState(() => _tags.remove(t)),
+              child: InputChip(
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_primaryCategory == t) const Icon(Icons.star, size: 16),
+                    if (_primaryCategory == t) const SizedBox(width: 2),
+                    Text(t),
+                  ],
+                ),
+                selected: _primaryCategory == t,
+                onPressed: () => setState(() => _primaryCategory = t), // 대표 변경
+                onDeleted: () {
+                  setState(() {
+                    _tags.remove(t);
+                    if (_primaryCategory == t) {
+                      _primaryCategory = _tags.isNotEmpty ? _tags.first : null;
+                    }
+                  });
+                },
               ),
             ),
           ),
