@@ -8,7 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/post.dart';
-import '../../api_service.dart';
+import 'package:kumeong_store/api_service.dart'; // toggleFavoriteById() 사용
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:jwt_decode/jwt_decode.dart';

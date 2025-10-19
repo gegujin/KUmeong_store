@@ -104,6 +104,9 @@ class _HomePageState extends State<HomePage>
       'price': price, // 숫자 보관(표시할 때 포맷)
       'likes': p['likes'] ?? 0,
       'views': p['views'] ?? 0,
+
+      // ✅ 추가: 서버가 주면 그대로, 없으면 false
+      'isFavorited': p['isFavorited'] == true,
     };
   }
 
@@ -168,6 +171,8 @@ class _HomePageState extends State<HomePage>
               'price': m['price'] ?? m['priceWon'] ?? 0,
               'location': m['location'] ?? m['locationText'] ?? '위치 정보 없음',
               'time': m['time'] ?? _relativeTime(m['createdAt']?.toString()),
+              // ✅ 추가
+              'isFavorited': m['isFavorited'] == true,
             };
           }));
           added = true;
@@ -193,12 +198,29 @@ class _HomePageState extends State<HomePage>
     });
   }
 
-  void _toggleLike(int index) {
+  // ✅ 교체할 코드: 서버 호출로 하트 토글
+  Future<void> _toggleLike(int index) async {
+    final id = (allProducts[index]['id'] as String?) ?? '';
+    if (id.isEmpty) return;
+
+    // 서버에 찜 토글 요청
+    final next = await toggleFavoriteById(id); // api_service.dart 함수
+
+    if (next == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('로그인이 필요하거나 요청이 실패했어요.')),
+      );
+      return;
+    }
+
+    // 성공 시 로컬 상태 반영 → 아이콘 즉시 갱신
     setState(() {
-      final liked = (allProducts[index]['isLiked'] ?? false) as bool;
-      final likes = allProducts[index]['likes'] as int? ?? 0;
-      allProducts[index]['isLiked'] = !liked;
-      allProducts[index]['likes'] = liked ? likes - 1 : likes + 1;
+      allProducts[index]['isFavorited'] = next;
+
+      // (선택) 좋아요 수도 함께 보정하려면 아래 주석 해제
+      // final cur = (allProducts[index]['likes'] as int? ?? 0);
+      // allProducts[index]['likes'] = next ? cur + 1 : (cur > 0 ? cur - 1 : 0);
     });
   }
 
@@ -256,7 +278,8 @@ class _HomePageState extends State<HomePage>
             itemCount: filteredProducts.length,
             itemBuilder: (_, index) {
               final product = filteredProducts[index];
-              final liked = (product['isLiked'] ?? false) as bool;
+              final liked =
+                  (product['isFavorited'] ?? false) as bool; // ✅ 키 이름 통일
 
               // ✅ 이미지: thumbnailUrl 우선 → imageUrls[0]
               final imageUrl = product['thumbnailUrl'] ??

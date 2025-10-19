@@ -326,6 +326,8 @@ class Product {
   final String? category;
   final List<dynamic>? images; // Web: XFile, Mobile: File
 
+  final bool isFavorited;
+
   // 🔹 홈 화면용 필드
   int likes;
   int views;
@@ -342,6 +344,7 @@ class Product {
     required this.createdAt,
     required this.seller,
     required this.location,
+    this.isFavorited = false,
     this.locationText,
     this.category,
     this.images,
@@ -368,6 +371,7 @@ class Product {
     int? likes,
     int? views,
     bool? isLiked,
+    bool? isFavorited,
   }) {
     return Product(
       id: id ?? this.id,

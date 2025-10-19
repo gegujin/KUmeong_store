@@ -1,8 +1,18 @@
 // lib/features/mypage/heart_screen.dart
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:kumeong_store/utils/storage.dart'; // ✅ LoginPage와 동일 스토리지 사용
+import 'package:kumeong_store/api_service.dart'; // toggleFavoriteById() 사용
+
 import 'package:kumeong_store/core/router/route_names.dart' as R;
-import 'package:kumeong_store/core/widgets/app_bottom_nav.dart'; // 하단바(전역으로 붙어 있으면 주석 OK)
+// 하단바가 전역이면 주석 처리 가능
+import 'package:kumeong_store/core/widgets/app_bottom_nav.dart';
+
+// ✅ baseUrl: 에뮬레이터 환경에 맞춰 필요시 10.0.2.2로 교체
+// Android 에뮬레이터라면: 'http://10.0.2.2:3000/api/v1'
+const String baseUrl = 'http://localhost:3000/api/v1';
 
 class HeartPage extends StatefulWidget {
   const HeartPage({super.key});
@@ -12,42 +22,162 @@ class HeartPage extends StatefulWidget {
 }
 
 class _HeartPageState extends State<HeartPage> {
-  // 더미 데이터 (productId 추가)
-  List<Map<String, dynamic>> likedProducts = [
-    {
-      'productId': 'p-willson-ball', // ✅ 상세 이동에 사용할 ID
-      'title': 'Willson 농구공 팝니다',
-      'location': '신촌운동장',
-      'time': '2일전',
-      'likes': 1,
-      'views': 5,
-      'price': '25,000원',
-      'isLiked': true,
-    },
-    {
-      'productId': 'p-cs-hoodie',
-      'title': '컴공 과잠 팝니다',
-      'location': '모시래마을',
-      'time': '3일전',
-      'likes': 1,
-      'views': 5,
-      'price': '30,000원',
-      'isLiked': true,
-    },
-  ];
+  bool _loading = true;
+  String? _error;
+  List<Map<String, dynamic>> _items = [];
 
-  void _toggleLike(int index) {
-    setState(() {
-      if (likedProducts[index]['isLiked']) {
-        likedProducts[index]['isLiked'] = false;
-        likedProducts[index]['likes'] =
-            (likedProducts[index]['likes'] as int) - 1;
-      } else {
-        likedProducts[index]['isLiked'] = true;
-        likedProducts[index]['likes'] =
-            (likedProducts[index]['likes'] as int) + 1;
+  // ✅ 로그인 화면으로 가는 안전한 헬퍼 (네임드 라우트 우선)
+  void _goLogin() {
+    if (!mounted) return;
+    try {
+      context.goNamed(R.RouteNames.login);
+      return;
+    } catch (_) {}
+    context.go('/auth/login'); // 실제 등록된 경로로 교체 가능
+  }
+
+  // ✅ LoginPage 기준으로 통일: TokenStorage에서만 읽는다
+  Future<String?> _getAccessToken() async {
+    try {
+      final t = await TokenStorage.getToken(); // String? 반환 가정
+      if (t != null && t.trim().isNotEmpty) {
+        // ignore: avoid_print
+        print('[HeartPage] token loaded from TokenStorage (len=${t.length})');
+        return t;
       }
+    } catch (e) {
+      // ignore: avoid_print
+      print('[HeartPage] TokenStorage.getToken() error: $e');
+    }
+    // ignore: avoid_print
+    print('[HeartPage] no token found (TokenStorage)');
+    return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFavorites();
+  }
+
+  Future<void> _loadFavorites() async {
+    setState(() {
+      _loading = true;
+      _error = null;
     });
+    try {
+      final token = await _getAccessToken();
+      if (token == null) {
+        // 토큰이 없으면 로그인 CTA를 화면에서 보여주기
+        setState(() {
+          _loading = false;
+          _error = null;
+        });
+        return;
+      }
+
+      final res = await http.get(
+        Uri.parse('$baseUrl/favorites?page=1&limit=50'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (res.statusCode != 200) {
+        setState(() {
+          _error = '관심목록 불러오기 실패 (${res.statusCode})';
+          _loading = false;
+        });
+        return;
+      }
+
+      // 서버 응답 형태: { items: [...] } 또는 { ok:true, data:{ items:[...] } }
+      final body = jsonDecode(res.body);
+      final data = body is Map<String, dynamic> && body['data'] != null
+          ? body['data'] as Map<String, dynamic>
+          : (body as Map<String, dynamic>);
+
+      final List list = (data['items'] as List? ?? []);
+      _items = list.map<Map<String, dynamic>>((e) {
+        final images = (e['images'] as List?)?.cast<String>() ?? const [];
+        return {
+          'id': e['id'] as String?,
+          'title': e['title'] as String? ?? '',
+          'priceWon': e['priceWon'] as int? ?? 0,
+          'category': e['category'] as String? ?? '',
+          'locationText': e['locationText'] as String? ?? '',
+          'createdAt': e['createdAt'] as String? ?? '',
+          'thumbnail': (e['thumbnail'] as String?) ??
+              (e['thumbnailUrl'] as String?) ??
+              (images.isNotEmpty ? images.first : null),
+          'isFavorited': true, // 관심목록이므로 항상 true
+        };
+      }).toList();
+
+      setState(() {
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = '에러: $e';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _toggleFavorite(String productId) async {
+    try {
+      final token = await _getAccessToken();
+      if (token == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로그인이 필요합니다.')),
+        );
+        return; // 여기서는 강제 이동하지 않음
+      }
+
+      final res = await http.post(
+        Uri.parse('$baseUrl/favorites/$productId/toggle'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (res.statusCode != 200) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('찜 토글 실패 (${res.statusCode})')),
+        );
+        return;
+      }
+
+      final m = jsonDecode(res.body) as Map<String, dynamic>;
+      final next = m['isFavorited'] == true;
+
+      // 관심목록 화면이므로 next=false면 목록에서 제거
+      if (!next) {
+        setState(() {
+          _items.removeWhere((x) => x['id'] == productId);
+        });
+      } else {
+        await _loadFavorites(); // (거의 없음) next=true면 재로딩
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('에러: $e')),
+      );
+    }
+  }
+
+  String _formatPrice(int won) {
+    final s = won.toString();
+    final buf = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      final pos = s.length - i;
+      buf.write(s[i]);
+      if (pos > 1 && pos % 3 == 1) buf.write(',');
+    }
+    return '$buf원';
   }
 
   @override
@@ -61,101 +191,166 @@ class _HeartPageState extends State<HeartPage> {
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: likedProducts.isEmpty
-          ? const Center(child: Text("아직 좋아요한 상품이 없습니다."))
-          : ListView.builder(
-              itemCount: likedProducts.length,
-              itemBuilder: (_, index) {
-                final product = likedProducts[index];
-                return InkWell(
-                  onTap: () {
-                    // ✅ 상품 상세로 이동
-                    final productId =
-                        (product['productId'] as String?) ?? 'demo-product';
-                    context.pushNamed(
-                      R.RouteNames.productDetail,              // /home/product/:productId
-                      pathParameters: {'productId': productId},
-                      // extra: 초기 Product 객체를 넘길 경우 여기에 전달 가능
-                    );
-                  },
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 상품 이미지 (더미)
-                        Container(
-                          width: 80,
-                          height: 80,
-                          color: Colors.grey[300],
-                        ),
-                        const SizedBox(width: 10),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Text(_error!))
+              : (_items.isEmpty
+                  // ✅ 비었을 때: 토큰 없으면 로그인 CTA, 있으면 "없어요" 안내
+                  ? FutureBuilder<String?>(
+                      future: _getAccessToken(),
+                      builder: (context, snap) {
+                        final hasToken =
+                            snap.connectionState == ConnectionState.done &&
+                                (snap.data != null && snap.data!.isNotEmpty);
 
-                        // 상품 정보
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // 제목 + 하트
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
+                        if (!hasToken) {
+                          return Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('로그인이 필요합니다.'),
+                                const SizedBox(height: 12),
+                                ElevatedButton.icon(
+                                  onPressed: _goLogin,
+                                  icon: const Icon(Icons.login),
+                                  label: const Text('로그인하러 가기'),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return const Center(child: Text('하트한 상품이 없어요.'));
+                      },
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _loadFavorites,
+                      child: ListView.separated(
+                        itemCount: _items.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 1, thickness: 0.5),
+                        itemBuilder: (_, index) {
+                          final p = _items[index];
+                          final productId = p['id'] as String? ?? '';
+
+                          return InkWell(
+                            onTap: () {
+                              if (productId.isEmpty) return;
+                              context.pushNamed(
+                                R.RouteNames
+                                    .productDetail, // /home/product/:productId
+                                pathParameters: {'productId': productId},
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 10),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // 썸네일
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: p['thumbnail'] != null
+                                        ? Image.network(
+                                            p['thumbnail'] as String,
+                                            width: 80,
+                                            height: 80,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) =>
+                                                Container(
+                                              width: 80,
+                                              height: 80,
+                                              color: Colors.grey[300],
+                                              child: const Icon(
+                                                  Icons.image_not_supported),
+                                            ),
+                                          )
+                                        : Container(
+                                            width: 80,
+                                            height: 80,
+                                            color: Colors.grey[300],
+                                            child: const Icon(
+                                                Icons.image_not_supported),
+                                          ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  // 텍스트 영역
                                   Expanded(
-                                    child: Text(
-                                      product['title'] as String? ?? '',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  GestureDetector(
-                                    onTap: () => _toggleLike(index),
-                                    child: Icon(
-                                      (product['isLiked'] as bool? ?? false)
-                                          ? Icons.favorite
-                                          : Icons.favorite_border,
-                                      color:
-                                          (product['isLiked'] as bool? ?? false)
-                                              ? Colors.red
-                                              : Colors.grey,
-                                      size: 22,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        // 제목 + 하트
+                                        Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                p['title'] as String? ?? '',
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 15,
+                                                ),
+                                              ),
+                                            ),
+                                            IconButton(
+                                              padding: EdgeInsets.zero,
+                                              constraints:
+                                                  const BoxConstraints(),
+                                              icon: const Icon(
+                                                Icons.favorite,
+                                                color: Colors.red,
+                                                size: 22,
+                                              ),
+                                              onPressed: () {
+                                                if (productId.isNotEmpty) {
+                                                  _toggleFavorite(productId);
+                                                }
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        // 위치/시간 (시간 포맷은 단순 표시)
+                                        Text(
+                                          [
+                                            (p['locationText'] as String?)
+                                                        ?.trim()
+                                                        .isNotEmpty ==
+                                                    true
+                                                ? p['locationText'] as String
+                                                : '위치 정보 없음',
+                                            (p['createdAt'] as String?)
+                                                    ?.substring(0, 10) ??
+                                                '',
+                                          ]
+                                              .where((e) => e.isNotEmpty)
+                                              .join(' | '),
+                                          style: const TextStyle(
+                                              color: Colors.grey),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        // 가격
+                                        Text(
+                                          '가격 ${_formatPrice(p['priceWon'] as int? ?? 0)}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 4),
-
-                              // 위치 & 시간
-                              Text(
-                                '${product['location']} | ${product['time']}',
-                                style: const TextStyle(color: Colors.grey),
-                              ),
-                              const SizedBox(height: 4),
-
-                              // 가격 + 찜/조회수
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text('가격 ${product['price']}'),
-                                  Text(
-                                    '찜 ${product['likes']} 조회수 ${product['views']}',
-                                    style: const TextStyle(color: Colors.grey),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+                            ),
+                          );
+                        },
+                      ),
+                    )),
       // bottomNavigationBar: const AppBottomNav(currentIndex: 2),
     );
   }
