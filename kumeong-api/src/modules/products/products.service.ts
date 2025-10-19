@@ -33,6 +33,12 @@ export class ProductsService {
     if (q?.q) qb.andWhere('(p.title LIKE :kw OR p.description LIKE :kw)', { kw: `%${q.q}%` });
     if (q?.category) qb.andWhere('p.category = :category', { category: q.category });
 
+    // (목록 검색 시 필터)
+    if (q?.locationText) {
+      qb.andWhere('p.locationText LIKE :loc', { loc: `%${q.locationText}%` });
+    }
+
+
     // status가 enum과 일치하는지 체크 (잘못된 값이면 400)
     if (q?.status != null) {
       const s = String(q.status) as keyof typeof ProductStatus;
@@ -119,6 +125,7 @@ export class ProductsService {
       sellerId: ownerId,
       status,
       images: imageUrls,
+      locationText: dto.locationText,
     });
 
     try {
