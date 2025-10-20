@@ -1,8 +1,8 @@
 // lib/state/favorites_store.dart
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import '../api_service.dart'; // ← 탑레벨 함수만 쓸 거라 show 빼기
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:kumeong_store/api_service.dart';
 
 class FavoritesStore extends ChangeNotifier {
   FavoritesStore._();
@@ -31,7 +31,7 @@ class FavoritesStore extends ChangeNotifier {
     try {
       final sp = await SharedPreferences.getInstance();
       await sp.setStringList(_kFavIds, favoriteIds.toList());
-      await sp.setString(_kFavCounts, jsonEncode(counts));
+      await sp.setString(_kFavCounts, jsonEncode(counts)); // 안전 인코딩
     } catch (_) {}
   }
 
@@ -56,7 +56,7 @@ class FavoritesStore extends ChangeNotifier {
     try {
       final decoded = jsonDecode(s);
       if (decoded is Map) {
-        final map = Map<String, dynamic>.from(decoded as Map);
+        final map = Map<String, dynamic>.from(decoded);
         return map.map((k, v) => MapEntry(k, (v is num) ? v.toInt() : 0));
       }
       return {};
@@ -76,19 +76,26 @@ class FavoritesStore extends ChangeNotifier {
     } finally {
       _inited = true;
     }
+    // 1) 로컬 seed (새로고침 직후 0으로 보이지 않게)
+    await loadFromStorage();
+    notifyListeners();
+    // 2) 서버 최신 반영(되면 로컬 저장으로 덮어씀)
+    await refreshFromServer();
+    _inited = true;
   }
 
   /// 서버에서 관심목록을 다시 읽어들여 store를 통째로 교체
   Future<void> refreshFromServer() async {
     try {
-      final List<dynamic> items = await fetchMyFavoriteItems(page: 1, limit: 200);
+      final List<dynamic> items =
+          await fetchMyFavoriteItems(page: 1, limit: 200); // 필요 시 확장
       replaceAll(items);
     } catch (e) {
       debugPrint('[FavoritesStore] refreshFromServer failed: $e');
     }
   }
 
-  /// 외부에서 받은 리스트로 store를 통째로 교체
+  /// 외부에서 받은 리스트로 store를 통째로 교체 (모델/Map 모두 허용)
   void replaceAll(List<dynamic> items) {
     final ids = <String>[];
     final cnt = <String, int>{};
@@ -112,9 +119,12 @@ class FavoritesStore extends ChangeNotifier {
     _saveToStorage();
   }
 
-  /// 낙관적 토글 적용
-  bool toggleOptimistic(String id, {required bool currentFavorited, required int currentCount}) {
-    if (isPending(id)) return currentFavorited;
+  /// 낙관적 토글 적용 (현재 상태/카운트를 기준으로 미리 반영)
+  /// - 연타/중복 액션이면 기존 상태 그대로 반환
+  /// - 반환값: 적용된 nextFavorited
+  bool toggleOptimistic(String id,
+      {required bool currentFavorited, required int currentCount}) {
+    if (isPending(id)) return currentFavorited; // 이미 요청 중이면 무시
     _markPending(id);
 
     final next = !currentFavorited;
@@ -139,17 +149,16 @@ class FavoritesStore extends ChangeNotifier {
     } else {
       favoriteIds.remove(id);
     }
-
     if (favoriteCount != null) {
-      counts[id] = favoriteCount; // 덮어쓰기
+      counts[id] = favoriteCount; // 덮어쓰기(+= 금지)
     }
-
     notifyListeners();
     _saveToStorage();
   }
 
   /// 실패 → 기존 값으로 롤백
-  void rollback(String id, {required bool previousFavorited, required int previousCount}) {
+  void rollback(String id,
+      {required bool previousFavorited, required int previousCount}) {
     _clearPending(id);
 
     if (previousFavorited) {
@@ -157,10 +166,68 @@ class FavoritesStore extends ChangeNotifier {
     } else {
       favoriteIds.remove(id);
     }
-
     counts[id] = previousCount;
     notifyListeners();
     _saveToStorage();
+  }
+
+  // ───────────── 퍼블릭 헬퍼 (UI에서 사용하기 쉬운 형태) ─────────────
+
+  bool isFavOf(String id) => favoriteIds.contains(id);
+  int favCountOf(String id) => counts[id] ?? 0;
+
+  /// 전체 토글(낙관적→서버확정/실패 롤백 포함)
+  // lib/state/favorites_store.dart — toggle() 교체
+  Future<void> toggle(String id) async {
+    final prevFavorited = isFavOf(id);
+    final prevCount = favCountOf(id);
+
+    // 1) 낙관적 적용
+    final nextFavorited = toggleOptimistic(
+      id,
+      currentFavorited: prevFavorited,
+      currentCount: prevCount,
+    );
+
+    try {
+      // 2) 서버 호출 (반환형이 record/Map/dynamic/nullable 여도 안전하게 처리)
+      final dynamic r = await toggleFavoriteById(id);
+
+      // ok 추출 (nullable/Map/dynamic 모두 커버)
+      final bool ok = (r is Map) ? (r['ok'] == true) : (r?.ok == true) == true;
+
+      if (!ok) {
+        // 서버가 실패면 롤백
+        rollback(id,
+            previousFavorited: prevFavorited, previousCount: prevCount);
+        return;
+      }
+
+      // isFavorite 추출 (키 다양한 경우 대비)
+      final bool isFav = (r is Map)
+          ? (r['isFavorite'] == true || r['fav'] == true || r['liked'] == true)
+          : (r?.isFavorite == true) ?? nextFavorited;
+
+      // favoriteCount 추출 (num -> int 변환 + 안전 기본값)
+      int favCnt;
+      if (r is Map) {
+        final dyn = (r['favoriteCount'] ?? r['favorites'] ?? r['count']);
+        favCnt = (dyn is num)
+            ? dyn.toInt()
+            : (isFav ? prevCount + 1 : (prevCount > 0 ? prevCount - 1 : 0));
+      } else {
+        final dyn = r?.favoriteCount;
+        favCnt = (dyn is num)
+            ? dyn.toInt()
+            : (isFav ? prevCount + 1 : (prevCount > 0 ? prevCount - 1 : 0));
+      }
+
+      // 3) 서버값으로 확정 반영
+      applyServer(id, isFavorited: isFav, favoriteCount: favCnt);
+    } catch (_) {
+      // 네트워크/예외 → 롤백
+      rollback(id, previousFavorited: prevFavorited, previousCount: prevCount);
+    }
   }
 
   // ───────────── 헬퍼: 모델 독립 필드 추출 ─────────────
@@ -171,12 +238,15 @@ class FavoritesStore extends ChangeNotifier {
 
     if (item is Map) {
       final m = Map<String, dynamic>.from(item);
-      return (m['id'] ?? m['productId'] ?? m['postId'] ?? m['uuid'] ?? m['slug'])?.toString();
+      final v =
+          (m['id'] ?? m['productId'] ?? m['postId'] ?? m['uuid'] ?? m['slug']);
+      return v?.toString();
     }
 
     try {
       final d = item as dynamic;
-      return (d.id ?? d.productId ?? d.postId ?? d.uuid ?? d.slug)?.toString();
+      final v = (d.id ?? d.productId ?? d.postId ?? d.uuid ?? d.slug);
+      return v?.toString();
     } catch (_) {
       return null;
     }
