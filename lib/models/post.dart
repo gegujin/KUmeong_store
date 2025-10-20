@@ -326,7 +326,8 @@ class Product {
   final String? category;
   final List<dynamic>? images; // Web: XFile, Mobile: File
 
-  final bool isFavorited;
+  final bool isFavorited; // ✅ 추가
+  final int favoriteCount; // ✅ 추가
 
   // 🔹 홈 화면용 필드
   int likes;
@@ -344,7 +345,8 @@ class Product {
     required this.createdAt,
     required this.seller,
     required this.location,
-    this.isFavorited = false,
+    this.isFavorited = false, // ✅ 기본값
+    this.favoriteCount = 0, // ✅ 기본값
     this.locationText,
     this.category,
     this.images,
@@ -372,6 +374,7 @@ class Product {
     int? views,
     bool? isLiked,
     bool? isFavorited,
+    int? favoriteCount,
   }) {
     return Product(
       id: id ?? this.id,
@@ -389,6 +392,8 @@ class Product {
       likes: likes ?? this.likes,
       views: views ?? this.views,
       isLiked: isLiked ?? this.isLiked,
+      isFavorited: isFavorited ?? this.isFavorited,
+      favoriteCount: favoriteCount ?? this.favoriteCount,
     );
   }
 
@@ -462,6 +467,23 @@ class Product {
       likes: json['likes'] ?? 0,
       views: json['views'] ?? 0,
       isLiked: json['isLiked'] ?? false,
+      isFavorited:
+          json['isFavorited'] == true || json['isFavorited'] == 1, // ✅ 서버 응답 반영
+      // ✅ favoriteCount: 서버가 number|string|null 어떤 형태로 와도 안전 파싱
+      favoriteCount: (() {
+        final fc = json['favoriteCount'];
+        final alt = json['favCount'];
+        int? asInt(dynamic v) {
+          if (v is num) return v.toInt();
+          if (v is String && v.isNotEmpty) {
+            return int.tryParse(v.replaceAll(RegExp(r'[, ]'), ''));
+          }
+          return null;
+        }
+
+        final parsed = asInt(fc) ?? asInt(alt) ?? 0;
+        return parsed < 0 ? 0 : parsed; // 음수 방지
+      })(),
     );
   }
 
@@ -481,6 +503,8 @@ class Product {
         'likes': likes,
         'views': views,
         'isLiked': isLiked,
+        'isFavorited': isFavorited, // ✅
+        'favoriteCount': favoriteCount, // ✅
       };
 }
 
