@@ -5,11 +5,13 @@ import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
-// import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:kumeong_store/utils/storage.dart'; // ✅ TokenStorage 사용
 
 import 'core/base_url.dart'; // ✅ 절대 URL 빌더
 import 'models/post.dart';
+
+const String baseUrl = 'http://localhost:3000/api/v1';
 
 // ---------------------------------------------------------
 // 🧩 공통 유틸
@@ -438,13 +440,17 @@ Future<Map<String, dynamic>?> fetchMyFavorites({
 
   try {
     final resp = await http.get(url, headers: _authHeaders(token));
+    if (resp.statusCode == 401) {
+      // 화면에서 로그인 유도 가능하도록 구분
+      throw Exception('401');
+    }
     if (resp.statusCode != 200) {
       debugPrint('[API] 즐겨찾기 목록 실패: ${resp.statusCode} ${resp.body}');
       return null;
     }
     final body = _parseJsonResponse(resp);
     final data = _get<Map>(body, 'data') ??
-        body; // { ok:true, data:{...} } 또는 { items:... }
+        body; // { ok:true, data:{...} } or { items:... }
     final items = _get<List>(data, 'items') ?? const [];
     final total = _get<num>(data, 'total') ?? 0;
     final pg = _get<num>(data, 'page') ?? page;
@@ -462,44 +468,145 @@ Future<Map<String, dynamic>?> fetchMyFavorites({
   }
 }
 
-/// 특정 상품 하트 토글. 성공 시 서버의 “다음 상태”(true=하트됨) 반환, 실패/비로그인 시 null.
-Future<bool?> toggleFavoriteById(String productId) async {
-  final token = await _getToken();
-  if (token == null || token.isEmpty) return null;
+/// 내부 유틸: 서버 응답에서 isFavorited / favoriteCount 안전 추출
+({bool? isFavorited, int? favoriteCount}) _readFavoritePayload(
+    Map<String, dynamic> root) {
+  final data = _get<Map>(root, 'data') ?? root;
+  bool? fav = _get<bool>(data, 'isFavorited');
+  int? cnt;
+  final rawCnt = data['favoriteCount'];
+  if (rawCnt is num) cnt = rawCnt.toInt();
+  if (rawCnt is String && rawCnt.isNotEmpty) {
+    cnt = int.tryParse(rawCnt.replaceAll(RegExp(r'[, ]'), ''));
+  }
+  return (isFavorited: fav, favoriteCount: cnt);
+}
 
+/// 토글 결과를 (상태, 카운트)로 리턴하는 타입
+class FavoriteToggleResult {
+  final bool isFavorited;
+  final int? favoriteCount;
+  FavoriteToggleResult(this.isFavorited, this.favoriteCount);
+}
+
+/// 특정 상품 하트 토글(상세). 성공 시 (isFavorited, favoriteCount) 반환.
+/// 실패 시:
+///  - 401 → Exception('401') throw (화면에서 로그인 유도)
+///  - 그 외 → Exception('favorite-toggle-failed:...') throw
+Future<FavoriteToggleResult> toggleFavoriteDetailed(String productId) async {
+  final token = await _getToken();
+  if (token == null || token.isEmpty) {
+    throw Exception('401');
+  }
   final url = apiUrl('/favorites/$productId/toggle');
 
   try {
-    final resp = await http.post(url, headers: _authHeaders(token));
+    http.Response resp = await http.post(url, headers: _authHeaders(token));
+
+    if (resp.statusCode == 401) {
+      throw Exception('401');
+    }
+
+    // ✅ 404면 서버가 /favorites/:id/toggle를 지원하지 않을 수 있으니 폴백 시도
+    if (resp.statusCode == 404) {
+      final alt = apiUrl('/products/$productId/favorite');
+      // 우선 POST 시도 (토글 의미의 엔드포인트일 수 있음)
+      final altResp = await http.post(alt, headers: _authHeaders(token));
+      if (altResp.statusCode == 401) throw Exception('401');
+      if (altResp.statusCode >= 200 && altResp.statusCode < 300) {
+        if ((altResp.contentLength ?? 0) == 0 || altResp.body.isEmpty) {
+          // 바디가 없으면 상태/카운트는 알 수 없으므로 호출부의 낙관값 유지
+          return FavoriteToggleResult(true, null);
+        }
+        final altBody = _parseJsonResponse(altResp);
+        final parsed = _readFavoritePayload(altBody);
+        final fav = parsed.isFavorited ?? true;
+        return FavoriteToggleResult(fav, parsed.favoriteCount);
+      }
+      // POST가 405 등으로 막히면 DELETE도 시도 가능(선택)
+      if (altResp.statusCode == 405) {
+        final delResp = await http.delete(alt, headers: _authHeaders(token));
+        if (delResp.statusCode == 401) throw Exception('401');
+        if (delResp.statusCode >= 200 && delResp.statusCode < 300) {
+          if ((delResp.contentLength ?? 0) == 0 || delResp.body.isEmpty) {
+            return FavoriteToggleResult(false, null);
+          }
+          final delBody = _parseJsonResponse(delResp);
+          final parsed = _readFavoritePayload(delBody);
+          final fav = parsed.isFavorited ?? false;
+          return FavoriteToggleResult(fav, parsed.favoriteCount);
+        }
+      }
+      // 폴백도 실패 → 원래 에러로 보고
+      throw Exception('favorite-toggle-failed:${resp.statusCode}:${resp.body}');
+    }
 
     // ✅ 2xx 전체를 성공으로 처리 (200, 201, 204 등)
     final ok = resp.statusCode >= 200 && resp.statusCode < 300;
     if (!ok) {
-      debugPrint('[API] 즐겨찾기 토글 실패: ${resp.statusCode} ${resp.body}');
-      return null;
+      throw Exception('favorite-toggle-failed:${resp.statusCode}:${resp.body}');
     }
 
-    // ✅ 204 No Content 같은 경우 바디가 없으므로 바로 처리
+    // ✅ 204 No Content 같은 경우 바디가 없을 수 있음
     if ((resp.contentLength ?? 0) == 0 || resp.body.isEmpty) {
-      // 서버가 토글 후 바디를 안 주는 설계라면, 프런트에서 상태를 직접 반전시키도록
-      // 호출부에서 이전 상태를 알고 있을 때만 유용하므로 여기서는 null 반환
-      // (필요하면 true/false로 낙관적 처리 가능)
-      return null;
+      // 상태/카운트는 알 수 없으므로 호출부의 낙관값을 유지하도록 null 카운트만 반환
+      return FavoriteToggleResult(true, null);
     }
 
     // ✅ JSON 파싱 (서버가 { ok, isFavorited } 또는 { ok, data:{ isFavorited } } 둘 다 지원)
     final body = _parseJsonResponse(resp);
-    final isFav = _get<bool>(body, 'isFavorited') ??
-        _get<bool>(_get<Map>(body, 'data') ?? const {}, 'isFavorited');
-
-    if (isFav == null) {
-      // 형식이 다를 때 디버깅에 도움
-      debugPrint('[API] 즐겨찾기 토글 응답에 isFavorited 없음: ${resp.body}');
-    }
-
-    return isFav;
+    final parsed = _readFavoritePayload(body);
+    final fav = parsed.isFavorited ?? true; // 정보 없으면 보수적으로 true 가정
+    return FavoriteToggleResult(fav, parsed.favoriteCount);
   } catch (e, st) {
     debugPrint('[API] 즐겨찾기 토글 예외: $e\n$st');
+    rethrow;
+  }
+}
+
+/// ✅ 호환용: 기존 시그니처를 유지하고 싶은 화면들을 위해 bool? 반환 버전
+///  - 성공: true/false
+///  - 401 또는 실패: null
+Future<bool?> toggleFavoriteById(String productId) async {
+  try {
+    final res = await toggleFavoriteDetailed(productId);
+    return res.isFavorited;
+  } catch (e) {
+    if ('$e' == 'Exception: 401') return null;
+    return null;
+  }
+}
+
+/// ✅ 필요 시: 관심목록을 바로 Product 리스트로 받고 싶을 때
+Future<List<Product>> fetchMyFavoriteItems(
+    {int page = 1, int limit = 50}) async {
+  final m = await fetchMyFavorites(page: page, limit: limit);
+  if (m == null) return const [];
+  final items = (m['items'] as List?) ?? const [];
+  return items
+      .whereType<Map<String, dynamic>>()
+      .map((e) => Product.fromJson(e))
+      .toList();
+}
+
+// ---------------------------------------------------------
+// 🔎 단건 상품 조회 (관심목록 즉시 반영용)
+// ---------------------------------------------------------
+Future<Product?> fetchProductById(String productId, {String? token}) async {
+  final t = token ?? await _getToken();
+  if (t == null || t.isEmpty) return null;
+  final url = apiUrl('/products/$productId');
+  try {
+    final resp = await http.get(url, headers: _authHeaders(t));
+    if (resp.statusCode != 200) {
+      debugPrint('[API] 상품 단건 조회 실패: ${resp.statusCode} ${resp.body}');
+      return null;
+    }
+    final body = _parseJsonResponse(resp);
+    final data = _get<Map>(body, 'data') ?? body;
+    return Product.fromJson(data.cast<String, dynamic>());
+  } catch (e, st) {
+    debugPrint('[API] 상품 단건 조회 예외: $e\n$st');
     return null;
   }
 }
