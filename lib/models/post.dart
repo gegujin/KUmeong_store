@@ -310,29 +310,44 @@ class Product {
   final String id;
   final String title;
   final String description;
-  final int price;
+
+  /// UI/서버 혼용 대응
+  final int price; // UI에서 사용
+  final int? priceWon; // 서버 정식 필드
+
   final List<String> imageUrls;
   final DateTime createdAt;
   final Seller seller;
   final LatLng location;
+
+  /// 서버/클라이언트가 내려주는 텍스트 위치
+  final String? locationText;
+
   final String? category;
   final List<dynamic>? images; // Web: XFile, Mobile: File
 
-  // 🔹 홈 화면용 필드
+  final bool isFavorited; // ✅ 추가
+  final int favoriteCount; // ✅ 추가
 
+  // 🔹 홈 화면용 필드
   int likes;
   int views;
   bool isLiked;
+  int get priceKRW => priceWon ?? price;
 
   Product({
     required this.id,
     required this.title,
     required this.price,
+    this.priceWon,
     required this.description,
     required this.imageUrls,
     required this.createdAt,
     required this.seller,
     required this.location,
+    this.isFavorited = false, // ✅ 기본값
+    this.favoriteCount = 0, // ✅ 기본값
+    this.locationText,
     this.category,
     this.images,
     this.likes = 0,
@@ -347,20 +362,25 @@ class Product {
     String? title,
     String? description,
     int? price,
+    int? priceWon, // ✅ 추가
     List<String>? imageUrls,
     DateTime? createdAt,
     Seller? seller,
     LatLng? location,
     String? category,
     List<dynamic>? images,
+    String? locationText, // ✅ 추가
     int? likes,
     int? views,
     bool? isLiked,
+    bool? isFavorited,
+    int? favoriteCount,
   }) {
     return Product(
       id: id ?? this.id,
       title: title ?? this.title,
       price: price ?? this.price,
+      priceWon: priceWon ?? this.priceWon, // ✅ 반영
       description: description ?? this.description,
       imageUrls: imageUrls ?? this.imageUrls,
       createdAt: createdAt ?? this.createdAt,
@@ -368,9 +388,12 @@ class Product {
       location: location ?? this.location,
       category: category ?? this.category,
       images: images ?? this.images,
+      locationText: locationText ?? this.locationText, // ✅ 반영
       likes: likes ?? this.likes,
       views: views ?? this.views,
       isLiked: isLiked ?? this.isLiked,
+      isFavorited: isFavorited ?? this.isFavorited,
+      favoriteCount: favoriteCount ?? this.favoriteCount,
     );
   }
 
@@ -407,23 +430,60 @@ class Product {
       return const LatLng(lat: 0, lng: 0);
     }
 
+    // ✅ 위치 텍스트: locationText → location → seller.locationName
+    final sellerMap =
+        (json['seller'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final sellerLocName = (sellerMap['locationName'] ?? '').toString();
+    final locText = (json['locationText'] ??
+            json['location'] ??
+            (sellerLocName.isNotEmpty ? sellerLocName : null))
+        ?.toString();
+
+    // ✅ 가격: price / priceWon 모두 수용
+    final priceAny = json['price'] ?? json['priceWon'] ?? 0;
+    final priceInt = (priceAny is num)
+        ? priceAny.toInt()
+        : int.tryParse(priceAny.toString().replaceAll(RegExp(r'[, ]'), '')) ??
+            0;
+
+    final priceWonAny = json['priceWon'];
+    final priceWonInt = (priceWonAny is num)
+        ? priceWonAny.toInt()
+        : int.tryParse('${priceWonAny ?? ''}');
+
     return Product(
       id: (json['id'] ?? '').toString(),
       title: (json['title'] ?? json['name'] ?? '').toString(),
-      price: (json['price'] is num)
-          ? (json['price'] as num).toInt()
-          : int.tryParse(json['price']?.toString() ?? '0') ?? 0,
+      price: priceInt, // ✅ 정수화
+      priceWon: priceWonInt, // ✅ 보존
       description: (json['description'] ?? '').toString(),
       imageUrls: imgs,
       createdAt: parseCreatedAt(json['createdAt']),
-      seller: Seller.fromJson(
-          (json['seller'] as Map?)?.cast<String, dynamic>() ?? const {}),
+      seller: Seller.fromJson(sellerMap),
       location: parseLatLng(json['location']),
       category: (json['category'] != null) ? json['category'].toString() : null,
       images: json['images'] != null ? List<dynamic>.from(json['images']) : [],
+      locationText: locText, // ✅ 반영
       likes: json['likes'] ?? 0,
       views: json['views'] ?? 0,
       isLiked: json['isLiked'] ?? false,
+      isFavorited:
+          json['isFavorited'] == true || json['isFavorited'] == 1, // ✅ 서버 응답 반영
+      // ✅ favoriteCount: 서버가 number|string|null 어떤 형태로 와도 안전 파싱
+      favoriteCount: (() {
+        final fc = json['favoriteCount'];
+        final alt = json['favCount'];
+        int? asInt(dynamic v) {
+          if (v is num) return v.toInt();
+          if (v is String && v.isNotEmpty) {
+            return int.tryParse(v.replaceAll(RegExp(r'[, ]'), ''));
+          }
+          return null;
+        }
+
+        final parsed = asInt(fc) ?? asInt(alt) ?? 0;
+        return parsed < 0 ? 0 : parsed; // 음수 방지
+      })(),
     );
   }
 
@@ -431,16 +491,20 @@ class Product {
         'id': id,
         'title': title,
         'price': price,
+        'priceWon': priceWon, // ✅ 추가
         'description': description,
         'imageUrls': imageUrls,
         'createdAt': createdAt.toIso8601String(),
         'seller': seller.toJson(),
         'location': {'lat': location.lat, 'lng': location.lng},
+        'locationText': locationText, // ✅ 추가
         'category': category,
         'images': images ?? [],
         'likes': likes,
         'views': views,
         'isLiked': isLiked,
+        'isFavorited': isFavorited, // ✅
+        'favoriteCount': favoriteCount, // ✅
       };
 }
 
@@ -450,18 +514,25 @@ extension ProductMap on Product {
     final imageUrl = (imageUrls.isNotEmpty)
         ? imageUrls.first
         : 'https://via.placeholder.com/150?text=No+Image';
-    final locationName =
-        seller.locationName.isNotEmpty ? seller.locationName : '위치 정보 없음';
+
+    // ✅ 위치 우선순위: locationText → seller.locationName → 기본값
+    final locationName = (locationText != null && locationText!.isNotEmpty)
+        ? locationText!
+        : (seller.locationName.isNotEmpty ? seller.locationName : '위치 정보 없음');
+
     return {
       'id': id,
       'title': title,
-      'location': locationName,
+      'location': locationName, // ← 여기로 “모시래”가 들어옴
       'time': _formatTime(createdAt),
       'likes': likes,
       'views': views,
-      'price': '${price}원',
+      'price': price, // ✅ 숫자로 유지 (라벨링은 UI에서)
+      'priceWon': priceWon ?? price, // ✅ 서버/클라 호환
       'isLiked': isLiked,
       'imageUrls': imageUrls,
+      'thumbnailUrl': imageUrl, // (옵션) 썸네일 키도 같이 제공
+      'locationText': locationText, // (옵션) alias
     };
   }
 
