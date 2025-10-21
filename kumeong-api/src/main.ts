@@ -5,7 +5,6 @@ import {
   ValidationPipe,
   Logger,
   VersioningType,
-  BadRequestException, // ← (선택) exceptionFactory 사용 시
 } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
@@ -25,10 +24,10 @@ async function bootstrap() {
   const cfg = app.get(ConfigService);
 
   // ===== Prefix & URI Versioning =====
-  const apiPrefix = 'api';
+  const apiPrefix = 'api'; // 고정: /api
   app.setGlobalPrefix(apiPrefix);
   app.enableVersioning({
-    type: VersioningType.URI,
+    type: VersioningType.URI,        // /v1/...
     defaultVersion: '1',
   });
   Logger.log(`[HTTP] prefix="/${apiPrefix}" (URI versioning /v1 enabled)`);
@@ -42,31 +41,7 @@ async function bootstrap() {
   });
   app.use('/uploads', express.static(join(__dirname, '..', 'public', 'uploads')));
 
-  // ===== 글로벌 ValidationPipe (타입 변환 + DTO 검증) =====
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,               // DTO에 없는 필드 제거
-      forbidNonWhitelisted: false,
-      transform: true,               // 요청 → DTO로 변환
-      transformOptions: { enableImplicitConversion: true }, // "123" → number
-      validateCustomDecorators: true,
-      // (선택) 프런트 일관 포맷 원하면 사용
-      exceptionFactory: (errors) => {
-        const details = errors.map((e) => ({
-          field: e.property,
-          constraints: e.constraints,
-          children: e.children?.length ? e.children : undefined,
-        }));
-        return new BadRequestException({
-          statusCode: 400,
-          message: 'Validation failed',
-          errors: details,
-        });
-      },
-    }),
-  );
-
-  // ===== Global Interceptors / Filters (★ listen 전에 등록) =====
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalInterceptors(new SuccessResponseInterceptor());
   app.useGlobalFilters(new GlobalExceptionFilter());
 
@@ -75,7 +50,7 @@ async function bootstrap() {
     .setTitle('KU멍가게 API')
     .setDescription('캠퍼스 중고거래/배달(KU대리) 백엔드 v1')
     .setVersion('1.0.0')
-    .addServer(`/${apiPrefix}`)
+    .addServer(`/api`) // base만 두면 /v1은 URI 버전닝으로 자동 부착
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'bearer')
     .build();
   const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig, {
@@ -85,7 +60,7 @@ async function bootstrap() {
     swaggerOptions: { docExpansion: 'none' },
   });
 
-  // ===== DB 연결 확인 =====
+  // ===== DB 체크 =====
   const ds = app.get(DataSource);
   try {
     const [dbRow] = await ds.query('SELECT DATABASE() AS db');
@@ -95,12 +70,10 @@ async function bootstrap() {
     Logger.error(`[DB] startup check failed: ${(e as Error).message}`);
   }
 
-  // ★★★ 중요: 여기서 app.listen 하지 않습니다. (중복 listen 제거)
-  // await app.listen(3000);  ← 삭제
-
+  // ✅ 외부 서버를 쓸 때는 반드시 init() 먼저!
   await app.init();
 
-  // ===== HTTP + WS 동일 포트 =====
+  // ===== HTTP + WS 같은 포트 =====
   const server = http.createServer(app.getHttpAdapter().getInstance());
   const wss = new WebSocketServer({ server, path: '/ws/realtime' });
 
@@ -134,7 +107,7 @@ async function bootstrap() {
           if (msg?.type === 'ping') {
             ws.send(JSON.stringify({ type: 'pong', t: new Date().toISOString() }));
           }
-        } catch {}
+        } catch {/* ignore */}
       });
       ws.on('close', () => leave(ws));
       ws.on('error', () => leave(ws));
@@ -163,7 +136,7 @@ async function bootstrap() {
     for (const s of set) if (s.ws.readyState === WebSocket.OPEN) s.ws.send(frame);
   };
 
-  // ===== 라우트 로그 =====
+  // ===== Route Dump (디버그)
   const httpAdapter: any = app.getHttpAdapter();
   const expressApp: any = httpAdapter.getInstance ? httpAdapter.getInstance() : httpAdapter;
   const stack: any[] = expressApp?._router?.stack ?? [];
@@ -172,20 +145,24 @@ async function bootstrap() {
       const p = layer.route.path;
       const ms = Object.keys(layer.route.methods).join(',').toUpperCase();
       Logger.log(`[ROUTE] ${ms} ${p}`);
+    } else if (layer.name === 'router' && layer.handle?.stack) {
+      for (const s of layer.handle.stack) {
+        if (s.route) {
+          const p = s.route.path;
+          const ms = Object.keys(s.route.methods).join(',').toUpperCase();
+          Logger.log(`[ROUTE] ${ms} ${p}`);
+        }
+      }
     }
   }
 
-  // ===== 서버 시작 (단일 listen) =====
+  // ===== Listen =====
   const port = Number(cfg.get<string>('PORT') ?? 3000);
-  await new Promise<void>((resolve) =>
-    server.listen(port, '0.0.0.0', () => resolve()),
-  );
+  await new Promise<void>((resolve) => server.listen(port, '0.0.0.0', () => resolve()));
 
   Logger.log(`🚀 Server running at http://localhost:${port}/api/v1`);
   Logger.log(`📘 Swagger:        http://localhost:${port}/${apiPrefix}/docs`);
-  Logger.log(
-    `🔌 WS endpoint:    ws://localhost:${port}/ws/realtime?room=<roomId>&me=<uuid>`,
-  );
+  Logger.log(`🔌 WS endpoint:    ws://localhost:${port}/ws/realtime?room=<roomId>&me=<uuid>`);
 }
 
 bootstrap().catch((e) => {

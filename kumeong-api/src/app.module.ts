@@ -19,7 +19,6 @@ import { ChatsModule } from './features/chats/chats.module';
 import { SystemModule } from './features/system/system.module';
 
 import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware';
-import { FavoritesModule } from './modules/favorites/favorites.module';
 
 @Module({
   imports: [
@@ -59,7 +58,6 @@ import { FavoritesModule } from './modules/favorites/favorites.module';
     FriendsModule,
     ChatsModule,
     SystemModule,
-    FavoritesModule,
   ],
 })
 export class AppModule implements NestModule {

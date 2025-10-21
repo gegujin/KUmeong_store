@@ -9,7 +9,6 @@ import 'package:kumeong_store/models/post.dart';
 import 'package:kumeong_store/core/theme.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
-import 'package:kumeong_store/api_service.dart'; // toggleFavoriteById() 사용
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({
@@ -34,62 +33,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   String? _error;
 
   bool _creating = false; // 채팅방 생성 중
-  bool _liked = false; // 찜 토글 상태
-  bool _liking = false; // 찜 토글 중(연타 방지)
+  bool _liked = true; // 찜 토글 상태
 
-  Future<void> _toggleLike() async {
-    if (_liking) return;
-    setState(() => _liking = true);
-
-    final String id = widget.productId;
-    if (id.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('상품 ID를 찾지 못했어요.')),
-      );
-      setState(() => _liking = false);
-      return;
-    }
-
-    // 낙관적 UI 업데이트
-    final prev = _liked;
-    setState(() => _liked = !prev);
-
-    try {
-      // ✅ api_service.dart의 2xx 허용으로 업데이트된 toggleFavoriteById 사용
-      final next = await toggleFavoriteById(id);
-
-      if (next == null) {
-        // 서버가 204 등 바디 없이 주거나 실패한 케이스 → 낙관 상태 유지(필요 시 롤백)
-        // setState(() => _liked = prev); // ← 낙관 유지가 싫으면 주석 해제
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('로그인이 필요하거나 요청이 실패했어요.')),
-        );
-      } else if (next != _liked) {
-        // 서버 결과와 다르면 서버 기준으로 맞춤
-        if (!mounted) return;
-        setState(() => _liked = next);
-      }
-    } catch (e) {
-      // 예외 시 롤백
-      if (!mounted) return;
-      setState(() => _liked = prev);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('실패: $e')));
-    } finally {
-      if (mounted) setState(() => _liking = false);
-    }
+  void _toggleLike() {
+    setState(() => _liked = !_liked);
+    // TODO: 서버 연동 시 API 호출
+    // await wishApi.toggle(productId: widget.productId, liked: _liked);
   }
 
-  // after (안전하게 기본 false로 시작)
   @override
   void initState() {
     super.initState();
     _thumbController = PageController();
-    _product = widget.initialProduct ?? demoProduct;
-    _liked = (widget.initialProduct?.isFavorited ?? false);
-    _loadIfNeeded(); // TODO: 필요하면 여기서 서버로 현재 찜 여부 조회
+    _product = widget.initialProduct ?? demoProduct; // TODO: 연동 전 임시
+    _loadIfNeeded(); // TODO: 백엔드 연동 포인트
   }
 
   Future<void> _loadIfNeeded() async {
@@ -315,15 +272,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             iconSize: 28,
             splashRadius: 24,
             onPressed: _toggleLike,
-            icon: _liking
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : Icon(
-                    _liked ? Icons.favorite : Icons.favorite_border,
-                    color: _liked ? Colors.redAccent : Colors.grey,
-                  ),
+            icon: Icon(
+              _liked ? Icons.favorite : Icons.favorite_border,
+              color: _liked ? Colors.redAccent : Colors.grey,
+            ),
           ),
           const SizedBox(width: 12),
 
@@ -364,7 +316,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
       if (!mounted) return;
       context.pushNamed(
-        R.RouteNames.chatRoomOverlay, // ✅ 오버레이 라우트로!
+        R.RouteNames.chatRoomOverlay,               // ✅ 오버레이 라우트로!
         pathParameters: {'roomId': roomId},
         extra: {
           'partnerName': p.seller.name,
@@ -372,7 +324,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           'securePaid': false,
         },
       );
-    } catch (e) {
+    } 
+    catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('채팅방 생성 실패: $e')));

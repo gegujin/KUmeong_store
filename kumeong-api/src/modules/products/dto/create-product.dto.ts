@@ -1,5 +1,7 @@
-// src/products/dto/create-product.dto.ts
+// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\dto\create-product.dto.ts
 import {
+  IsArray,
+  ArrayMaxSize,
   IsEnum,
   IsInt,
   IsOptional,
@@ -11,67 +13,82 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { ProductStatus } from '../entities/product.entity';
 
-// 공통 trim 변환기
-const trim = ({ value }: { value: any }) =>
-  typeof value === 'string' ? value.trim() : value;
-
 export class CreateProductDto {
-  @ApiProperty({ example: '과잠', maxLength: 100, description: '상품 제목' })
-  @Transform(trim)
+  @ApiProperty({ example: '캠퍼스 패딩', maxLength: 100, description: '상품 제목' })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value,
+  )
   @IsString()
   @MaxLength(100)
   title!: string;
 
-  @ApiProperty({ example: 1000, minimum: 0, description: '가격(정수)' })
+  @ApiProperty({
+    example: 30000,
+    minimum: 0,
+    description: '가격(정수). 문자열로 와도 숫자로 변환됩니다.',
+  })
   @Transform(({ value }) => {
-    if (value === null || value === undefined || value === '') return 0;
-    // "1,234" 같은 문자열도 허용
-    const n =
-      typeof value === 'string'
-        ? Number(value.replace(/[, ]/g, ''))
-        : Number(value);
-    if (!Number.isFinite(n) || n < 0) return 0;
-    return Math.floor(n);
+    if (typeof value === 'string') {
+      const n = Number(value.replace(/[, ]/g, ''));
+      return Number.isFinite(n) ? Math.trunc(n) : value;
+    }
+    return Number.isFinite(value) ? Math.trunc(value) : value;
   })
-  @IsInt({ message: 'priceWon must be an integer number' })
-  @Min(0, { message: 'priceWon must not be less than 0' })
-  priceWon!: number;
-
-  @ApiPropertyOptional({ example: '거의 새상품입니다.', description: '상품 설명' })
-  @Transform(trim)
-  @IsOptional()
-  @IsString()
-  description?: string;
-
-  @ApiPropertyOptional({ example: '의류/패션 > 남성의류', description: '카테고리' })
-  @Transform(trim)
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  category?: string;
-
-  @ApiPropertyOptional({
-    example: '겨울, 아우터',
-    description: '태그(현재 문자열로 수신)',
-  })
-  @Transform(trim)
-  @IsOptional()
-  @IsString()
-  tags?: string;
+  @IsInt()
+  @Min(0) // 무료 나눔 허용 안 하려면 1로 변경
+  price!: number;
 
   @ApiPropertyOptional({
     enum: ProductStatus,
-    example: ProductStatus.ON_SALE, // ✅ 엔티티/DB 값과 일치시키세요
+    example: ProductStatus.ON_SALE, // ✅ LISTED → ON_SALE
     description: '상품 상태',
   })
   @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;
 
-  @ApiPropertyOptional({ example: '서울시 성북구', description: '거래 위치(텍스트)' })
-  @Transform(trim)
+  @ApiPropertyOptional({ example: '거의 새상품입니다.', description: '설명' })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value,
+  )
   @IsOptional()
   @IsString()
-  @MaxLength(120)
-  locationText?: string;
+  description?: string;
+
+  @ApiPropertyOptional({ example: '의류', description: '카테고리' })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value,
+  )
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['https://.../img1.jpg', 'https://.../img2.jpg'],
+    description:
+      '이미지 URL 배열. 단일 문자열 또는 콤마구분 문자열도 허용됨(배열로 변환).',
+  })
+  @Transform(({ value }) => {
+    if (value == null) return value;
+    if (Array.isArray(value)) {
+      return value
+        .map((v) => (typeof v === 'string' ? v.trim() : v))
+        .filter((v) => typeof v === 'string' && v.length > 0);
+    }
+    if (typeof value === 'string') {
+      // "url1, url2" → ["url1","url2"]
+      return value
+        .split(',')
+        .map((v) => v.trim())
+        .filter((v) => v.length > 0);
+    }
+    return value;
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  // @IsUrl({}, { each: true }) // URL만 허용하려면 주석 해제
+  @IsString({ each: true })
+  images?: string[];
 }
