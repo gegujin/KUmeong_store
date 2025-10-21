@@ -1,11 +1,8 @@
 // lib/features/mypage/heart_screen.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-
-import 'package:kumeong_store/api_service.dart'; // fetchMyFavoriteItems, toggleFavoriteDetailed, fetchProductById
-import 'package:kumeong_store/models/post.dart'; // Product + extension toMapForHome()
 import 'package:kumeong_store/core/router/route_names.dart' as R;
-import 'package:kumeong_store/state/favorites_store.dart'; // FavoritesStore
+import 'package:kumeong_store/core/widgets/app_bottom_nav.dart'; // 하단바(전역으로 붙어 있으면 주석 OK)
 
 class HeartPage extends StatefulWidget {
   const HeartPage({super.key});
@@ -15,212 +12,44 @@ class HeartPage extends StatefulWidget {
 }
 
 class _HeartPageState extends State<HeartPage> {
-  final FavoritesStore favStore = FavoritesStore.instance;
+  // 더미 데이터 (productId 추가)
+  List<Map<String, dynamic>> likedProducts = [
+    {
+      'productId': 'p-willson-ball', // ✅ 상세 이동에 사용할 ID
+      'title': 'Willson 농구공 팝니다',
+      'location': '신촌운동장',
+      'time': '2일전',
+      'likes': 1,
+      'views': 5,
+      'price': '25,000원',
+      'isLiked': true,
+    },
+    {
+      'productId': 'p-cs-hoodie',
+      'title': '컴공 과잠 팝니다',
+      'location': '모시래마을',
+      'time': '3일전',
+      'likes': 1,
+      'views': 5,
+      'price': '30,000원',
+      'isLiked': true,
+    },
+  ];
 
-  bool _loading = true;
-  String? _error;
-
-  /// Home과 동일한 카드 데이터 형태를 유지하는 리스트
-  /// - id, title, imageUrls/thumbnailUrl, location/locationText, time, price/priceWon, views
-  /// - isFavorited, favoriteCount
-  List<Map<String, dynamic>> _items = [];
-
-  late final VoidCallback _favListener;
-
-  // -------------------------------
-  // Home과 동일한 표시 유틸
-  // -------------------------------
-  String _formatWon(dynamic v) {
-    final n = (v is num) ? v.toInt() : int.tryParse('$v') ?? 0;
-    return '${n.toString()}원';
-  }
-
-  int _asInt(dynamic v, {int fallback = 0}) {
-    if (v is num) return v.toInt();
-    if (v is String && v.isNotEmpty) {
-      return int.tryParse(v.replaceAll(RegExp(r'[, ]'), '')) ?? fallback;
-    }
-    return fallback;
-  }
-
-  // -------------------------------
-  // 데이터 로딩
-  // -------------------------------
-  @override
-  void initState() {
-    super.initState();
-    _loadFavorites();
-    _favListener = _onFavChanged;
-    favStore.addListener(_favListener);
-  }
-
-  @override
-  void dispose() {
-    favStore.removeListener(_favListener);
-    super.dispose();
-  }
-
-  Future<void> _loadFavorites() async {
+  void _toggleLike(int index) {
     setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      final products = await fetchMyFavoriteItems(page: 1, limit: 200);
-      // 1) 서버 데이터로 Store 치환 (중복 있어도 store는 set/map이라 안전)
-      favStore.replaceAll(products);
-
-      // 2) id 기준 중복 제거 후 카드 데이터 작성
-      final seen = <String>{};
-      final mapped = <Map<String, dynamic>>[];
-      for (final p in products) {
-        final m = p.toMapForHome();
-        final imgList = (m['imageUrls'] is List)
-            ? List<String>.from(m['imageUrls'])
-            : const <String>[];
-        final thumb = (m['thumbnailUrl'] as String?) ??
-            (imgList.isNotEmpty ? imgList.first : null);
-
-        final id = (m['id'] ?? '') as String;
-        if (id.isEmpty || seen.contains(id)) continue;
-        seen.add(id);
-        mapped.add({
-          ...m,
-          'imageUrls': imgList,
-          'thumbnailUrl': thumb,
-          'price': m['price'] ?? m['priceWon'] ?? 0,
-          'location': m['location'] ?? m['locationText'] ?? '위치 정보 없음',
-          'isFavorited': true, // 서버 기준 즐겨찾기 목록
-          'favoriteCount':
-              favStore.counts[id] ?? p.favoriteCount ?? 0, // ← Store 우선
-        });
-      }
-
-      setState(() {
-        _items = mapped; // 덮어쓰기(append 금지)
-        _loading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = '관심목록을 불러오지 못했어요: $e';
-        _loading = false;
-      });
-    }
-  }
-
-  /// 스토어가 변하면 즉시 UI에 반영:
-  /// - 제거된 id는 카드에서 제거
-  /// - 추가된 id는 fetchProductById로 단건 조회 후 카드 추가
-  Future<void> _onFavChanged() async {
-    if (!mounted) return;
-
-    final have =
-        _items.map((e) => e['id'] as String?).whereType<String>().toSet();
-    final want = favStore.favoriteIds;
-
-    // 제거
-    final toRemove = have.difference(want);
-    if (toRemove.isNotEmpty) {
-      setState(() {
-        _items.removeWhere((e) => toRemove.contains(e['id']));
-      });
-    }
-
-    // 추가
-    final toAdd = want.difference(have);
-    for (final id in toAdd) {
-      final p = await fetchProductById(id);
-      if (p == null) continue;
-      final m = p.toMapForHome();
-      final imgList = (m['imageUrls'] is List)
-          ? List<String>.from(m['imageUrls'])
-          : const <String>[];
-      final thumb = (m['thumbnailUrl'] as String?) ??
-          (imgList.isNotEmpty ? imgList.first : null);
-      final map = {
-        ...m,
-        'imageUrls': imgList,
-        'thumbnailUrl': thumb,
-        'price': m['price'] ?? m['priceWon'] ?? 0,
-        'location': m['location'] ?? m['locationText'] ?? '위치 정보 없음',
-        'isFavorited': true,
-      };
-      if (!mounted) return;
-      setState(() {
-        _items.insert(0, map);
-      });
-    }
-  }
-
-  // -------------------------------
-  // 토글 (Home와 동일한 낙관적 흐름 + 관심목록에서는 false면 즉시 제거)
-  // -------------------------------
-  Future<void> _toggleFavorite(String productId) async {
-    if (productId.isEmpty) return;
-
-    // 연타 방지
-    if (favStore.isPending(productId)) return;
-
-    // 현재 카드의 집계값을 스토어 기준으로 읽어 낙관적 처리
-    final prevFav = favStore.favoriteIds.contains(productId);
-    final prevCnt = favStore.counts[productId] ??
-        _asInt(
-            _items.firstWhere((e) => e['id'] == productId)['favoriteCount'] ??
-                0);
-
-    // 낙관적 반영
-    favStore.toggleOptimistic(
-      productId,
-      currentFavorited: prevFav,
-      currentCount: prevCnt,
-    );
-
-    if (!mounted) return;
-    setState(() {});
-
-    try {
-      final res = await toggleFavoriteDetailed(productId);
-      favStore.applyServer(
-        productId,
-        isFavorited: res.isFavorited,
-        favoriteCount: res.favoriteCount,
-      );
-
-      // 관심목록 페이지: 언찜되면 즉시 목록에서 제거
-      if (!res.isFavorited) {
-        setState(() => _items.removeWhere((e) => e['id'] == productId));
+      if (likedProducts[index]['isLiked']) {
+        likedProducts[index]['isLiked'] = false;
+        likedProducts[index]['likes'] =
+            (likedProducts[index]['likes'] as int) - 1;
       } else {
-        // 찜 유지 시 카드의 집계 숫자도 갱신
-        setState(() {
-          final idx = _items.indexWhere((e) => e['id'] == productId);
-          if (idx >= 0) {
-            _items[idx]['favoriteCount'] =
-                favStore.counts[productId] ?? res.favoriteCount ?? prevCnt;
-          }
-        });
+        likedProducts[index]['isLiked'] = true;
+        likedProducts[index]['likes'] =
+            (likedProducts[index]['likes'] as int) + 1;
       }
-    } catch (e) {
-      // 실패 → 롤백
-      favStore.rollback(
-        productId,
-        previousFavorited: prevFav,
-        previousCount: prevCnt,
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content:
-                Text('$e' == 'Exception: 401' ? '로그인이 필요합니다.' : '찜 토글 실패: $e')),
-      );
-      setState(() {});
-    }
+    });
   }
 
-  // -------------------------------
-  // UI (Home의 리스트 아이템과 동일한 구성)
-  // -------------------------------
   @override
   Widget build(BuildContext context) {
     final mainColor = Theme.of(context).colorScheme.primary;
@@ -232,193 +61,102 @@ class _HeartPageState extends State<HeartPage> {
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
-              : AnimatedBuilder(
-                  animation: favStore,
-                  builder: (_, __) {
-                    // 스토어 상태와 병합하여 Home과 동일한 표시값 구성
-                    final list = _items
-                        .map((p) => {
-                              ...p,
-                              'isFavorited':
-                                  favStore.favoriteIds.contains(p['id']),
-                              'favoriteCount': favStore.counts[p['id']] ??
-                                  p['favoriteCount'] ??
-                                  p['likes'] ??
-                                  0,
-                            })
-                        .toList();
+      body: likedProducts.isEmpty
+          ? const Center(child: Text("아직 좋아요한 상품이 없습니다."))
+          : ListView.builder(
+              itemCount: likedProducts.length,
+              itemBuilder: (_, index) {
+                final product = likedProducts[index];
+                return InkWell(
+                  onTap: () {
+                    // ✅ 상품 상세로 이동
+                    final productId =
+                        (product['productId'] as String?) ?? 'demo-product';
+                    context.pushNamed(
+                      R.RouteNames.productDetail,              // /home/product/:productId
+                      pathParameters: {'productId': productId},
+                      // extra: 초기 Product 객체를 넘길 경우 여기에 전달 가능
+                    );
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 상품 이미지 (더미)
+                        Container(
+                          width: 80,
+                          height: 80,
+                          color: Colors.grey[300],
+                        ),
+                        const SizedBox(width: 10),
 
-                    if (list.isEmpty) {
-                      return const Center(child: Text('하트한 상품이 없어요.'));
-                    }
-
-                    return RefreshIndicator(
-                      onRefresh: _loadFavorites,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.only(bottom: 120),
-                        itemCount: list.length,
-                        itemBuilder: (_, index) {
-                          final product = list[index];
-                          final liked =
-                              (product['isFavorited'] ?? false) as bool;
-
-                          // 이미지: thumbnailUrl → imageUrls[0]
-                          final imageUrl = product['thumbnailUrl'] ??
-                              ((product['imageUrls'] != null &&
-                                      (product['imageUrls'] as List).isNotEmpty)
-                                  ? (product['imageUrls'] as List).first
-                                  : null);
-
-                          final title = product['title'] as String? ?? '';
-
-                          // 위치: location → locationText → 기본
-                          String location = '';
-                          final lv = product['location'];
-                          if (lv is String && lv.isNotEmpty) {
-                            location = lv;
-                          } else if ((product['locationText']
-                                  ?.toString()
-                                  .isNotEmpty ??
-                              false)) {
-                            location = product['locationText'];
-                          } else {
-                            location = '위치 정보 없음';
-                          }
-
-                          final time = product['time'] as String? ?? '';
-
-                          // 가격: price → priceWon → 라벨 (Home 동일)
-                          final priceLabel = _formatWon(
-                              product['price'] ?? product['priceWon'] ?? 0);
-
-                          return InkWell(
-                            onTap: () {
-                              final id = product['id'] as String? ?? '';
-                              if (id.isEmpty) return;
-                              context.pushNamed(
-                                R.RouteNames.productDetail,
-                                pathParameters: {'productId': id},
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                        // 상품 정보
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // 제목 + 하트
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: imageUrl != null
-                                        ? Image.network(
-                                            imageUrl,
-                                            width: 100,
-                                            height: 100,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) =>
-                                                Container(
-                                              width: 100,
-                                              height: 100,
-                                              color: Colors.grey[300],
-                                              child: const Icon(
-                                                  Icons.broken_image,
-                                                  color: Colors.white70),
-                                            ),
-                                          )
-                                        : Container(
-                                            width: 100,
-                                            height: 100,
-                                            color: Colors.grey[300],
-                                            child: const Icon(Icons.image,
-                                                color: Colors.white70),
-                                          ),
-                                  ),
-                                  const SizedBox(width: 10),
                                   Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          '$location | $time',
-                                          style: const TextStyle(
-                                            color: Colors.grey,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text.rich(
-                                              TextSpan(
-                                                children: [
-                                                  const TextSpan(text: '가격 '),
-                                                  TextSpan(
-                                                    text: priceLabel,
-                                                    style: const TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            Text(
-                                              '찜 ${product['favoriteCount'] ?? product['likes'] ?? 0}  조회수 ${product['views'] ?? 0}',
-                                              style: const TextStyle(
-                                                  color: Colors.grey),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Align(
-                                          alignment: Alignment.centerRight,
-                                          child: GestureDetector(
-                                            onTap: () {
-                                              final id =
-                                                  product['id'] as String? ??
-                                                      '';
-                                              if (id.isEmpty) return;
-                                              _toggleFavorite(id);
-                                            },
-                                            child: Icon(
-                                              liked
-                                                  ? Icons.favorite
-                                                  : Icons.favorite_border,
-                                              color: liked
-                                                  ? Colors.red
-                                                  : Colors.grey,
-                                              size: 22,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                    child: Text(
+                                      product['title'] as String? ?? '',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () => _toggleLike(index),
+                                    child: Icon(
+                                      (product['isLiked'] as bool? ?? false)
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
+                                      color:
+                                          (product['isLiked'] as bool? ?? false)
+                                              ? Colors.red
+                                              : Colors.grey,
+                                      size: 22,
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
+                              const SizedBox(height: 4),
+
+                              // 위치 & 시간
+                              Text(
+                                '${product['location']} | ${product['time']}',
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                              const SizedBox(height: 4),
+
+                              // 가격 + 찜/조회수
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('가격 ${product['price']}'),
+                                  Text(
+                                    '찜 ${product['likes']} 조회수 ${product['views']}',
+                                    style: const TextStyle(color: Colors.grey),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+      // bottomNavigationBar: const AppBottomNav(currentIndex: 2),
     );
   }
 }

@@ -1,18 +1,11 @@
-// src/products/products.service.ts
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  InternalServerErrorException,
-} from '@nestjs/common';
+// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\products.service.ts
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DeepPartial, Repository } from 'typeorm';
 import { Product, ProductStatus } from './entities/product.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import * as fs from 'fs';
-import * as path from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { QueryProductDto } from './dto/query-product.dto';
 
 @Injectable()
 export class ProductsService {
@@ -21,134 +14,73 @@ export class ProductsService {
     private readonly repo: Repository<Product>,
   ) {}
 
-  async findAll(q: any) {
-    // 안전한 파싱 (NaN 방지)
-    const rawPage = Number(q?.page ?? 1);
-    const rawLimit = Number(q?.limit ?? 20);
-    const page = Math.max(1, Number.isFinite(rawPage) ? rawPage : 1);
-    const limit = Math.min(100, Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 20));
+  /** 목록: 페이지네이션/정렬/검색/필터 */
+  async findAll(
+    q: QueryProductDto,
+  ): Promise<{ items: Product[]; page: number; limit: number; total: number; pages: number }> {
+    const page = Math.max(1, Number(q?.page ?? 1));
+    const limit = Math.min(100, Math.max(1, Number(q?.limit ?? 20)));
+
+    // 정렬 필드/방향 화이트리스트
+    const allowedSort: Array<keyof Product> = ['createdAt', 'price', 'title'];
+    const orderField = (allowedSort.includes(q?.sort as any) ? q?.sort : 'createdAt') as
+      | 'createdAt'
+      | 'price'
+      | 'title';
+    const orderDir: 'ASC' | 'DESC' =
+      ((q?.order ?? 'DESC').toString().toUpperCase() === 'ASC' ? 'ASC' : 'DESC');
 
     const qb = this.repo.createQueryBuilder('p').where('1=1');
 
     if (q?.q) qb.andWhere('(p.title LIKE :kw OR p.description LIKE :kw)', { kw: `%${q.q}%` });
     if (q?.category) qb.andWhere('p.category = :category', { category: q.category });
+    if (q?.status) qb.andWhere('p.status = :status', { status: q.status as ProductStatus });
+    if (q?.priceMin != null) qb.andWhere('p.price >= :min', { min: Number(q.priceMin) });
+    if (q?.priceMax != null) qb.andWhere('p.price <= :max', { max: Number(q.priceMax) });
 
-    // (목록 검색 시 필터)
-    if (q?.locationText) {
-      qb.andWhere('p.locationText LIKE :loc', { loc: `%${q.locationText}%` });
-    }
-
-
-    // status가 enum과 일치하는지 체크 (잘못된 값이면 400)
-    if (q?.status != null) {
-      const s = String(q.status) as keyof typeof ProductStatus;
-      const enumValues: string[] = Object.values(ProductStatus) as any;
-      if (!enumValues.includes(q.status)) {
-        // 혹시 키로 들어오면 값으로 변환 시도
-        const mapped = (ProductStatus as any)[s];
-        if (!mapped) throw new BadRequestException('invalid_status');
-        qb.andWhere('p.status = :status', { status: mapped });
-      } else {
-        qb.andWhere('p.status = :status', { status: q.status });
-      }
-    }
-
-    // 숫자 필터
-    if (q?.priceMin != null) {
-      const v = Number(q.priceMin);
-      if (!Number.isFinite(v)) throw new BadRequestException('invalid_priceMin');
-      qb.andWhere('p.priceWon >= :min', { min: v });
-    }
-    if (q?.priceMax != null) {
-      const v = Number(q.priceMax);
-      if (!Number.isFinite(v)) throw new BadRequestException('invalid_priceMax');
-      qb.andWhere('p.priceWon <= :max', { max: v });
-    }
-
-    qb.orderBy('p.createdAt', 'DESC').skip((page - 1) * limit).take(limit);
+    qb.orderBy(`p.${orderField}`, orderDir).skip((page - 1) * limit).take(limit);
 
     const [items, total] = await qb.getManyAndCount();
     const pages = Math.max(1, Math.ceil(total / limit));
     return { items, page, limit, total, pages };
-  }
+    }
 
+  /** 단건 조회 (PK는 uuid 문자열) */
   async findOne(id: string): Promise<Product> {
     const item = await this.repo.findOne({ where: { id } });
     if (!item) throw new NotFoundException('Product not found');
     return item;
   }
 
-  async createWithOwner(dto: CreateProductDto, ownerId: string, files?: Express.Multer.File[]): Promise<Product> {
-    const imageUrls: string[] = [];
-
-    // 업로드 루트는 main.ts의 static과 동일: public/uploads
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-    try {
-      await fs.promises.mkdir(uploadsDir, { recursive: true });
-    } catch {
-      throw new InternalServerErrorException('failed_to_prepare_upload_dir');
-    }
-
-    if (files?.length) {
-      for (const file of files) {
-        // 메모리 저장을 가정(컨트롤러에서 memoryStorage 설정)
-        if (!file?.buffer) continue;
-
-        // 이미지 외엔 거부(이중 방어)
-        if (!file.mimetype?.startsWith('image/')) {
-          throw new BadRequestException('only_image_allowed');
-        }
-
-        const safeOriginal = path.basename(file.originalname).replace(/\s+/g, '_');
-        const filename = `${uuidv4()}_${safeOriginal}`;
-        const filePath = path.join(uploadsDir, filename);
-
-        try {
-          await fs.promises.writeFile(filePath, file.buffer);
-        } catch {
-          throw new InternalServerErrorException('failed_to_save_file');
-        }
-
-        imageUrls.push(`/uploads/${filename}`); // main.ts 의 static(/uploads)와 매칭
-      }
-    }
-
-    // ⚠️ 상태 기본값: 엔티티 enum에 맞게 수정
-    // (예: ProductStatus.LISTED / ON_SALE 등 실제 enum 값과 일치해야 함)
-    const status = (dto.status ?? (ProductStatus as any).LISTED ?? (ProductStatus as any).ON_SALE) as ProductStatus;
-
+  /** 생성: ownerId는 컨트롤러에서 @CurrentUser로 받아 주입 (UUID string) */
+  async createProduct(ownerId: string, dto: CreateProductDto): Promise<Product> {
     const entity = this.repo.create({
-      title: dto.title,
-      priceWon: dto.priceWon,
-      description: dto.description,
-      category: dto.category,
-      sellerId: ownerId,
-      status,
-      images: imageUrls,
-      locationText: dto.locationText,
+      ...(dto as unknown as DeepPartial<Product>),
+      ownerId, // ← UUID 문자열
+      status: dto.status ?? ProductStatus.ON_SALE,
+      images: dto.images?.length ? dto.images : [],
     });
 
-    try {
-      return await this.repo.save(entity);
-    } catch (e: any) {
-      // (선택) 유니크/제약 등 DB 에러 매핑
-      // if (e?.code === 'ER_DUP_ENTRY') throw new ConflictException('duplicated_product');
-      throw e;
-    }
+    return this.repo.save(entity);
   }
 
+  /** 컨트롤러 호환용 래퍼 */
+  async createWithOwner(dto: CreateProductDto, ownerId: string): Promise<Product> {
+    return this.createProduct(ownerId, dto);
+  }
+
+  /** 수정 */
   async update(id: string, dto: UpdateProductDto): Promise<Product> {
-    const product = await this.repo.findOne({ where: { id } });
-    if (!product) throw new NotFoundException('Product not found');
-
-    Object.assign(product, dto);
-    return this.repo.save(product);
+    const exists = await this.repo.findOne({ where: { id } });
+    if (!exists) throw new NotFoundException('Product not found');
+    const merged = this.repo.merge(exists, dto as DeepPartial<Product>);
+    return this.repo.save(merged);
   }
 
+  /** 삭제 */
   async remove(id: string): Promise<{ deleted: true; id: string }> {
-    const product = await this.repo.findOne({ where: { id } });
-    if (!product) throw new NotFoundException('Product not found');
-
+    const exists = await this.repo.findOne({ where: { id } });
+    if (!exists) throw new NotFoundException('Product not found');
     await this.repo.delete(id);
     return { deleted: true, id };
   }
