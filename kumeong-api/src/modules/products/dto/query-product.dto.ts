@@ -12,5 +12,4 @@ export class QueryProductDto {
   @IsOptional() @Type(() => Number) @IsInt() priceMin?: number;
   @IsOptional() @Type(() => Number) @IsInt() priceMax?: number;
   @IsOptional() @IsEnum(ProductStatus) status?: ProductStatus;
-  @IsOptional() @IsString() @Max(120) locationText?: string;
 }

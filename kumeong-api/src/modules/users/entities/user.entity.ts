@@ -54,7 +54,7 @@ export class User {
   deletedAt?: Date | null;
 
   // ✅ Product.owner 와 짝을 맞춘다 (기존 u.products 사용 코드는 그대로)
-  @OneToMany(() => Product, (p) => p.seller, { cascade: false })
+  @OneToMany(() => Product, (p) => p.owner, { cascade: false })
   products!: Product[];
 
   @BeforeInsert()
