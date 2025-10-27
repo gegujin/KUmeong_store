@@ -1,4 +1,3 @@
-// C:\Users\82105\KU-meong Store\kumeong-api\src\features\chats\chats.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -14,10 +13,12 @@ import { ConversationMessage } from './entities/conversation-message.entity';
  * - DataSource는 TypeOrmModule.forRoot()에서 주입되므로 별도 import 불필요
  */
 @Module({
-  // DataSource는 forRoot에서 이미 주입되므로 별도 imports 불필요
+  imports: [
+    // ✅ TypeORM 엔티티 등록 (레포지토리 자동 주입 활성화)
+    TypeOrmModule.forFeature([Conversation, ConversationMessage]),
+  ],
   controllers: [ChatsController],
   providers: [ChatsService],
   exports: [ChatsService],
 })
 export class ChatsModule {}
-
