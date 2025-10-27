@@ -1,28 +1,50 @@
-// C:\Users\82105\KU-meong Store\kumeong-api\src\features\friends\_dev\jwt-auth.guard.ts
+// src/features/friends/_dev/jwt-auth.guard.ts
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { normalizeId } from '../../../common/utils/ids';
+
+function decodeJwtPayload(token: string): any | null {
+  try {
+    const [, payload] = token.split('.');
+    const json = Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest();
 
-    // 다양한 표기로 들어올 수 있는 헤더 케이스 흡수
+    // 1) Bearer 토큰에서 payload 추출 (id/sub/userId 지원)
+    const auth = (req.headers['authorization'] ?? '') as string;
+    let candidate: string | undefined;
+    if (auth.startsWith('Bearer ')) {
+      const token = auth.slice(7).trim();
+      const p = decodeJwtPayload(token);
+      candidate = p?.id ?? p?.sub ?? p?.userId;
+    }
+
+    // 2) X-User-Id 헤더 fallback
     const rawHeader =
-      (req.headers['x-user-id'] ??
-        req.headers['X-User-Id'] ??
-        req.headers['x-userid'] ??
-        '1') as string | number;
+      candidate ??
+      (req.headers['x-user-id'] as string | undefined) ??
+      (req.headers['x-userid'] as string | undefined) ??
+      (req.headers['X-User-Id'] as unknown as string | undefined);
 
-    // 문자열화 후 normalize → UUID(8-4-4-4-12)로 통일
-    const normalized = normalizeId(String(rawHeader));
+    // 3) UUID 정규화 시도
+    const normalized = rawHeader ? normalizeId(String(rawHeader)) : undefined;
 
-    // 개발 편의: normalize 실패 시에도 '1'로 보정
-    const userId = normalized || normalizeId('1');
-
-    // req.user 및 헤더 모두에 반영 (파이프라인 일관성)
-    req.user = { userId };
-    req.headers['x-user-id'] = userId;
+    // 4) req.user에 표준 키들 모두 셋업 (id/sub/userId 모두 같은 값)
+    //    헤더도 맞춰서 주입 (디버깅 편의)
+    if (normalized) {
+      req.user = { id: normalized, sub: normalized, userId: normalized };
+      req.headers['x-user-id'] = normalized;
+    } else {
+      // 개발용: id가 비면 요청은 통과시키되 나중에 데코레이터에서 명확히 에러
+      req.user = req.user ?? {};
+    }
 
     return true; // 개발용: 항상 통과
   }

@@ -1,6 +1,7 @@
 // C:\Users\82105\KU-meong Store\lib\features\chat\chat_facade.dart
 import 'dart:async';
-import '../../core/chat_api.dart';
+import 'package:kumeong_store/features/chat/data/chats_api.dart';
+
 import 'chat_ws_client.dart';
 
 /// ✅ WS 이벤트 kind 상수 (서버와 합의한 문자열)
@@ -59,9 +60,7 @@ class ChatRoomFacade {
     // ✅ int? 연산/비교 제거: reduce로 최대값 추출
     int? newMax;
     if (init.isNotEmpty) {
-      newMax = init
-          .map((m) => m.seq) // int
-          .reduce((a, b) => a > b ? a : b); // int
+      newMax = init.map((m) => m.seq).reduce((a, b) => a > b ? a : b);
     }
 
     _state = RoomStreamState(messages: init, maxSeq: newMax);
@@ -72,7 +71,6 @@ class ChatRoomFacade {
       if (evt.kind == WsEventKind.chatMsg) {
         final p = evt.payload ?? {};
 
-        // ✅ seq를 항상 int로 확정 (nullable/문자열 방지)
         int ensuredSeq() {
           final raw = p['seq'];
           if (raw is num) return raw.toInt();
@@ -83,14 +81,10 @@ class ChatRoomFacade {
           return (_state.maxSeq ?? 0) + 1; // fallback: 증가
         }
 
-        final ensuredText =
-            (p['text'] ?? p['content'] ?? '').toString();
-        final ensuredTs = (p['timestamp'] ??
-                p['createdAt'] ??
-                DateTime.now().toIso8601String())
-            .toString();
+        final ensuredText = (p['text'] ?? p['content'] ?? '').toString();
+        final ensuredTs =
+            (p['timestamp'] ?? p['createdAt'] ?? DateTime.now().toIso8601String()).toString();
 
-        // ChatMessage 스키마로 매핑 (seq는 int 확정)
         final msg = ChatMessage.fromJson({
           'id': evt.refId ?? p['id'],
           'roomId': roomId,
@@ -101,16 +95,14 @@ class ChatRoomFacade {
           'readByMe': p['readByMe'],
         });
 
-        // 누락 보정: seq 점프 시 REST 백필
-        final lastSeq = _state.maxSeq ?? 0; // int
-        final newSeq = msg.seq; // int
+        final lastSeq = _state.maxSeq ?? 0;
+        final newSeq = msg.seq;
         if (newSeq > lastSeq + 1) {
           final missing = await api.fetchMessagesSinceSeq(
             roomId: roomId,
             sinceSeq: lastSeq,
             limit: 100,
           );
-          // ✅ fold 제네릭 명시 + int만 다룸
           final mergedMax = missing.fold<int>(
             lastSeq,
             (mx, m) => m.seq > mx ? m.seq : mx,
@@ -121,10 +113,8 @@ class ChatRoomFacade {
           );
         }
 
-        // 상태 갱신 (maxSeq는 int? 이지만 newSeq는 int라 안전)
-        final updatedMax = (_state.maxSeq == null || newSeq > _state.maxSeq!)
-            ? newSeq
-            : _state.maxSeq;
+        final updatedMax =
+            (_state.maxSeq == null || newSeq > _state.maxSeq!) ? newSeq : _state.maxSeq;
 
         _state = _state.copyWith(
           messages: _append(_state.messages, msg),
@@ -143,8 +133,7 @@ class ChatRoomFacade {
   // ▶ 전송은 REST → 서버가 WS 브로드캐스트
   Future<void> sendText(String text) async {
     final sent = await api.sendMessage(roomId: roomId, text: text);
-    final nextMax =
-        (sent.seq > (_state.maxSeq ?? 0)) ? sent.seq : _state.maxSeq;
+    final nextMax = (sent.seq > (_state.maxSeq ?? 0)) ? sent.seq : _state.maxSeq;
     _state = _state.copyWith(
       messages: _append(_state.messages, sent),
       maxSeq: nextMax,
@@ -161,8 +150,7 @@ class ChatRoomFacade {
   // ===== Helpers =====
   List<ChatMessage> _append(List<ChatMessage> cur, ChatMessage m) {
     if (cur.isNotEmpty && cur.last.id == m.id) return cur; // 중복 방지
-    final list = [...cur, m]
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final list = [...cur, m]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return list;
   }
 
@@ -171,8 +159,7 @@ class ChatRoomFacade {
     for (final m in inc) {
       map[m.id] = m;
     }
-    final list = map.values.toList()
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final list = map.values.toList()..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return list;
   }
 }

@@ -1,11 +1,10 @@
-//C:\Users\82105\KU-meong Store\lib\features\auth\login_screen.dart
-import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
+// C:\Users\82105\KU-meong Store\lib\features\auth\login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
-import 'package:kumeong_store/api_service.dart'; // login 함수 정의
-import 'package:shared_preferences/shared_preferences.dart'; // Web/Mobile 공통으로 사용
+import 'package:kumeong_store/features/auth/login_service.dart'; // ✅ LoginService 사용
+import 'package:kumeong_store/core/utils/email.dart';
+import 'package:flutter/services.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -20,10 +19,11 @@ class _LoginPageState extends State<LoginPage> {
   bool isLoading = false;
 
   Future<void> _signIn() async {
-    final email = emailController.text.trim();
+    final email = normalizeEmail(emailController.text);
     final password = passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('이메일과 비밀번호를 모두 입력하세요.')),
       );
@@ -31,50 +31,46 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     setState(() => isLoading = true);
-
     try {
-      debugPrint('[DEBUG] 로그인 시도: $email');
+      debugPrint('[LOGIN] 시도: $email'); // 항상 소문자/트림된 값으로 로그
 
-      // login 함수는 api_service.dart에 정의되어 있어야 하며,
-      // 여기서 'Future isn\'t a type' 오류가 발생했다면 api_service.dart의
-      // login 함수의 정의를 확인해야 합니다. (이 파일에서는 수정 불가)
-      final result = await login(email, password);
+      // ✅ 서버 응답의 최상위 accessToken을 session.v1에 저장
+      final ok = await LoginService.login(email, password);
 
-      // 🔹 로그인 함수에서 반환되는 accessToken 가져오기
-      String token = result ?? '';
-
-      if (token.isEmpty) {
+      if (!ok) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('로그인 실패: 토큰이 없습니다.')),
+          const SnackBar(content: Text('로그인 실패: 계정 정보를 확인하세요.')),
         );
         return;
       }
 
-      // 🔹 토큰 저장: SharedPreferences를 Web과 Mobile 모두에서 사용 (dart:html 제거)
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('accessToken', token);
-
-      // 🔹 저장 확인용 출력
-      final savedToken = prefs.getString('accessToken');
-      debugPrint('[DEBUG] 저장된 토큰: $savedToken');
+      // (선택) 토큰 주입 확인용 호출
+      // final me = await LoginService.me();
+      // debugPrint('[LOGIN] /auth/me = $me');
 
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('로그인 성공!')),
       );
-      context.goNamed(R.RouteNames.home); // 홈 화면 이동
+      context.goNamed(R.RouteNames.home); // ✅ 홈 이동
     } catch (e, st) {
-      debugPrint('[DEBUG] 로그인 예외 발생: $e\n$st');
+      debugPrint('[LOGIN] 예외: $e\n$st');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('로그인 중 오류가 발생했습니다: ${e.toString()}')),
+          SnackBar(content: Text('로그인 중 오류가 발생했습니다: $e')),
         );
       }
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
+  }
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -103,6 +99,7 @@ class _LoginPageState extends State<LoginPage> {
                 decoration: const InputDecoration(labelText: '아이디(이메일)'),
                 style: const TextStyle(fontSize: 16),
                 keyboardType: TextInputType.emailAddress,
+                inputFormatters: [_LowercaseFormatter()], // (선택) 입력 즉시 소문자화
               ),
               const SizedBox(height: 10),
               TextField(
@@ -120,8 +117,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: const Text('아이디 찾기'),
                   ),
                   TextButton(
-                    onPressed: () =>
-                        context.pushNamed(R.RouteNames.passwordFind),
+                    onPressed: () => context.pushNamed(R.RouteNames.passwordFind),
                     child: const Text('비밀번호 찾기'),
                   ),
                 ],
@@ -156,4 +152,12 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
+}
+
+/// (선택) 입력 즉시 소문자 변환 포매터
+class _LowercaseFormatter extends TextInputFormatter {
+  const _LowercaseFormatter(); // (선택) 원하면 const 생성자 추가 가능
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue a, TextEditingValue b) =>
+      b.copyWith(text: b.text.toLowerCase());
 }

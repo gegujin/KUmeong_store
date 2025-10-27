@@ -1,11 +1,12 @@
 // C:\Users\82105\KU-meong Store\lib\features\friend\friend_detail_screen.dart
 import 'package:flutter/material.dart';
-import 'friend_chat_screen.dart';
+import '../friend/friend_chat_screen.dart';
+import '../chat/data/chats_api.dart';
 
 class FriendDetailPage extends StatelessWidget {
   final String friendName;
-  final String meUserId;    // 로그인 사용자 문자열 ID (개발가드 X-User-Id)
-  final String peerUserId;  // 친구 ID (숫자/UUID 모두 허용)
+  final String meUserId; // 로그인 사용자 ID
+  final String peerUserId; // 친구 ID (숫자/UUID 허용)
   final String? avatarUrl;
 
   const FriendDetailPage({
@@ -16,7 +17,7 @@ class FriendDetailPage extends StatelessWidget {
     this.avatarUrl,
   });
 
-  // ───────── UUID/숫자 정규화 + roomId 생성 유틸 ─────────
+  // ───────── UUID/숫자 정규화 ─────────
   static final RegExp _uuidRe = RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
     caseSensitive: false,
@@ -51,12 +52,7 @@ class FriendDetailPage extends StatelessWidget {
     final padded = _leftPadZeros(last12, 12);
     return '00000000-0000-0000-0000-$padded';
   }
-
-  String _generateRoomId(String a, String b) {
-    final ids = [a, b]..sort();
-    return ids.join('_'); // 서버와 합의된 룸 키 생성 규칙 예시
-  }
-  // ───────────────────────────────────────────────
+  // ───────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -77,9 +73,8 @@ class FriendDetailPage extends StatelessWidget {
             CircleAvatar(
               radius: 50,
               backgroundColor: Colors.grey[300],
-              backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
-                  ? NetworkImage(avatarUrl!)
-                  : null,
+              backgroundImage:
+                  (avatarUrl != null && avatarUrl!.isNotEmpty) ? NetworkImage(avatarUrl!) : null,
               child: (avatarUrl == null || avatarUrl!.isEmpty)
                   ? Text(
                       friendName.isNotEmpty ? friendName[0] : '?',
@@ -143,29 +138,40 @@ class FriendDetailPage extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                onPressed: () {
-                  final me = _normalizeId(meUserId);
+                onPressed: () async {
                   final peer = _normalizeId(peerUserId);
-
-                  if (me.isEmpty || peer.isEmpty || me == peer) {
+                  if (peer.isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('유효하지 않은 사용자 ID입니다.')),
+                      const SnackBar(content: Text('상대 사용자 ID가 유효하지 않습니다.')),
                     );
                     return;
                   }
 
-                  final roomId = _generateRoomId(me, peer);
+                  try {
+                    // ✅ 친구방 확보
+                    final roomId = await chatsApi.ensureFriendRoom(peer);
 
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => FriendChatPage(
-                        friendName: friendName,
-                        meUserId: meUserId,
-                        roomId: roomId, // ✅ roomId 전달
+                    // ✅ 채팅 화면으로 이동하고 결과 기다림
+                    final chatClosed = await Navigator.of(context).push<bool>(
+                      MaterialPageRoute(
+                        builder: (_) => FriendChatPage(
+                          friendName: friendName,
+                          meUserId: meUserId,
+                          roomId: roomId,
+                        ),
                       ),
-                    ),
-                  );
+                    );
+
+                    // ✅ 채팅 화면에서 '읽음 갱신 신호(true)'로 돌아온 경우에만 리스트로 true 전달
+                    if (chatClosed == true && context.mounted) {
+                      Navigator.of(context).pop(true);
+                    }
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('채팅방 진입 실패: $e')),
+                    );
+                  }
                 },
                 icon: const Icon(Icons.chat, color: Colors.white),
                 label: const Text(

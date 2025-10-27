@@ -7,9 +7,14 @@ export class LoginDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: '1234', minLength: 4 })
+  @ApiProperty({
+    example: '1234',
+    description: '비밀번호 (영문/숫자/특수문자 조합 제한 없음)',
+    minLength: 4,
+    maxLength: 128,
+  })
   @IsString()
   @MinLength(4)
-  @MaxLength(64)
+  @MaxLength(128)
   password!: string;
 }

@@ -23,13 +23,14 @@ class RouteNames {
   // ── KU대리
   static const kuDeliverySignup = 'kuDeliverySignup';
   static const deliveryStatus = 'delivery-status'; // 기존 값 유지
-  static const kuDeliveryFeed   = 'kuDeliveryFeed';
+  static const kuDeliveryFeed = 'kuDeliveryFeed';
   static const kuDeliveryDetail = 'kuDeliveryDetail';
   static const kuDeliveryAlerts = 'kuDeliveryAlerts';
 
   // ── Chat
   static const chatRoom = 'chatRoom';
   static const chatRoomOverlay = 'chatRoomOverlay';
+  static const friendChat = 'friendChat';
 
   // ── MyPage 하위
   static const points = 'points';
@@ -47,8 +48,8 @@ class RouteNames {
   // ── 설정(Settings) 오버레이 & 하위
   static const settings = 'settings';
   static const paymentMethods = 'paymentMethods'; // 카드/간편결제 관리
-  static const refundAccount  = 'refundAccount';  // 환불계좌
-  static const faq            = 'faq';
-  static const bugReport      = 'bugReport';
-  static const appInfo        = 'appInfo';
+  static const refundAccount = 'refundAccount'; // 환불계좌
+  static const faq = 'faq';
+  static const bugReport = 'bugReport';
+  static const appInfo = 'appInfo';
 }

@@ -27,21 +27,28 @@ import 'package:kumeong_store/features/mypage/sell_screen.dart' show SellPage;
 import 'package:kumeong_store/features/mypage/recent_post_screen.dart' show RecentPostPage;
 
 import 'package:kumeong_store/features/friend/friend_screen.dart' show FriendScreen;
-import 'package:kumeong_store/features/friend/friend_requests_screen.dart' show FriendRequestsScreen; // ✅ 추가
+import 'package:kumeong_store/features/friend/friend_requests_screen.dart'
+    show FriendRequestsScreen; // ✅ 추가
 
 import 'package:kumeong_store/features/trade/trade_confirm_screen.dart';
 import 'package:kumeong_store/features/trade/payment_method_screen.dart';
 import 'package:kumeong_store/features/trade/secure_payment_screen.dart';
 
-import 'package:kumeong_store/features/delivery/ku_delivery_alert_screen.dart' show KuDeliveryAlertScreen;
-import 'package:kumeong_store/features/delivery/delivery_status_screen.dart' show DeliveryStatusScreen, DeliveryStatusArgs;
-import 'package:kumeong_store/features/delivery/ku_delivery_list_screen.dart' show KuDeliveryFeedScreen;
-import 'package:kumeong_store/features/delivery/ku_delivery_detail_screen.dart' show KuDeliveryDetailScreen, KuDeliveryDetailArgs;
-import 'package:kumeong_store/features/delivery/ku_delivery_signup_screen.dart' show KuDeliverySignupPage;
+import 'package:kumeong_store/features/delivery/ku_delivery_alert_screen.dart'
+    show KuDeliveryAlertScreen;
+import 'package:kumeong_store/features/delivery/delivery_status_screen.dart'
+    show DeliveryStatusScreen, DeliveryStatusArgs;
+import 'package:kumeong_store/features/delivery/ku_delivery_list_screen.dart'
+    show KuDeliveryFeedScreen;
+import 'package:kumeong_store/features/delivery/ku_delivery_detail_screen.dart'
+    show KuDeliveryDetailScreen, KuDeliveryDetailArgs;
+import 'package:kumeong_store/features/delivery/ku_delivery_signup_screen.dart'
+    show KuDeliverySignupPage;
 
 // Settings
 import 'package:kumeong_store/features/settings/settings_screen.dart' show SettingsScreen;
-import 'package:kumeong_store/features/settings/payment_methods_screen.dart' show PaymentMethodsPage;
+import 'package:kumeong_store/features/settings/payment_methods_screen.dart'
+    show PaymentMethodsPage;
 import 'package:kumeong_store/features/settings/refund_account_screen.dart' show RefundAccountPage;
 import 'package:kumeong_store/features/settings/faq_screen.dart' show FaqPage;
 import 'package:kumeong_store/features/settings/bug_report_screen.dart' show BugReportPage;
@@ -66,9 +73,18 @@ final GoRouter appRouter = GoRouter(
   routes: [
     // ========== 인증(Auth) (하단바 숨김)
     GoRoute(path: '/', name: R.RouteNames.login, builder: (context, state) => const LoginPage()),
-    GoRoute(path: '/auth/school-signup', name: R.RouteNames.schoolSignUp, builder: (context, state) => const SchoolSignUpPage()),
-    GoRoute(path: '/auth/id-find', name: R.RouteNames.idFind, builder: (context, state) => const IdFindPage()),
-    GoRoute(path: '/auth/password-find', name: R.RouteNames.passwordFind, builder: (context, state) => const PasswordFindPage()),
+    GoRoute(
+        path: '/auth/school-signup',
+        name: R.RouteNames.schoolSignUp,
+        builder: (context, state) => const SchoolSignUpPage()),
+    GoRoute(
+        path: '/auth/id-find',
+        name: R.RouteNames.idFind,
+        builder: (context, state) => const IdFindPage()),
+    GoRoute(
+        path: '/auth/password-find',
+        name: R.RouteNames.passwordFind,
+        builder: (context, state) => const PasswordFindPage()),
 
     // ========== 탭(IndexedStack)
     StatefulShellRoute.indexedStack(
@@ -77,7 +93,8 @@ final GoRouter appRouter = GoRouter(
           body: navigationShell,
           bottomNavigationBar: AppBottomNav(
             currentIndex: navigationShell.currentIndex,
-            onTap: (i) => navigationShell.goBranch(i, initialLocation: i == navigationShell.currentIndex),
+            onTap: (i) =>
+                navigationShell.goBranch(i, initialLocation: i == navigationShell.currentIndex),
           ),
         );
       },
@@ -115,8 +132,14 @@ final GoRouter appRouter = GoRouter(
                     );
                   },
                 ),
-                GoRoute(path: 'categories', name: R.RouteNames.categories, builder: (context, state) => const CategoryPage()),
-                GoRoute(path: 'alarms', name: R.RouteNames.alarms, builder: (context, state) => const AlarmPage()),
+                GoRoute(
+                    path: 'categories',
+                    name: R.RouteNames.categories,
+                    builder: (context, state) => const CategoryPage()),
+                GoRoute(
+                    path: 'alarms',
+                    name: R.RouteNames.alarms,
+                    builder: (context, state) => const AlarmPage()),
               ],
             ),
           ],
@@ -132,8 +155,8 @@ final GoRouter appRouter = GoRouter(
               pageBuilder: (context, state) => const NoTransitionPage(child: ChatListScreen()),
               routes: [
                 GoRoute(
-                  path: 'room/:roomId',
                   name: R.RouteNames.chatRoom,
+                  path: 'room/:roomId',
                   builder: (context, state) {
                     final roomId = state.pathParameters['roomId']!;
                     final ex = (state.extra as Map?) ?? const {};
@@ -171,25 +194,37 @@ final GoRouter appRouter = GoRouter(
               name: R.RouteNames.mypage,
               pageBuilder: (context, state) => const NoTransitionPage(child: MyPage()),
               routes: [
-                GoRoute(path: 'points', name: R.RouteNames.points, builder: (context, state) => const PointPage()),
-                GoRoute(path: 'buy', name: R.RouteNames.buyHistory, builder: (context, state) => const BuyPage()),
-                GoRoute(path: 'sell', name: R.RouteNames.sellHistory, builder: (context, state) => const SellPage()),
-                GoRoute(path: 'recent', name: R.RouteNames.recentPosts, builder: (context, state) => const RecentPostPage()),
+                GoRoute(
+                    path: 'points',
+                    name: R.RouteNames.points,
+                    builder: (context, state) => const PointPage()),
+                GoRoute(
+                    path: 'buy',
+                    name: R.RouteNames.buyHistory,
+                    builder: (context, state) => const BuyPage()),
+                GoRoute(
+                    path: 'sell',
+                    name: R.RouteNames.sellHistory,
+                    builder: (context, state) => const SellPage()),
+                GoRoute(
+                    path: 'recent',
+                    name: R.RouteNames.recentPosts,
+                    builder: (context, state) => const RecentPostPage()),
 
                 // ✅ 친구 목록 (meUserId를 state.extra로 전달받음)
                 GoRoute(
                   path: 'friends',
                   name: R.RouteNames.friends,
                   builder: (context, state) {
-                    final meUserId = (state.extra as String?) ?? '11111111-1111-4111-8111-111111111111'; // TODO: 실제 로그인 값으로 교체
-                    return FriendScreen(meUserId: meUserId);
+                    // extra 없이 열고, FriendScreen 안에서 sessionProvider로 현재 사용자 ID를 읽도록 권장
+                    return const FriendScreen();
                   },
                 ),
 
                 // ✅ 친구 요청함 (MyPage 브랜치 하위 경로)
                 GoRoute(
                   name: R.RouteNames.friendRequests,
-                  path: '/friends/requests',
+                  path: 'friends/requests',
                   builder: (context, state) {
                     final extra = state.extra as Map<String, dynamic>?;
                     final meId = extra?['meUserId'] as String? ?? ''; // 👈 전달값 수신
@@ -220,19 +255,29 @@ final GoRouter appRouter = GoRouter(
     ),
 
     // ── Delivery
-    GoRoute(path: '/delivery/signup', name: R.RouteNames.kuDeliverySignup, builder: (context, state) => const KuDeliverySignupPage()),
-    GoRoute(path: '/delivery/feed', name: R.RouteNames.kuDeliveryFeed, builder: (context, state) => const KuDeliveryFeedScreen()),
+    GoRoute(
+        path: '/delivery/signup',
+        name: R.RouteNames.kuDeliverySignup,
+        builder: (context, state) => const KuDeliverySignupPage()),
+    GoRoute(
+        path: '/delivery/feed',
+        name: R.RouteNames.kuDeliveryFeed,
+        builder: (context, state) => const KuDeliveryFeedScreen()),
     GoRoute(
       path: '/delivery/detail',
       name: R.RouteNames.kuDeliveryDetail,
-      builder: (context, state) => KuDeliveryDetailScreen(args: state.extra as KuDeliveryDetailArgs),
+      builder: (context, state) =>
+          KuDeliveryDetailScreen(args: state.extra as KuDeliveryDetailArgs),
     ),
     GoRoute(
       path: '/delivery/status',
       name: R.RouteNames.deliveryStatus,
       builder: (context, state) => DeliveryStatusScreen(args: state.extra as DeliveryStatusArgs),
     ),
-    GoRoute(path: '/delivery/alerts', name: R.RouteNames.kuDeliveryAlerts, builder: (context, state) => const KuDeliveryAlertScreen()),
+    GoRoute(
+        path: '/delivery/alerts',
+        name: R.RouteNames.kuDeliveryAlerts,
+        builder: (context, state) => const KuDeliveryAlertScreen()),
 
     // ── Trade
     GoRoute(
@@ -277,6 +322,7 @@ final GoRouter appRouter = GoRouter(
           if (T == int && v is String) return int.tryParse(v) as T? ?? def;
           return def;
         }
+
         return SecurePaymentScreen(
           roomId: roomId,
           productId: productId,
@@ -300,11 +346,31 @@ final GoRouter appRouter = GoRouter(
       name: R.RouteNames.settings,
       builder: (context, state) => const SettingsScreen(),
       routes: [
-        GoRoute(parentNavigatorKey: _rootKey, path: 'payment-methods', name: R.RouteNames.paymentMethods, builder: (context, state) => const PaymentMethodsPage()),
-        GoRoute(parentNavigatorKey: _rootKey, path: 'refund-account',  name: R.RouteNames.refundAccount,  builder: (context, state) => const RefundAccountPage()),
-        GoRoute(parentNavigatorKey: _rootKey, path: 'faq',            name: R.RouteNames.faq,            builder: (context, state) => const FaqPage()),
-        GoRoute(parentNavigatorKey: _rootKey, path: 'bug-report',     name: R.RouteNames.bugReport,      builder: (context, state) => const BugReportPage()),
-        GoRoute(parentNavigatorKey: _rootKey, path: 'app-info',       name: R.RouteNames.appInfo,        builder: (context, state) => const AppInfoPage()),
+        GoRoute(
+            parentNavigatorKey: _rootKey,
+            path: 'payment-methods',
+            name: R.RouteNames.paymentMethods,
+            builder: (context, state) => const PaymentMethodsPage()),
+        GoRoute(
+            parentNavigatorKey: _rootKey,
+            path: 'refund-account',
+            name: R.RouteNames.refundAccount,
+            builder: (context, state) => const RefundAccountPage()),
+        GoRoute(
+            parentNavigatorKey: _rootKey,
+            path: 'faq',
+            name: R.RouteNames.faq,
+            builder: (context, state) => const FaqPage()),
+        GoRoute(
+            parentNavigatorKey: _rootKey,
+            path: 'bug-report',
+            name: R.RouteNames.bugReport,
+            builder: (context, state) => const BugReportPage()),
+        GoRoute(
+            parentNavigatorKey: _rootKey,
+            path: 'app-info',
+            name: R.RouteNames.appInfo,
+            builder: (context, state) => const AppInfoPage()),
       ],
     ),
   ],

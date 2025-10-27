@@ -6,24 +6,27 @@ import {
   ManyToOne,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
   JoinColumn,
   BeforeInsert,
   Index,
+  DeleteDateColumn,
 } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { User } from '../../users/entities/user.entity';
+import { ProductImage } from './product-image.entity';
 
 export enum ProductStatus {
-  DRAFT = 'DRAFT',
-  ON_SALE = 'ON_SALE',
+  LISTED = 'LISTED',
   RESERVED = 'RESERVED',
   SOLD = 'SOLD',
 }
 
 @Entity({ name: 'products' })
-@Index('IDX_product_owner', ['ownerId'])
-@Index('IDX_product_createdAt', ['createdAt'])
-@Index('IDX_product_price', ['price'])
+@Index('ix_products_seller', ['sellerId'])
+@Index('ix_products_createdAt', ['createdAt'])
+@Index('ix_products_priceWon', ['priceWon'])
+@Index('ix_products_status', ['status'])
 export class Product {
   // PK: UUID/CHAR(36) — 전역 정책
   @PrimaryColumn('char', { length: 36 })
@@ -32,40 +35,49 @@ export class Product {
   @Column('varchar', { length: 200 })
   title!: string;
 
-  @Column('int', { unsigned: true })
-  price!: number;
+  // price -> priceWon
+  @Column('int', { unsigned: true, name: 'priceWon' })
+  priceWon!: number;
 
-  @Column('enum', { enum: ProductStatus, default: ProductStatus.ON_SALE })
+  // ENUM 통일
+  @Column('enum', { enum: ProductStatus, default: ProductStatus.LISTED })
   status!: ProductStatus;
 
-  // 선택 필드들(기존 스키마 호환)
+  // 선택 필드들
   @Column({ type: 'text', nullable: true })
   description?: string;
 
   @Column({ length: 50, nullable: true })
   category?: string;
 
-  // 이미지 URL 배열(JSON)
-  @Column({ type: 'simple-json', nullable: true })
-  images?: string[];
+  // ※ 스키마는 별도 productImages 테이블 사용 권장 → 컬럼 제거
 
-  // 소유자 FK — UUID/CHAR(36)
-  @Column('char', { length: 36 })
-  ownerId!: string;
+  // 판매자 FK — UUID/CHAR(36) (ownerId -> sellerId)
+  @Column('char', { length: 36, name: 'sellerId' })
+  sellerId!: string;
 
   @ManyToOne(() => User, (u) => u.products, {
-    onDelete: 'CASCADE',
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
     nullable: false,
     eager: false,
   })
-  @JoinColumn({ name: 'ownerId', referencedColumnName: 'id' })
-  owner!: User;
 
-  @CreateDateColumn({ type: 'timestamp' })
+  @JoinColumn({ name: 'sellerId', referencedColumnName: 'id' })
+  seller!: User;
+
+  @CreateDateColumn({ type: 'datetime' })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'timestamp' })
+  @UpdateDateColumn({ type: 'datetime' })
   updatedAt!: Date;
+
+  @OneToMany(() => ProductImage, (img) => img.product)
+  images?: ProductImage[];
+
+  // 소프트 삭제 (DATETIME NULL)
+  @DeleteDateColumn({ type: 'datetime', nullable: true })
+  deletedAt?: Date | null;
 
   @BeforeInsert()
   assignId() {

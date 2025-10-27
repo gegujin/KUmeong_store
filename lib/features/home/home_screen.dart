@@ -25,8 +25,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage>
-    with SingleTickerProviderStateMixin {
+class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> allProducts = [];
   String searchText = '';
   bool _isMenuOpen = false;
@@ -47,12 +46,13 @@ class _HomePageState extends State<HomePage>
       token = prefs.getString('accessToken');
     }
 
-    final products = <Map<String, dynamic>>[demoProduct.toMapForHome()];
+    final products = <Map<String, dynamic>>[_toHomeMap(demoProduct)];
 
     if (token != null) {
       try {
-        final productsFromApi = await fetchProducts(token!);
-        products.addAll(productsFromApi.map((p) => p.toMapForHome()));
+        final productsFromApi = await fetchProducts(token!); // ← 실제 호출
+        // Product이면 _toHomeMap이 내부에서 toMapForHome() 호출, Map이면 필드 정규화
+        products.addAll(productsFromApi.map(_toHomeMap));
       } catch (e) {
         debugPrint('상품 불러오기 오류: $e');
       }
@@ -77,14 +77,85 @@ class _HomePageState extends State<HomePage>
     setState(() => _isMenuOpen = !_isMenuOpen);
   }
 
+  Map<String, dynamic> _toHomeMap(dynamic src) {
+    if (src is Product) return src.toMapForHome();
+
+    if (src is Map) {
+      final m = Map<String, dynamic>.from(src);
+
+      // imageUrls 정규화
+      List<String> imageUrls = [];
+      if (m['imageUrls'] is List) {
+        imageUrls = List<String>.from(
+          (m['imageUrls'] as List).where((e) => e != null).map((e) => e.toString()),
+        );
+      } else if (m['images'] is List) {
+        imageUrls = (m['images'] as List)
+            .map((e) {
+              if (e is String) return e;
+              if (e is Map) {
+                final url = e['url'] ?? e['path'] ?? e['src'];
+                return url?.toString() ?? '';
+              }
+              return '';
+            })
+            .where((s) => s.isNotEmpty)
+            .map((s) => s.toString())
+            .toList();
+      } else if (m['imageUrl'] != null) {
+        imageUrls = [m['imageUrl'].toString()];
+      }
+
+      // 위치 정규화
+      dynamic location = m['location'];
+      if (location == null || (location is String && location.isEmpty)) {
+        final locName =
+            m['locationName'] ?? (m['seller'] is Map ? (m['seller'] as Map)['locationName'] : null);
+        if (locName != null && locName.toString().isNotEmpty) {
+          location = {'name': locName.toString()};
+        }
+      }
+
+      final price = m['price'] ?? m['amount'] ?? m['totalPrice'] ?? 0;
+      final time = m['time'] ?? m['createdAt'] ?? m['updatedAt'] ?? '';
+      final likes = m['likes'] ?? m['favoriteCount'] ?? m['favorites'] ?? m['favCount'] ?? 0;
+      final views = m['views'] ?? m['viewCount'] ?? 0;
+
+      int _toInt(dynamic v) => (v is num) ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
+
+      return {
+        'id': m['id'] ?? m['productId'] ?? m['uuid'] ?? m['postId'] ?? 'unknown',
+        'title': m['title'] ?? m['name'] ?? m['subject'] ?? '',
+        'imageUrls': imageUrls,
+        'location': location ?? '위치 정보 없음',
+        'time': time.toString(),
+        'price': price,
+        'isLiked': (m['isLiked'] ?? m['favorited'] ?? false) == true,
+        'likes': _toInt(likes),
+        'views': _toInt(views),
+      };
+    }
+
+    // 알 수 없는 타입
+    return {
+      'id': 'unknown',
+      'title': '',
+      'imageUrls': const <String>[],
+      'location': '위치 정보 없음',
+      'time': '',
+      'price': 0,
+      'isLiked': false,
+      'likes': 0,
+      'views': 0,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final mainColor = Theme.of(context).colorScheme.primary;
 
     final filteredProducts = allProducts
-        .where((p) => (p['title'] as String)
-            .toLowerCase()
-            .contains(searchText.toLowerCase()))
+        .where((p) => (p['title'] as String).toLowerCase().contains(searchText.toLowerCase()))
         .toList();
 
     return Scaffold(
@@ -104,10 +175,8 @@ class _HomePageState extends State<HomePage>
                   hintText: '상품 검색',
                   fillColor: Colors.white,
                   filled: true,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(3)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(3)),
                 ),
                 onChanged: (v) => setState(() => searchText = v),
               ),
@@ -129,10 +198,10 @@ class _HomePageState extends State<HomePage>
               final product = filteredProducts[index];
               final liked = (product['isLiked'] ?? false) as bool;
 
-              final imageUrl = (product['imageUrls'] != null &&
-                      (product['imageUrls'] as List).isNotEmpty)
-                  ? (product['imageUrls'] as List).first
-                  : null;
+              final imageUrl =
+                  (product['imageUrls'] != null && (product['imageUrls'] as List).isNotEmpty)
+                      ? (product['imageUrls'] as List).first
+                      : null;
 
               final title = product['title'] as String? ?? '';
 
@@ -140,25 +209,17 @@ class _HomePageState extends State<HomePage>
               final locationValue = product['location'];
               String location = '';
               if (locationValue is Map) {
-                location = (locationValue['name']?.toString().isNotEmpty ??
-                        false)
+                location = (locationValue['name']?.toString().isNotEmpty ?? false)
                     ? locationValue['name']
-                    : (locationValue['locationName']?.toString().isNotEmpty ??
-                            false)
+                    : (locationValue['locationName']?.toString().isNotEmpty ?? false)
                         ? locationValue['locationName']
-                        : (product['seller']?['locationName']
-                                    ?.toString()
-                                    .isNotEmpty ??
-                                false)
+                        : (product['seller']?['locationName']?.toString().isNotEmpty ?? false)
                             ? product['seller']['locationName']
                             : '위치 정보 없음';
               } else if (locationValue is String && locationValue.isNotEmpty) {
                 location = locationValue;
               } else {
-                location = (product['seller']?['locationName']
-                            ?.toString()
-                            .isNotEmpty ??
-                        false)
+                location = (product['seller']?['locationName']?.toString().isNotEmpty ?? false)
                     ? product['seller']['locationName']
                     : '위치 정보 없음';
               }
@@ -170,14 +231,11 @@ class _HomePageState extends State<HomePage>
                 onTap: () {
                   context.pushNamed(
                     R.RouteNames.productDetail,
-                    pathParameters: {
-                      'productId': product['id'] ?? 'demo-product'
-                    },
+                    pathParameters: {'productId': product['id'] ?? 'demo-product'},
                   );
                 },
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -193,16 +251,14 @@ class _HomePageState extends State<HomePage>
                                   width: 80,
                                   height: 80,
                                   color: Colors.grey[300],
-                                  child: const Icon(Icons.broken_image,
-                                      color: Colors.white70),
+                                  child: const Icon(Icons.broken_image, color: Colors.white70),
                                 ),
                               )
                             : Container(
                                 width: 80,
                                 height: 80,
                                 color: Colors.grey[300],
-                                child: const Icon(Icons.image,
-                                    color: Colors.white70),
+                                child: const Icon(Icons.image, color: Colors.white70),
                               ),
                       ),
                       const SizedBox(width: 10),
@@ -214,12 +270,10 @@ class _HomePageState extends State<HomePage>
                               title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold),
+                              style: const TextStyle(fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 4),
-                            Text('$location | $time',
-                                style: const TextStyle(color: Colors.grey)),
+                            Text('$location | $time', style: const TextStyle(color: Colors.grey)),
                             const SizedBox(height: 4),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -237,9 +291,7 @@ class _HomePageState extends State<HomePage>
                               child: GestureDetector(
                                 onTap: () => _toggleLike(index),
                                 child: Icon(
-                                  liked
-                                      ? Icons.favorite
-                                      : Icons.favorite_border,
+                                  liked ? Icons.favorite : Icons.favorite_border,
                                   color: liked ? Colors.red : Colors.grey,
                                   size: 22,
                                 ),
@@ -295,8 +347,7 @@ class _HomePageState extends State<HomePage>
                       onTap: () async {
                         _toggleFabMenu();
                         if (!mounted) return;
-                        final Product? newProduct =
-                            await context.pushNamed<Product>(
+                        final Product? newProduct = await context.pushNamed<Product>(
                           R.RouteNames.productEdit,
                           pathParameters: {'productId': 'demo-product'},
                         );
@@ -347,8 +398,7 @@ class _MenuCard extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
           boxShadow: const [
-            BoxShadow(
-                color: Colors.black26, blurRadius: 20, offset: Offset(0, 6)),
+            BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 6)),
           ],
         ),
         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -383,9 +433,7 @@ class _MenuItem extends StatelessWidget {
             Icon(icon, color: iconColor, size: 26),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(label,
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w700)),
+              child: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             ),
           ],
         ),

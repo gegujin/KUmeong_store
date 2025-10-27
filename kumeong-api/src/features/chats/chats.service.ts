@@ -1,7 +1,10 @@
-// C:\Users\82105\KU-meong Store\kumeong-api\src\features\chats\chats.service.ts
-import { Injectable } from '@nestjs/common';
+// src/features/chats/chats.service.ts
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { v4 as uuidv4 } from 'uuid';
+import { v1 as uuidv1 } from 'uuid';
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // ─────────────────────────────────────────────────────────────
 // DB 방언 감지
@@ -19,10 +22,7 @@ function isSQLite(ds: DataSource) {
   return t === 'sqlite' || t === 'better-sqlite3';
 }
 
-/**
- * createdAt(ms)를 의사 seq로 사용
- * - DB에 seq 칼럼이 없어도 프론트의 sinceSeq 로직이 동작하도록 보장
- */
+/** createdAt(ms) → 의사 seq */
 function seqFromDate(d: Date) {
   return Math.floor(d.getTime());
 }
@@ -33,7 +33,7 @@ type ChatMessageWire = {
   senderId: string;
   text: string;
   timestamp: string; // ISO 8601
-  seq: number;       // int
+  seq: number; // int
   readByMe?: boolean;
 };
 
@@ -53,54 +53,93 @@ export class ChatsService {
     return row.length > 0;
   }
 
-  /**
-   * 채팅방 존재 보장 (없으면 생성, 있으면 no-op)
-   * - MySQL/MariaDB: ON DUPLICATE KEY
-   * - SQLite: ON CONFLICT(id) DO NOTHING
-   * - 기타 드라이버: try-insert 후 에러 무시
-   */
-  async ensureRoomExistsOrCreate(roomId: string): Promise<void> {
-    if (!roomId) return;
+  // ✅ 친구 DM 방 보장/조회 — 드라이버/검증/충돌처리 강화
+  async ensureFriendRoom(args: {
+    meUserId: string;
+    peerUserId: string;
+  }): Promise<string> {
+    let { meUserId, peerUserId } = args;
 
+    // ── 입력값/형식 검증(400) ─────────────────────────────
+    if (!meUserId || !peerUserId) {
+      throw new BadRequestException('MISSING_USER_ID');
+    }
+    if (meUserId === peerUserId) {
+      throw new BadRequestException('SELF_DM_NOT_ALLOWED');
+    }
+    if (!UUID_RE.test(meUserId)) {
+      throw new BadRequestException('ME_USER_ID_INVALID');
+    }
+    if (!UUID_RE.test(peerUserId)) {
+      throw new BadRequestException('PEER_USER_ID_INVALID');
+    }
+
+    // 1) 실제 users 테이블 존재 검증 (FK 에러를 사전에 4xx로 변환)
+    const [meRow] = await this.ds.query(
+      `SELECT id FROM users WHERE id = ? AND deletedAt IS NULL LIMIT 1`,
+      [meUserId],
+    );
+    if (!meRow) throw new BadRequestException('ME_USER_NOT_FOUND');
+
+    const [peerRow] = await this.ds.query(
+      `SELECT id FROM users WHERE id = ? AND deletedAt IS NULL LIMIT 1`,
+      [peerUserId],
+    );
+    if (!peerRow) throw new BadRequestException('PEER_USER_NOT_FOUND');
+
+    // 2) 페어 정규화 (항상 a<b) → a=buyerId, b=sellerId
+    const [a, b] = [meUserId, peerUserId].sort();
+
+    // 3) 드라이버별 upsert
     if (isMySQL(this.ds)) {
+      // ⚠️ chatRooms에 UNIQUE(type, productId, buyerId, sellerId) 인덱스 필요
       await this.ds.query(
         `
-        INSERT INTO chatRooms (id, createdAt)
-        VALUES (?, NOW())
+        INSERT INTO chatRooms (id, \`type\`, productId, buyerId, sellerId, createdAt)
+        VALUES (UUID(), 'FRIEND', NULL, ?, ?, NOW())
         ON DUPLICATE KEY UPDATE id = id
         `,
-        [roomId],
+        [a, b],
       );
-      return;
+    } else {
+      // SQLite/기타: uuid 사전생성 후 충돌은 무시
+      const newId = uuidv1();
+      try {
+        await this.ds.query(
+          `
+          INSERT INTO chatRooms (id, \`type\`, productId, buyerId, sellerId, createdAt)
+          VALUES (?, 'FRIEND', NULL, ?, ?, CURRENT_TIMESTAMP)
+          `,
+          [newId, a, b],
+        );
+      } catch {
+        // 유니크 충돌 → 이미 존재
+      }
     }
 
-    if (isSQLite(this.ds)) {
-      await this.ds.query(
-        `
-        INSERT INTO chatRooms (id, createdAt)
-        VALUES (?, CURRENT_TIMESTAMP)
-        ON CONFLICT(id) DO NOTHING
-        `,
-        [roomId],
-      );
-      return;
-    }
+    // 4) id 조회
+    const rows = await this.ds.query(
+      `
+      SELECT id
+      FROM chatRooms
+      WHERE \`type\` = 'FRIEND'
+        AND productId IS NULL
+        AND buyerId = ?
+        AND sellerId = ?
+      LIMIT 1
+      `,
+      [a, b],
+    );
 
-    // 기타 드라이버: 멱등 시도
-    try {
-      await this.ds.query(
-        `INSERT INTO chatRooms (id, createdAt) VALUES (?, CURRENT_TIMESTAMP)`,
-        [roomId],
-      );
-    } catch {
-      // 이미 있으면 무시
+    if (!rows?.length) {
+      throw new Error('ROOM_RESOLVE_FAILED');
     }
+    return rows[0].id as string;
   }
 
   /**
    * 메시지 목록(최근 limit or sinceSeq 이후)
    * - ChatApi.fetchMessagesSinceSeq 와 1:1 매핑
-   * - 반환 스키마는 chat_api.dart 의 ChatMessage.fromJson 에 맞춤
    */
   async fetchMessagesSinceSeq(args: {
     roomId: string;
@@ -124,7 +163,8 @@ export class ChatsService {
       );
       rows.reverse(); // 과거 → 현재 순으로 반환
       return rows.map((r: any) => {
-        const created = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt);
+        const created =
+          r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt);
         return {
           id: r.id,
           roomId: r.roomId,
@@ -153,7 +193,7 @@ export class ChatsService {
         [roomId, sinceSeq, limit],
       );
     } else if (isSQLite(this.ds)) {
-      // SQLite: createdAt이 DATETIME이면 strftime 사용 가능
+      // SQLite
       rows = await this.ds.query(
         `
         SELECT id, roomId, senderId, type, content, fileUrl, createdAt
@@ -166,7 +206,7 @@ export class ChatsService {
         [roomId, sinceSeq, limit],
       );
     } else {
-      // 기타 드라이버: 일단 전체를 뽑아서 메모리 비교 (권장X, 예비용)
+      // 기타 드라이버: 전체에서 메모리 필터(예비)
       rows = await this.ds.query(
         `
         SELECT id, roomId, senderId, type, content, fileUrl, createdAt
@@ -178,13 +218,15 @@ export class ChatsService {
         [roomId, limit],
       );
       rows = rows.filter((r: any) => {
-        const created = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt);
+        const created =
+          r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt);
         return created.getTime() > sinceSeq;
       });
     }
 
     return rows.map((r: any) => {
-      const created = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt);
+      const created =
+        r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt);
       return {
         id: r.id,
         roomId: r.roomId,
@@ -200,7 +242,6 @@ export class ChatsService {
   /**
    * 텍스트 메시지 저장
    * - ChatApi.sendMessage 와 1:1 매핑
-   * - 저장 직후 프론트에 돌려주는 스키마도 chat_api.dart 기대치에 맞춤
    */
   async appendText(args: {
     roomId: string;
@@ -208,7 +249,7 @@ export class ChatsService {
     text: string;
   }): Promise<ChatMessageWire> {
     const { roomId, senderId, text } = args;
-    const id = uuidv4();
+    const id = uuidv1();
     const createdAt = new Date();
 
     await this.ds.query(
@@ -235,7 +276,7 @@ export class ChatsService {
    * - ChatApi.markRead 와 1:1 매핑
    * - MySQL: ON DUPLICATE KEY
    * - SQLite: ON CONFLICT(roomId, userId)
-   *   (⚠️ 반드시 chatReads(roomId,userId) UNIQUE 인덱스가 있어야 합니다)
+   *   (⚠️ 반드시 chatReads(roomId,userId) UNIQUE 인덱스 필요)
    */
   async updateReadCursor(args: {
     roomId: string;

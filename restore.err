@@ -1,0 +1,10 @@
+ERROR 1064 (42000) at line 1: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '/' at line 1
+ERROR 1064 (42000) at line 97: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '2025-10-22 05:36:27'),(32,'9df08a83-aebd-11f0-a18f-005056c00001','5aeb8d45-aebd-' at line 1
+ERROR 1100 (HY000) at line 587: Table 'chatrooms' was not locked with LOCK TABLES
+ERROR 1146 (42S02) at line 609: Table 'kumeong_store.chatrooms' doesn't exist
+ERROR 1146 (42S02) at line 647: Table 'kumeong_store.chatrooms' doesn't exist
+ERROR 1146 (42S02) at line 685: Table 'kumeong_store.chatrooms' doesn't exist
+ERROR 1146 (42S02) at line 723: Table 'kumeong_store.chatrooms' doesn't exist
+ERROR 1146 (42S02) at line 761: Table 'kumeong_store.chatrooms' doesn't exist
+ERROR 1146 (42S02) at line 799: Table 'kumeong_store.chatrooms' doesn't exist
+ERROR 1064 (42000) at line 2515: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '疫뀀엷恃썩??璲????市?底?遺용엷杵쎈뗄肉?恃썬??底?遺용엷杵ì' at line 1

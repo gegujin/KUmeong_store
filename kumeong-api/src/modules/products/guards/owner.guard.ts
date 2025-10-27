@@ -29,7 +29,7 @@ export class OwnerGuard implements CanActivate {
     // 상품 존재 확인 (소유자만 조회)
     const p = await this.products.findOne({
       where: { id: productId },
-      select: { id: true, ownerId: true },
+      select: { id: true, sellerId: true },
     });
     if (!p) throw new NotFoundException('Product not found');
 
@@ -42,7 +42,7 @@ export class OwnerGuard implements CanActivate {
     if (user?.role === UserRole.ADMIN) return true;
 
     // UUID 문자열 비교
-    if (p.ownerId.toLowerCase() !== meId) {
+    if (p.sellerId.toLowerCase() !== meId) {
       throw new ForbiddenException('본인 상품만 변경할 수 있습니다.');
     }
 
