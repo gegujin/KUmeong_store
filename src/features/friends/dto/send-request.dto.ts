@@ -8,7 +8,7 @@ export class SendRequestDto {
     description: '요청을 보낼 대상 사용자의 UUID (targetEmail과 둘 중 하나만)',
   })
   @IsOptional()
-  @IsUUID('4', { message: 'toUserId는 UUIDv4 형식이어야 합니다.' })
+  @IsUUID('all', { message: 'toUserId는 UUIDv4 형식이어야 합니다.' })
   toUserId?: string;
 
   @ApiPropertyOptional({

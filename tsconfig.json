@@ -13,6 +13,7 @@
     "incremental": true,
 
     "experimentalDecorators": true,
+    "inlineSources": true,
     "emitDecoratorMetadata": true,
 
     "useDefineForClassFields": false,

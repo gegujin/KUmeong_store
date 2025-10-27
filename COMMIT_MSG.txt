@@ -9,7 +9,7 @@ feat(users): UsersModule/Controller/Service 구성(해시 저장·안전 조회)
 feat(types): SafeUser 타입 도입 및 Express Request.user 보강
 feat(auth): JwtStrategy/Guard 개선(@Public/@CurrentUser·OptionalJwt 지원, JWT payload/응답에 role 포함)
 feat(auth-dto): Register/Login DTO 검증 및 Swagger 예시 추가
-feat(products-entity): Product 엔티티(SQLite 호환) — owner_id FK·status(simple-enum)·images(simple-json)·타임스탬프·인덱스(ownerId/createdAt/price)
+feat(products-entity): Product 엔티티(SQLite 호환) — owner_id FK·status(simple-enum)·images(simple-json)·타임스탬프·인덱스(sellerId/createdAt/price)
 feat(products-guard): OwnerGuard 추가(소유자만 수정/삭제, ADMIN 우회)
 feat(products-api): 공개 라우트(@Public)와 보호 라우트(@UseGuards JwtAuthGuard, OwnerGuard) 분리·생성 시 owner 주입·Swagger 스키마 정리
 feat(products-list): QueryProductDto 도입(페이지/정렬/검색/필터) 및 findAll 페이지네이션 응답(OkPageProductDto 문서화)

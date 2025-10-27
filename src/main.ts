@@ -1,11 +1,8 @@
 // src/main.ts
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import {
-  ValidationPipe,
-  Logger,
-  VersioningType,
-} from '@nestjs/common';
+import { Logger, VersioningType } from '@nestjs/common';
+import 'source-map-support/register';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
@@ -16,18 +13,28 @@ import { join } from 'path';
 import * as express from 'express';
 import * as http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+const methodOverride = require('method-override');
+
+// ✅ 추가: 파일·라인 포함 검증용 전역 파이프/필터/인터셉터
+import { createGlobalValidationPipe } from './common/pipes/global-validation.pipe';
+import { ValidationErrorFilter } from './common/filters/validation-error.filter';
+import { RouteContextInterceptor } from './common/interceptors/route-context.interceptor';
+// (선택) 상세 HTTP 로깅이 필요하면 아래도 import 후 등록
+// import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 type Sub = { ws: WebSocket; roomId: string; userId?: string };
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+  });
   const cfg = app.get(ConfigService);
 
   // ===== Prefix & URI Versioning =====
-  const apiPrefix = 'api'; // 고정: /api
+  const apiPrefix = 'api'; // /api
   app.setGlobalPrefix(apiPrefix);
   app.enableVersioning({
-    type: VersioningType.URI,        // /v1/...
+    type: VersioningType.URI, // /v1/...
     defaultVersion: '1',
   });
   Logger.log(`[HTTP] prefix="/${apiPrefix}" (URI versioning /v1 enabled)`);
@@ -36,14 +43,32 @@ async function bootstrap() {
   app.enableCors({
     origin: true,
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Id'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-User-Id',
+      'X-HTTP-Method-Override',
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   });
+
+  // method-override (헤더 & 폼파라미터)
+  app.use(methodOverride('X-HTTP-Method-Override'));
+  app.use(methodOverride('_method'));
+
   app.use('/uploads', express.static(join(__dirname, '..', 'public', 'uploads')));
 
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.useGlobalInterceptors(new SuccessResponseInterceptor());
-  app.useGlobalFilters(new GlobalExceptionFilter());
+  // ===== 전역 파이프/인터셉터/필터 (★ 핵심 변경 지점)
+  app.useGlobalPipes(createGlobalValidationPipe());         // ← 기존 ValidationPipe 교체
+  app.useGlobalInterceptors(
+    new RouteContextInterceptor(),                         // ← 라우트/컨트롤러/핸들러 정보 주입
+    // new LoggingInterceptor(),                           // ← (옵션) HTTP 상세 로깅
+    new SuccessResponseInterceptor()
+  );
+  app.useGlobalFilters(
+    new ValidationErrorFilter(),                            // ← DTO 검증 400을 파일/라인 포함해 변환
+    new GlobalExceptionFilter()
+  );
 
   // ===== Swagger =====
   const swaggerConfig = new DocumentBuilder()
@@ -107,7 +132,7 @@ async function bootstrap() {
           if (msg?.type === 'ping') {
             ws.send(JSON.stringify({ type: 'pong', t: new Date().toISOString() }));
           }
-        } catch {/* ignore */}
+        } catch { /* ignore */ }
       });
       ws.on('close', () => leave(ws));
       ws.on('error', () => leave(ws));

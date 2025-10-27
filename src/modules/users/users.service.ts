@@ -24,11 +24,12 @@ export class UsersService {
   }
 
   /** 비밀번호 제외 안전 유저 타입 변환 */
-  private toSafeUser(u: User): SafeUser {
+  public toSafeUser(u: User): SafeUser {
     const { passwordHash, ...safe } = u as any;
     (safe as any).id = String(u.id);
     return safe as SafeUser;
   }
+
 
   /** 회원가입: 일반 유저용 (경쟁조건 안전) */
   async create(dto: { email: string; name: string; password: string }): Promise<SafeUser> {

@@ -6,7 +6,7 @@ import {
   OneToMany,
   CreateDateColumn,
   UpdateDateColumn,
-  DeleteDateColumn, // <-- 여기서 import 됨
+  DeleteDateColumn,
   BeforeInsert,
 } from 'typeorm';
 import { randomUUID } from 'crypto';
@@ -49,12 +49,12 @@ export class User {
   @UpdateDateColumn({ type: 'datetime', precision: 6 })
   updatedAt!: Date;
 
-  // ⭐️ 첫 번째 'deletedAt' 정의
+  // 소프트 삭제 컬럼 (DB: DATETIME NULL)
   @DeleteDateColumn({ type: 'datetime', precision: 6, nullable: true })
   deletedAt?: Date | null;
 
-  // ✅ Product.owner 와 짝을 맞춘다 (기존 u.products 사용 코드는 그대로)
-  @OneToMany(() => Product, (p) => p.owner, { cascade: false })
+  // ✅ Product.seller 와의 역방향 매핑 (owner → seller로 정합화)
+  @OneToMany(() => Product, (p) => p.seller, { cascade: false })
   products!: Product[];
 
   @BeforeInsert()
