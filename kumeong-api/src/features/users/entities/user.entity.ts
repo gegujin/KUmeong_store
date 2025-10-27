@@ -1,4 +1,16 @@
-import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
+} from 'typeorm';
+
+export enum UserRole {
+  USER = 'USER',
+  ADMIN = 'ADMIN',
+}
 
 @Entity('users')
 export class UserEntity {
@@ -11,12 +23,41 @@ export class UserEntity {
   @Column({ length: 100 })
   name!: string;
 
-  @Column({ name: 'password_hash', length: 255 })
+  // 테이블 컬럼명: passwordHash (snake 아님)
+  @Column({ length: 255 })
   passwordHash!: string;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @Column({ type: 'int', default: 0 })
+  reputation!: number;
+
+  // 테이블에 role enum('USER','ADMIN') 이미 존재
+  @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
+  role!: UserRole;
+
+  // DESC 결과 기준: varchar(100)
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  universityName?: string | null;
+
+  @Column({ type: 'tinyint', width: 1, default: false })
+  universityVerified!: boolean;
+
+  // camelCase soft delete
+  @DeleteDateColumn()
+  deletedAt?: Date | null;
+
+  @CreateDateColumn()
   createdAt!: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn()
   updatedAt!: Date;
 }
+
+// 기존 import 호환
+export { UserEntity as User };
+
+export type UserSafe = Pick<
+  UserEntity,
+  'id' | 'email' | 'name' | 'reputation' |
+  'universityVerified' | 'universityName' |
+  'createdAt' | 'updatedAt'
+>;

@@ -1,12 +1,10 @@
 // C:\Users\82105\KU-meong Store\lib\features\friend\friend_plus_screen.dart
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import '../../core/base_url.dart';
+import '../../core/network/http_client.dart'; // ✅ HttpX 사용
 
-/// 부모에서 이미 가지고 있는(화면에 표시 중인) 친구 이름 목록
-/// - 실제로는 "id 리스트"를 쓰는 게 안전하지만, 기존 시그니처 유지
 class FriendPlusPage extends StatefulWidget {
+  /// 부모에서 이미 가지고 있는(화면에 표시 중인) 친구 "이름" 목록
+  /// 실제로는 id 목록이 안전하지만, 기존 시그니처를 유지한다.
   final List<String> currentFriends;
 
   const FriendPlusPage({super.key, required this.currentFriends});
@@ -21,16 +19,14 @@ class _FriendPlusPageState extends State<FriendPlusPage> {
   bool _loading = false;
   String? _errorText;
 
-  /// TODO: 실제 로그인 토큰 주입(Provider/Storage 등)
-  Future<Map<String, String>> _authHeaders() async {
-    final token = ''; // e.g., await SecureStore.read('accessToken');
-    return {
-      'Content-Type': 'application/json',
-      if (token.isNotEmpty) 'Authorization': 'Bearer $token',
-    };
-  }
-
   bool get _inputValid => _emailCtrl.text.trim().isNotEmpty;
+
+  // 간단 이메일/UUID 판별
+  static final _uuidRe = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  );
+  static bool _looksLikeEmail(String s) => s.contains('@');
 
   Future<void> _addFriend() async {
     final raw = _emailCtrl.text.trim();
@@ -39,36 +35,48 @@ class _FriendPlusPageState extends State<FriendPlusPage> {
       return;
     }
 
+    // 간단한 중복 가드(부모가 이름 리스트를 주는 구조라 제한적임)
+    if (widget.currentFriends.any(
+      (name) => name.trim().toLowerCase() == raw.toLowerCase(),
+    )) {
+      setState(() => _errorText = '이미 친구 목록에 있는 사용자예요.');
+      return;
+    }
+
     setState(() {
       _loading = true;
       _errorText = null;
     });
-
     try {
-      final headers = await _authHeaders();
-
-      // ✅ 이메일로 바로 요청 생성 (백엔드가 내부에서 사용자 조회)
-      final uri = apiUrl('/friends/requests');
-      final body = jsonEncode({'targetEmail': raw.toLowerCase()});
-
-      final resp = await http
-          .post(uri, headers: headers, body: body)
-          .timeout(const Duration(seconds: 10));
-
-      if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        String msg = '친구 요청 전송 실패(${resp.statusCode})';
+      if (_uuidRe.hasMatch(raw)) {
+        // UUID는 바로 전송
+        await HttpX.postJson('/friends/requests', {'toUserId': raw.toLowerCase()});
+      } else {
+        // 이메일/닉네임 등 → lookup으로 id 확보
+        final q = raw.toLowerCase();
+        // 서버 구현차를 흡수: q 또는 email 둘 다 시도
+        Map<String, dynamic> user;
         try {
-          final j = jsonDecode(resp.body);
-          msg = (j is Map && j['message'] != null) ? j['message'].toString() : msg;
-        } catch (_) {}
-        throw Exception(msg);
+          user = await HttpX.get('/users/lookup', query: {'q': q});
+        } catch (_) {
+          user = await HttpX.get('/users/lookup', query: {'email': q});
+        }
+        final data = (user['data'] is Map) ? user['data'] as Map : user;
+        final toUserId = (data['id'] ?? data['userId'] ?? data['uuid'] ?? '').toString();
+        if (toUserId.isEmpty) throw Exception('해당 사용자를 찾을 수 없습니다.');
+        await HttpX.postJson('/friends/requests', {'toUserId': toUserId});
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('친구 요청 전송: $raw')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('친구 요청 전송: $raw')));
+
       // 부모에 표시용으로 입력 문자열을 그대로 반환
       Navigator.pop(context, raw);
+    } on ApiException catch (e) {
+      // 서버에서 내려준 메시지 노출
+      setState(() {
+        _errorText = e.message.isNotEmpty ? e.message : '친구 요청 실패 (HTTP ${e.status ?? '-'})';
+      });
     } catch (e) {
       setState(() {
         _errorText = e.toString().replaceFirst('Exception: ', '');
@@ -110,7 +118,7 @@ class _FriendPlusPageState extends State<FriendPlusPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
-                  '친구의 아이디 또는 학교 이메일을 입력하세요.\n예: B@kku.ac.kr',
+                  '친구의 아이디(UUID) 또는 학교 이메일을 입력하세요.\n예: user@kku.ac.kr',
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
@@ -122,9 +130,11 @@ class _FriendPlusPageState extends State<FriendPlusPage> {
                   textAlign: TextAlign.center,
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
-                    hintText: '아이디 또는 이메일 입력 (@kku.ac.kr)',
+                    hintText: '아이디(UUID) 또는 이메일 입력 (@kku.ac.kr)',
                     prefixIcon: const Icon(Icons.alternate_email),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(25)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
                   ),
                   onChanged: (_) {
                     if (_errorText != null) setState(() => _errorText = null);
@@ -156,7 +166,7 @@ class _FriendPlusPageState extends State<FriendPlusPage> {
                           )
                         : const Icon(Icons.person_add_alt_1),
                     onPressed: (!_loading && _inputValid) ? _addFriend : null,
-                    label: const Text('추가하기'),
+                    label: Text(_loading ? '전송 중...' : '추가하기'),
                   ),
                 ),
               ],

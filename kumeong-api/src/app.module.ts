@@ -17,6 +17,7 @@ import { UniversityVerificationModule } from './features/university/university-v
 import { FriendsModule } from './features/friends/friends.module';
 import { ChatsModule } from './features/chats/chats.module';
 import { SystemModule } from './features/system/system.module';
+import { ProductImage } from '../src/modules/products/entities/product-image.entity';
 
 import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware';
 

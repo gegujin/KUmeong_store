@@ -14,6 +14,9 @@ import 'package:kumeong_store/features/settings/refund_account_screen.dart';
 import './edit_profile_screen.dart';
 import './password_change_screen.dart';
 
+import 'package:flutter/foundation.dart' show debugPrint; // ← 디버그 로그용
+import 'package:kumeong_store/core/network/http_client.dart'; // ← httpClient 사용
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -29,6 +32,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
         color: Colors.grey.shade500,
         letterSpacing: .2,
       );
+
+  Future<void> _authSmoke(BuildContext ctx) async {
+    try {
+      // /auth/me 호출 (SharedPreferences의 토큰을 HttpX가 자동 주입)
+      final j = await HttpX.get('/auth/me');
+
+      // { user } | { data } | { ... } 안전 추출
+      final me = (j['user'] ?? j['data'] ?? j) as Map<String, dynamic>? ?? const {};
+      final who = (me['name'] ?? me['email'] ?? me['id'] ?? 'unknown').toString();
+
+      debugPrint('AUTH ME OK: $me');
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(content: Text('AUTH OK: $who')),
+      );
+    } on ApiException catch (e) {
+      // HttpX에서 래핑된 예외 (status / bodyPreview 포함)
+      debugPrint('AUTH ME API ERROR: status=${e.status} body=${e.bodyPreview}');
+      if (!mounted) return;
+      final txt = (e.status == 401 || e.status == 419)
+          ? 'AUTH FAIL: Unauthorized (${e.status})'
+          : 'AUTH FAIL: HTTP ${e.status ?? '-'}';
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(txt)));
+    } catch (e) {
+      // 그 밖의 예외
+      debugPrint('AUTH ME ERROR: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(content: Text('AUTH FAIL: $e')),
+      );
+    }
+  }
 
   // 알림 상태
   bool _notificationsEnabled = true; // 전체 알림
@@ -70,9 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('배달 상태 알림'),
             subtitle: const Text('픽업/이동 중/도착 등 상태 업데이트'),
             value: _notifDelivery,
-            onChanged: _notificationsEnabled
-                ? (v) => setState(() => _notifDelivery = v)
-                : null,
+            onChanged: _notificationsEnabled ? (v) => setState(() => _notifDelivery = v) : null,
           ),
           ListTile(
             title: const Text('방해 금지 시간대'),
@@ -88,9 +122,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: Text(_soundModeIsSound ? '소리' : '진동'),
             subtitle: const Text('알림 음향 모드'),
             value: _soundModeIsSound,
-            onChanged: _notificationsEnabled
-                ? (v) => setState(() => _soundModeIsSound = v)
-                : null,
+            onChanged: _notificationsEnabled ? (v) => setState(() => _soundModeIsSound = v) : null,
           ),
           const Divider(height: 1),
 
@@ -221,6 +253,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
+          // ───────────────── 개발자 도구 (임시)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text('개발자 도구', style: _sectionStyle),
+          ),
+          ListTile(
+            leading: const Icon(Icons.verified_user),
+            title: const Text('🔐 Auth 스모크 테스트 (/auth/me)'),
+            subtitle: const Text('Authorization: Bearer <토큰> 주입 확인'),
+            onTap: () => _authSmoke(context),
+          ),
+          const Divider(height: 1),
+
           const SizedBox(height: 12),
         ],
       ),
@@ -229,8 +274,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // 방해 금지 시간대 선택
   Future<void> _pickDndRange() async {
-    final start =
-        await showTimePicker(context: context, initialTime: _dndStart);
+    final start = await showTimePicker(context: context, initialTime: _dndStart);
     if (!mounted || start == null) return;
     final end = await showTimePicker(context: context, initialTime: _dndEnd);
     if (!mounted || end == null) return;

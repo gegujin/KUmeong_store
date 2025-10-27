@@ -1,13 +1,15 @@
 // C:\Users\82105\KU-meong Store\lib\features\friend\friend_requests_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/base_url.dart';
-import 'dto.dart';
+import 'package:kumeong_store/core/network/http_client.dart'; // ApiException, HttpX.me()
+import 'package:kumeong_store/features/friend/data/friends_api.dart'; // friendsApi, FriendRequestRow, FriendRequestBox
+import 'package:kumeong_store/features/friend/friend_chat_screen.dart'; // FriendChatPage
 
-class FriendRequestsScreen extends StatefulWidget {
-  final String meUserId; // 👈 로그인한 내 UUID
+class FriendRequestsScreen extends ConsumerStatefulWidget {
+  // 현재 화면에선 직접 사용하지 않지만 라우팅 규격 유지용
+  final String meUserId;
 
   const FriendRequestsScreen({
     super.key,
@@ -15,46 +17,74 @@ class FriendRequestsScreen extends StatefulWidget {
   });
 
   @override
-  State<FriendRequestsScreen> createState() => _FriendRequestsScreenState();
+  ConsumerState<FriendRequestsScreen> createState() => _FriendRequestsScreenState();
 }
 
-
-class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
+class _FriendRequestsScreenState extends ConsumerState<FriendRequestsScreen> {
   bool _loading = true;
   String? _error;
-  List<FriendRequestItem> _received = [];
-  List<FriendRequestItem> _sent = [];
+  bool _busy = false; // 🔒 중복 탭 방지
+
+  List<FriendRequestRow> _received = [];
+  List<FriendRequestRow> _sent = [];
+
+  String? _meUserId;
 
   @override
   void initState() {
     super.initState();
+    _loadMe(); // ✅ 내 id 가져오기
     _refresh();
   }
 
-  Future<Map<String, String>> _authHeaders() async {
-    // TODO: JWT로 교체 시 Authorization 사용
-    return {
-      'Content-Type': 'application/json',
-      'X-User-Id': widget.meUserId, // 👈 내 UUID를 임시로 전달
-    };
+  Future<void> _loadMe() async {
+    final me = await HttpX.me(); // { id, email, ... } or null
+    if (!mounted) return;
+    setState(() {
+      _meUserId = (me?['id'] ?? '').toString();
+    });
   }
 
+  // 사람이 읽기 쉬운 에러 메시지 추출
+  String _extractErrMsg(Object e, {String fallback = '요청 처리 중 오류가 발생했어요.'}) {
+    if (e is ApiException) {
+      final preview = e.bodyPreview;
 
-  // box: incoming | outgoing
-  Future<List<FriendRequestItem>> _fetchBox(String box) async {
-    final uri = apiUrl('/friends/requests');
-    final res = await http
-        .get(uri, headers: await _authHeaders())
-        .timeout(const Duration(seconds: 15));
-    if (res.statusCode != 200) {
-      throw Exception('요청함($box) 로드 실패 ${res.statusCode}');
+      // bodyPreview에서 서버 메시지 추출 시도
+      if (preview != null && preview.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(preview);
+          if (decoded is Map<String, dynamic>) {
+            final err = decoded['error'];
+            if (err is Map && err['message'] is String && (err['message'] as String).isNotEmpty) {
+              return err['message'] as String;
+            }
+            if (decoded['message'] is String && (decoded['message'] as String).isNotEmpty) {
+              return decoded['message'] as String;
+            }
+          }
+        } catch (_) {
+          // JSON이 아니면 원문 일부를 노출
+          final t = preview.trim();
+          if (t.isNotEmpty) return t.length > 200 ? '${t.substring(0, 200)}…' : t;
+        }
+      }
+
+      // 최종 폴백: ApiException 기본 메시지 또는 상태코드
+      return (e.message.isNotEmpty) ? e.message : 'HTTP ${e.status ?? ''} 오류';
     }
-    final j = jsonDecode(res.body);
-    final list = (j is Map) ? (j['data'] as List? ?? []) : (j as List? ?? []);
-    return list
-        .map<FriendRequestItem>(
-            (e) => FriendRequestItem.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return fallback;
+  }
+
+  // 중복 탭 방지 래퍼
+  Future<void> _wrapBusy(Future<void> Function() job) async {
+    if (_busy) return;
+    if (mounted) setState(() => _busy = true);
+    try {
+      await job();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _refresh() async {
@@ -64,44 +94,91 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
       _error = null;
     });
     try {
-      final received = await _fetchBox('incoming');
-      final sent = await _fetchBox('outgoing');
+      final inc = await friendsApi.listRequests(FriendRequestBox.incoming);
+      final out = await friendsApi.listRequests(FriendRequestBox.outgoing);
       if (!mounted) return;
+
       setState(() {
-        _received = received.where((e) => e.status == 'pending').toList();
-        _sent = sent.where((e) => e.status == 'pending').toList();
+        // ⏱ 최신순 정렬 + pending만 표시
+        _received = inc.where((e) => e.status.toLowerCase() == 'pending').toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        _sent = out.where((e) => e.status.toLowerCase() == 'pending').toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+      setState(() => _error = _extractErrMsg(e));
     } finally {
       if (!mounted) return;
       setState(() => _loading = false);
     }
   }
 
-  Future<String?> _postAction(String path) async {
-    try {
-      final uri = apiUrl('/friends/requests');
-      final res = await http
-          .post(uri, headers: await _authHeaders())
-          .timeout(const Duration(seconds: 15));
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        try {
-          final j = jsonDecode(res.body);
-          final msg = (j is Map && j['message'] != null)
-              ? j['message'].toString()
-              : '실패 (${res.statusCode})';
-          return msg;
-        } catch (_) {
-          return '실패 (${res.statusCode})';
+  Future<void> _acceptRow(FriendRequestRow row) async {
+    await _wrapBusy(() async {
+      try {
+        // ✅ ID 기반 수락 → roomId 획득
+        final roomId = await friendsApi.acceptById(row.id);
+
+        _toast('요청을 수락했어요.');
+        await _refresh();
+
+        // ✅ 채팅방 바로 진입
+        if (!mounted) return;
+
+        var meId = _meUserId ?? '';
+        if (meId.isEmpty) {
+          await _loadMe();
+          meId = _meUserId ?? '';
         }
+        if (meId.isEmpty) {
+          _toast('내 사용자 정보를 불러오지 못했습니다.');
+          return;
+        }
+
+        // 상대 표시 이름(이메일 마스킹 활용)
+        final isIAmReceiver = row.toUserId == meId;
+        final rawName = isIAmReceiver ? (row.fromEmail ?? '친구') : (row.toEmail ?? '친구');
+        final friendName = _maskEmail(rawName);
+
+        // FriendChatPage로 이동 (roomId 전달)
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => FriendChatPage(
+              friendName: friendName,
+              meUserId: meId,
+              roomId: roomId,
+            ),
+          ),
+        );
+      } catch (e) {
+        _toast(_extractErrMsg(e));
       }
-      await _refresh();
-      return null;
-    } catch (e) {
-      return e.toString();
-    }
+    });
+  }
+
+  Future<void> _rejectRow(FriendRequestRow row) async {
+    await _wrapBusy(() async {
+      try {
+        await friendsApi.rejectById(row.id); // ✅ ID 기반
+        _toast('요청을 거절했어요.');
+        await _refresh();
+      } catch (e) {
+        _toast(_extractErrMsg(e));
+      }
+    });
+  }
+
+  Future<void> _cancelRow(FriendRequestRow row) async {
+    await _wrapBusy(() async {
+      try {
+        await friendsApi.cancelById(row.id); // ✅ ID 기반
+        _toast('요청을 취소했어요.');
+        await _refresh();
+      } catch (e) {
+        _toast(_extractErrMsg(e));
+      }
+    });
   }
 
   void _toast(String msg) {
@@ -113,60 +190,70 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     );
   }
 
+  // 이메일 간단 마스킹
+  String _maskEmail(String? emailOrNull) {
+    final s = emailOrNull ?? '';
+    if (!s.contains('@')) return s;
+    final parts = s.split('@');
+    final id = parts.first;
+    final dom = parts.last;
+    final head = id.length <= 2 ? id : id.substring(0, 2);
+    return '$head***@$dom';
+  }
+
   Future<void> _showSendDialog() async {
     final controller = TextEditingController();
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('친구 요청 보내기'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: '상대 학교 이메일',
-            hintText: '예) 11@kku.ac.kr',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('친구 요청 보내기'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: '이메일(아이디)',
+              hintText: '예) konkuk@kku.ac.kr',
+            ),
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
           ),
-          keyboardType: TextInputType.emailAddress,
-          autofillHints: const [AutofillHints.email],
+          actions: [
+            TextButton(
+              onPressed: _busy ? null : () => Navigator.maybePop(ctx),
+              child: const Text('닫기'),
+            ),
+            FilledButton(
+              onPressed: _busy
+                  ? null
+                  : () async {
+                      final email = controller.text.trim();
+                      if (email.isEmpty) {
+                        _toast('이메일을 입력하세요.');
+                        return;
+                      }
+                      await _wrapBusy(() async {
+                        try {
+                          // ✅ 서버 라우트: POST /friends/requests/by-email
+                          await friendsApi.requestByEmail(email);
+                          _toast('요청을 보냈어요.');
+                          if (mounted) Navigator.maybePop(ctx);
+                          await _refresh();
+                        } catch (e) {
+                          _toast(_extractErrMsg(e));
+                        }
+                      });
+                    },
+              child: const Text('보내기'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.maybePop(ctx),
-            child: const Text('닫기'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final email = controller.text.trim();
-              if (email.isEmpty) {
-                _toast('이메일을 입력하세요.');
-                return;
-              }
-              // ✅ 백엔드가 이메일을 받아 내부에서 toUserId 조회
-              final uri = apiUrl('/friends/requests');
-              final res = await http.post(
-                uri,
-                headers: await _authHeaders(),
-                body: jsonEncode({'targetEmail': email}),
-              );
-              if (res.statusCode < 200 || res.statusCode >= 300) {
-                String msg = '요청 실패 (${res.statusCode})';
-                try {
-                  final j = jsonDecode(res.body);
-                  msg = (j is Map && j['message'] != null)
-                      ? j['message'].toString()
-                      : msg;
-                } catch (_) {}
-                _toast(msg);
-                return;
-              }
-              _toast('요청을 보냈어요.');
-              if (mounted) Navigator.maybePop(ctx);
-              await _refresh();
-            },
-            child: const Text('보내기'),
-          ),
-        ],
       ),
     );
+  }
+
+  String _fmtIso(DateTime d) {
+    // 간단 표시용. 필요하면 timeago/intl로 개선 가능
+    return d.toLocal().toString().split('.').first;
   }
 
   @override
@@ -182,62 +269,57 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                   child: ListView(
                     children: [
                       const _SectionHeader('받은 요청'),
-                      ..._received.map(
-                        (e) => ListTile(
+                      if (_received.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+                          child: Text('받은 대기 요청이 없어요.'),
+                        ),
+                      for (final e in _received)
+                        ListTile(
                           leading: const Icon(Icons.mail),
-                          // ✅ 보낸 사람 → 나 (email/loginId 우선)
-                          title: Text('${e.displaySender} → 나'),
-                          subtitle: Text('요청일: ${e.createdAt}'),
+                          // 보낸 사람 → 나
+                          title: Text(
+                            '${_maskEmail(e.fromEmail).isEmpty ? e.fromUserId : _maskEmail(e.fromEmail)} → 나',
+                          ),
+                          subtitle: Text('요청일: ${_fmtIso(e.createdAt)}'),
                           trailing: Wrap(
                             spacing: 8,
                             children: [
                               OutlinedButton(
-                                onPressed: () async {
-                                  final err = await _postAction(
-                                      '/v1/friends/requests/${e.id}/reject');
-                                  if (err != null) _toast(err);
-                                },
+                                onPressed: _busy ? null : () => _rejectRow(e), // 거절
                                 child: const Text('거절'),
                               ),
                               FilledButton(
-                                onPressed: () async {
-                                  final err = await _postAction(
-                                      '/v1/friends/requests/${e.id}/accept');
-                                  if (err != null) _toast(err);
-                                },
+                                onPressed: _busy ? null : () => _acceptRow(e), // 수락
                                 child: const Text('수락'),
                               ),
                             ],
                           ),
                         ),
-                      ),
                       const _SectionHeader('보낸 요청'),
-                      ..._sent.map(
-                        (e) => ListTile(
+                      if (_sent.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 8, 16, 24),
+                          child: Text('보낸 대기 요청이 없어요.'),
+                        ),
+                      for (final e in _sent)
+                        ListTile(
                           leading: const Icon(Icons.outgoing_mail),
-                          // ✅ 나 → 받는 사람 (email/loginId 우선)
-                          title: Text('나 → ${e.displayReceiver}'),
-                          subtitle: Text('요청일: ${e.createdAt}'),
+                          // 나 → 받는 사람
+                          title: Text(
+                            '나 → ${_maskEmail(e.toEmail).isEmpty ? e.toUserId : _maskEmail(e.toEmail)}',
+                          ),
+                          subtitle: Text('요청일: ${_fmtIso(e.createdAt)}'),
                           trailing: TextButton(
-                            onPressed: () async {
-                              final err = await _postAction(
-                                  '/v1/friends/requests/${e.id}/cancel');
-                              if (err != null) _toast(err);
-                            },
+                            onPressed: _busy ? null : () => _cancelRow(e), // 취소
                             child: const Text('취소'),
                           ),
-                        ),
-                      ),
-                      if (_received.isEmpty && _sent.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Center(child: Text('대기 중인 요청이 없어요.')),
                         ),
                     ],
                   ),
                 ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showSendDialog,
+        onPressed: _busy ? null : _showSendDialog,
         label: const Text('요청 보내기'),
         icon: const Icon(Icons.person_add_alt),
       ),

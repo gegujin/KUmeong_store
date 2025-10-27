@@ -6,7 +6,7 @@ export class ProductDto {
   @ApiProperty({ example: 'uuid' }) id!: string;
   @ApiProperty({ example: '캠퍼스 패딩' }) title!: string;
   @ApiProperty({ example: 30000 }) price!: number;
-  @ApiProperty({ enum: ProductStatus, example: ProductStatus.ON_SALE }) status!: ProductStatus; // ✅ LISTED → ON_SALE
+  @ApiProperty({ enum: ProductStatus, example: ProductStatus.LISTED  }) status!: ProductStatus;
 
   @ApiPropertyOptional({ example: '거의 새상품입니다.', nullable: true })
   description?: string | null;
@@ -17,7 +17,7 @@ export class ProductDto {
   @ApiPropertyOptional({ type: [String], example: ['https://.../img1.jpg'], nullable: true })
   images?: string[] | null;
 
-  @ApiProperty({ example: 'owner-uuid' }) ownerId!: string;
+  @ApiProperty({ example: 'sellerId-uuid' }) sellerId!: string;
   @ApiProperty({ example: '2025-09-13T12:34:56.789Z' }) createdAt!: Date;
   @ApiProperty({ example: '2025-09-13T12:34:56.789Z' }) updatedAt!: Date;
 }

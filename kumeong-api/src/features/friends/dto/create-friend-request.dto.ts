@@ -2,6 +2,6 @@
 import { IsUUID } from 'class-validator';
 
 export class CreateFriendRequestDto {
-  @IsUUID('4')
+  @IsUUID('all')
   toUserId!: string;
 }
