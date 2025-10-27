@@ -1,12 +1,12 @@
-// src/features/friends/friends.service.ts
+// src/features/friends/friends.service.ts (MySQL 전용, 정리본)
 import {
   HttpException,
   HttpStatus,
   Injectable,
   BadRequestException,
   ForbiddenException,
-  NotFoundException,     // ✅ 유지
-  ConflictException,     // ✅ 유지
+  NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -16,9 +16,6 @@ import { UserBlockEntity } from './entities/user-block.entity';
 import { ERR } from './types/errors';
 import { makeId, normalizeId, isUuid } from '../../common/utils/ids';
 import { User } from '../../modules/users/entities/user.entity';
-
-// ❌ Removed: Conversation / ConversationMessage (participant_a/b column mismatch)
-// If you later migrate to a proper Conversation model, re-introduce them with a schema that exists in DB.
 
 // ─────────────────────────────────────────────────────────────
 // Utils
@@ -35,20 +32,6 @@ function assertUuidLike(v: string, field: string) {
   }
 }
 
-// /friends raw row (legacy type kept in case you need it later)
-type RawRow = {
-  friendId: string;
-  userAId: string;
-  userBId: string;
-  friendedAt: Date;
-  uAId: string;
-  uAName: string | null;
-  uAEmail: string;
-  uBId: string;
-  uBName: string | null;
-  uBEmail: string;
-};
-
 @Injectable()
 export class FriendsService {
   constructor(
@@ -63,16 +46,13 @@ export class FriendsService {
     private readonly userRepo: Repository<User>,
   ) {}
 
-  // Unified error payload: { code, message? }
+  // 통일된 에러 페이로드
   private e(
     code: keyof typeof ERR,
     status = HttpStatus.BAD_REQUEST,
     msg?: string,
   ) {
-    return new HttpException(
-      { code: ERR[code], message: msg ?? undefined },
-      status,
-    );
+    return new HttpException({ code: ERR[code], message: msg ?? undefined }, status);
   }
 
   private async isBlockedEither(a: string, b: string) {
@@ -84,8 +64,10 @@ export class FriendsService {
     });
     return cnt > 0;
   }
-  
-  // command
+
+  // ─────────────────────────────────────────────────────────────
+  // Commands
+  // ─────────────────────────────────────────────────────────────
   async sendRequest(me: string, to: string) {
     const from = normalizeId(me);
     const target = normalizeId(to);
@@ -100,21 +82,21 @@ export class FriendsService {
       throw this.e('ALREADY_FRIEND', HttpStatus.CONFLICT);
     }
 
-    // 역방향 pending 있다면 그대로 반환
+    // 역방향 PENDING 있으면 그대로 반환
     const reversePending = await this.reqRepo.findOne({
       where: { fromUserId: target, toUserId: from, status: 'PENDING' as any },
       order: { createdAt: 'DESC' },
     });
     if (reversePending) return { id: reversePending.id, status: reversePending.status, dedup: true };
 
-    // 신규 삽입 시도 — 항상 id를 **앱에서** 생성
+    // 신규 삽입 시도 — id는 앱에서 생성(MySQL: INSERT IGNORE)
     const newId = makeId();
     const ins = await this.reqRepo
       .createQueryBuilder()
       .insert()
       .into(FriendRequestEntity)
       .values({
-        id: newId,             // ★ 여기!
+        id: newId,
         fromUserId: from,
         toUserId: target,
         status: 'PENDING' as any,
@@ -122,13 +104,12 @@ export class FriendsService {
       .orIgnore()
       .execute();
 
-    const affected = (ins as any)?.raw?.affectedRows ?? (ins as any)?.affected ?? 0;
-
+    const affected = (ins as any)?.raw?.affectedRows ?? 0;
     if (affected > 0) {
       return { id: newId, status: 'PENDING', dedup: false };
     }
 
-    // 같은 방향 PENDING 이미 존재 → dedup
+    // 같은 방향 PENDING 존재 → 최신으로 dedup
     const pendingSame = await this.reqRepo
       .createQueryBuilder('r')
       .where(
@@ -141,12 +122,16 @@ export class FriendsService {
 
     if (pendingSame) return { id: pendingSame.id, status: 'PENDING', dedup: true };
 
-    // 되돌리기 허용 정책: 기존 비-PENDING을 PENDING으로 재활성화
+    // 비-PENDING이 있으면 PENDING으로 재활성화
     await this.reqRepo
       .createQueryBuilder()
       .update(FriendRequestEntity)
       .set({ status: 'PENDING' as any, decidedAt: () => 'NULL' })
-      .where('fromUserId = :from AND toUserId = :to AND status <> :s', { from, to: target, s: 'PENDING' })
+      .where('fromUserId = :from AND toUserId = :to AND status <> :s', {
+        from,
+        to: target,
+        s: 'PENDING',
+      })
       .execute();
 
     const nowPending = await this.reqRepo.findOne({
@@ -157,18 +142,12 @@ export class FriendsService {
     return { id: nowPending?.id, status: 'PENDING', dedup: true };
   }
 
-
-  // Mixed endpoint: email or UUID
-  async sendRequestMixed(
-    me: string,
-    body: { toUserId?: string; targetEmail?: string },
-  ) {
+  // email/UUID 혼합 엔드포인트
+  async sendRequestMixed(me: string, body: { toUserId?: string; targetEmail?: string }) {
     const { toUserId, targetEmail } = body ?? {};
     if (toUserId) return this.sendRequest(me, toUserId);
     const email = (targetEmail ?? '').trim().toLowerCase();
-    if (!email || !email.includes('@')) {
-      throw new BadRequestException('유효한 이메일이 아닙니다.');
-    }
+    if (!email || !email.includes('@')) throw new BadRequestException('유효한 이메일이 아닙니다.');
     return this.sendRequestByEmail(me, email);
   }
 
@@ -182,14 +161,13 @@ export class FriendsService {
     const existFriend = await this.frRepo.findOne({ where: { userAId: A, userBId: B } });
     if (existFriend) throw new ConflictException('ALREADY_FRIEND');
 
-    const newId = makeId(); // ★ 여기!
-
+    const newId = makeId();
     const insertRes = await this.reqRepo
       .createQueryBuilder()
       .insert()
       .into(FriendRequestEntity)
       .values({
-        id: newId,          // ★ 여기!
+        id: newId,
         fromUserId: me,
         toUserId: to.id,
         status: 'PENDING' as any,
@@ -197,8 +175,7 @@ export class FriendsService {
       .orIgnore()
       .execute();
 
-    const affected = (insertRes as any)?.raw?.affectedRows ?? (insertRes as any)?.affected ?? 0;
-
+    const affected = (insertRes as any)?.raw?.affectedRows ?? 0;
     if (affected === 0) {
       const pending = await this.reqRepo
         .createQueryBuilder('r')
@@ -215,14 +192,11 @@ export class FriendsService {
     return { id: newId, status: 'PENDING', dedup: false };
   }
 
-
   /**
-   * Accept friend request by requestId (UUID v1/v4 agnostic)
-   * - Validates ownership/status
-   * - Upserts friends (userAId/userBId sorted)
-   * - Upserts 1:1 chat room via (pairMinId, pairMaxId) idempotent key
-   * - Upserts members into
-   *   chatRoomMembers
+   * 친구요청 수락
+   * - 소유/상태 검증
+   * - friends upsert
+   * - 1:1 채팅방 upsert
    */
   async accept(requestId: string, meUserId: string) {
     const me = normalizeId(meUserId);
@@ -230,7 +204,7 @@ export class FriendsService {
     assertUuidLike(me, 'meUserId');
 
     return this.ds.transaction(async (trx) => {
-      // 1) 요청 행 잠금 조회
+      // 1) 요청 잠금 조회
       const fr = await trx.query(
         `
         SELECT id, fromUserId, toUserId, status
@@ -262,7 +236,7 @@ export class FriendsService {
         });
       if (blocked) throw this.e('BLOCKED', HttpStatus.FORBIDDEN);
 
-      // 3) 친구 upsert (정렬쌍) — ✅ 신규 id는 앱단 v1로 생성
+      // 3) 친구 upsert (정렬쌍)
       const [A, B] = pair(req.fromUserId, req.toUserId);
       const newFriendId = makeId();
       await trx.query(
@@ -274,14 +248,13 @@ export class FriendsService {
         [newFriendId, A, B],
       );
 
-      // 4) 친구방 보장 — ensureFriendRoom 내부도 v1(makeId) 사용하도록 이미 수정돼 있어야 함
+      // 4) 친구방 보장
       const roomId = await this.ensureFriendRoom(req.fromUserId, req.toUserId);
 
-      // 5) 요청 상태 갱신(해당 요청 + 동일 방향 PENDING 일괄 정리)
-      await trx.query(
-        `UPDATE friendRequests SET status='ACCEPTED', decidedAt=NOW() WHERE id=?`,
-        [requestId],
-      );
+      // 5) 요청 상태 갱신
+      await trx.query(`UPDATE friendRequests SET status='ACCEPTED', decidedAt=NOW() WHERE id=?`, [
+        requestId,
+      ]);
       await trx.query(
         `
         UPDATE friendRequests
@@ -301,8 +274,7 @@ export class FriendsService {
 
     const req = await this.reqRepo.findOne({ where: { id: reqId } as any });
     if (!req) throw new HttpException('Not Found', HttpStatus.NOT_FOUND);
-    if (req.status !== 'PENDING')
-      throw this.e('NOT_PENDING', HttpStatus.CONFLICT);
+    if (req.status !== 'PENDING') throw this.e('NOT_PENDING', HttpStatus.CONFLICT);
     if (req.toUserId !== meNorm) throw this.e('NOT_TARGET', HttpStatus.FORBIDDEN);
 
     req.status = 'REJECTED';
@@ -316,8 +288,7 @@ export class FriendsService {
 
     const req = await this.reqRepo.findOne({ where: { id: reqId } as any });
     if (!req) throw new HttpException('Not Found', HttpStatus.NOT_FOUND);
-    if (req.status !== 'PENDING')
-      throw this.e('NOT_PENDING', HttpStatus.CONFLICT);
+    if (req.status !== 'PENDING') throw this.e('NOT_PENDING', HttpStatus.CONFLICT);
     if (req.fromUserId !== meNorm) throw this.e('NOT_OWNER', HttpStatus.FORBIDDEN);
 
     req.status = 'CANCELED';
@@ -326,7 +297,7 @@ export class FriendsService {
   }
 
   async unfriend(me: string, peer: string) {
-    const meNorm   = normalizeId(me);
+    const meNorm = normalizeId(me);
     const peerNorm = normalizeId(peer);
     assertUuidLike(meNorm, 'meUserId');
     assertUuidLike(peerNorm, 'peerUserId');
@@ -337,7 +308,7 @@ export class FriendsService {
   }
 
   async block(me: string, target: string) {
-    const meNorm     = normalizeId(me);
+    const meNorm = normalizeId(me);
     const targetNorm = normalizeId(target);
     assertUuidLike(meNorm, 'meUserId');
     assertUuidLike(targetNorm, 'targetUserId');
@@ -354,8 +325,8 @@ export class FriendsService {
       // 양방향 pending 정리
       const pendings = await reqRepo.find({
         where: [
-          { fromUserId: meNorm,     toUserId: targetNorm, status: 'PENDING' } as any,
-          { fromUserId: targetNorm, toUserId: meNorm,     status: 'PENDING' } as any,
+          { fromUserId: meNorm, toUserId: targetNorm, status: 'PENDING' } as any,
+          { fromUserId: targetNorm, toUserId: meNorm, status: 'PENDING' } as any,
         ],
       } as any);
 
@@ -371,7 +342,7 @@ export class FriendsService {
       if (!existing) {
         await blkRepo.save(
           blkRepo.create({
-            id: makeId(), // v1
+            id: makeId(),
             blockerId: meNorm,
             blockedId: targetNorm,
           } as any),
@@ -381,7 +352,7 @@ export class FriendsService {
   }
 
   async unblock(me: string, target: string) {
-    const meNorm     = normalizeId(me);
+    const meNorm = normalizeId(me);
     const targetNorm = normalizeId(target);
     assertUuidLike(meNorm, 'meUserId');
     assertUuidLike(targetNorm, 'targetUserId');
@@ -389,9 +360,11 @@ export class FriendsService {
     await this.blkRepo.delete({ blockerId: meNorm, blockedId: targetNorm } as any);
   }
 
-  // ===== Queries =====
+  // ─────────────────────────────────────────────────────────────
+  // Queries
+  // ─────────────────────────────────────────────────────────────
 
-  // Requests (incoming/outgoing), pending only, newest first
+  // 요청함(수신/발신) — pending only
   async listRequestsBox(me: string, box: 'incoming' | 'outgoing') {
     const meNorm = normalizeId(me);
     assertUuidLike(meNorm, 'meUserId');
@@ -410,24 +383,16 @@ export class FriendsService {
         'fu.email AS fromEmail',
         'tu.email AS toEmail',
       ])
-      .where(box === 'incoming' ? 'r.toUserId = :me' : 'r.fromUserId = :me', {
-        me: meNorm,
-      })
-      // status 대소문자 무시
+      .where(box === 'incoming' ? 'r.toUserId = :me' : 'r.fromUserId = :me', { me: meNorm })
       .andWhere('LOWER(r.status) = :pending', { pending: 'pending' })
       .orderBy('r.createdAt', 'DESC');
 
     const rows = await qb.getRawMany();
-    return rows.map((r: any) => ({
-      ...r,
-      status: String(r.status ?? '').toLowerCase(),
-    }));
+    return rows.map((r: any) => ({ ...r, status: String(r.status ?? '').toLowerCase() }));
   }
 
   /**
-   * 친구 채팅방을 멱등하게 생성하고 roomId 반환
-   * - 이미 존재하면 그대로 반환
-   * - 없으면 UUID로 새 room 생성
+   * 친구 채팅방 멱등 생성 후 roomId 반환 (MySQL 전용)
    */
   async ensureFriendRoom(meId: string, peerId: string): Promise<string> {
     const me = normalizeId(meId);
@@ -438,7 +403,7 @@ export class FriendsService {
     const [A, B] = pair(me, peer);
 
     return this.ds.transaction(async (trx) => {
-      const newRoomId = makeId(); // v1 생성
+      const newRoomId = makeId();
 
       await trx.query(
         `
@@ -466,8 +431,7 @@ export class FriendsService {
   }
 
   /**
-   * Friends list (soft-deleted excluded).
-   * Returns the peer profile (id, name/email, email) and friendedAt.
+   * 친구 목록 (soft-deleted 제외) + FRIEND 룸/안읽음 집계
    */
   async listFriends(meId: string) {
     const meNorm = normalizeId(meId);
@@ -482,12 +446,35 @@ export class FriendsService {
           CASE WHEN f.userAId = ? THEN uB.email ELSE uA.email END
         ) AS peerNameOrEmail,
         CASE WHEN f.userAId = ? THEN uB.email ELSE uA.email END AS peerEmail,
-        f.createdAt AS friendedAt
+        f.createdAt AS friendedAt,
+
+        -- FRIEND 룸
+        r.id AS roomId,
+        r.lastMessageAt,
+        r.lastSnippet,
+
+        -- unreadCount: 내 readCursor 이후 메시지 수
+        (
+          SELECT COUNT(*)
+          FROM chatMessages m
+          LEFT JOIN chatReads rd
+            ON rd.roomId = r.id AND rd.userId = ?
+          LEFT JOIN chatMessages rm
+            ON rm.id = rd.lastReadMessageId
+          WHERE m.roomId = r.id
+            AND m.seq > IFNULL(rm.seq, 0)
+        ) AS unreadCount
+
       FROM friends f
       LEFT JOIN users uA ON uA.id = f.userAId
       LEFT JOIN users uB ON uB.id = f.userBId
+      LEFT JOIN chatRooms r
+        ON r.type = 'FRIEND'
+       AND r.pairMinId = LEAST(f.userAId, f.userBId)
+       AND r.pairMaxId = GREATEST(f.userAId, f.userBId)
+
       WHERE (f.userAId = ? OR f.userBId = ?)
-      ORDER BY f.createdAt DESC
+      ORDER BY (r.lastMessageAt IS NULL), r.lastMessageAt DESC, f.createdAt DESC
     `;
 
     type Row = {
@@ -496,13 +483,18 @@ export class FriendsService {
       peerNameOrEmail: string;
       peerEmail: string;
       friendedAt: string | Date;
+      roomId?: string | null;
+      lastMessageAt?: string | Date | null;
+      lastSnippet?: string | null;
+      unreadCount?: number | null;
     };
 
     const rows = (await this.ds.query(sql, [
       meNorm, // CASE
-      meNorm, // COALESCE name
-      meNorm, // COALESCE fallback email
+      meNorm, // name
+      meNorm, // fallback email
       meNorm, // peerEmail
+      meNorm, // unreadCount rd.userId
       meNorm, // WHERE
       meNorm, // WHERE
     ])) as Row[];
@@ -513,6 +505,10 @@ export class FriendsService {
       peerNameOrEmail: r.peerNameOrEmail,
       peerEmail: r.peerEmail,
       friendedAt: r.friendedAt,
+      roomId: r.roomId ?? null,
+      lastMessageAt: r.lastMessageAt ?? null,
+      lastSnippet: r.lastSnippet ?? null,
+      unreadCount: Number(r.unreadCount ?? 0),
     }));
   }
 }

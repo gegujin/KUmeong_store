@@ -1,4 +1,5 @@
 // lib/features/friend/friend_chat_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../chat/data/chats_api.dart'; // ChatApi, ChatMessage
 import '../friend/friend_screen.dart';
@@ -26,7 +27,7 @@ class FriendChatPage extends StatefulWidget {
 
 enum _MenuAction { reload, leave }
 
-class _FriendChatPageState extends State<FriendChatPage> {
+class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObserver {
   final _controller = TextEditingController();
   final _scroll = ScrollController();
 
@@ -39,6 +40,9 @@ class _FriendChatPageState extends State<FriendChatPage> {
   bool _fetching = false;
   DateTime? _lastFetchAt;
 
+  // ---- 읽음 디바운스 ----
+  Timer? _readDebounce;
+
   // ── UUID 정규화(서버 규칙과 동일) ──
   static final RegExp _uuidRe = RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
@@ -49,9 +53,7 @@ class _FriendChatPageState extends State<FriendChatPage> {
     final need = total - s.length;
     if (need <= 0) return s;
     final b = StringBuffer();
-    for (var i = 0; i < need; i++) {
-      b.writeCharCode(48);
-    }
+    for (var i = 0; i < need; i++) b.writeCharCode(48);
     b.write(s);
     return b.toString();
   }
@@ -81,6 +83,7 @@ class _FriendChatPageState extends State<FriendChatPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // ChatApi는 userId 필요
     _meUuid = _normalizeId(widget.meUserId);
@@ -94,36 +97,42 @@ class _FriendChatPageState extends State<FriendChatPage> {
       return;
     }
 
-    _api = ChatApi(_meUuid);
-    _loadInitial();
-  }
+    // ChatApi 생성 (프로젝트 시그니처에 맞게)
+    _api = ChatApi(meUserId: _meUuid);
 
-  // ✅ 마지막 메시지까지 읽음 커서를 보장하는 유틸 (뒤로가기/종료 직전 호출)
-  Future<void> _markReadLatest() async {
-    if (_messages.isEmpty) return;
-    try {
-      await _api.markRead(
-        roomId: widget.roomId,
-        lastMessageId: _messages.last.id,
-      );
-    } catch (_) {
-      // 실패는 무시(낙관적 처리)
-    }
+    // 스크롤이 바닥 닿으면 디바운스 읽음 처리
+    _scroll.addListener(() {
+      if (_isAtBottom()) _scheduleMarkRead();
+    });
+
+    _loadInitial();
   }
 
   @override
   void dispose() {
-    // ✅ 안전망: 화면 dispose 직전에도 읽음 커서 시도 (fire-and-forget)
+    // ✅ 안전망: 화면 dispose 직전에도 한 번 시도 (fire-and-forget)
     _markReadLatest();
+    _readDebounce?.cancel();
     _controller.dispose();
     _scroll.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
-    // ✅ 친구목록 갱신 트리거
+
+    // ✅ 친구목록 갱신 트리거(필요 시)
     try {
-      //context.findAncestorStateOfType<FriendScreenState>()?.refreshUnreadAll();
+      // context.findAncestorStateOfType<FriendScreenState>()?.refreshUnreadAll();
     } catch (_) {}
   }
 
+  // 앱 비활성/백그라운드 전환 직전
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _scheduleMarkRead();
+    }
+  }
+
+  // ---- 초기 로드 ----
   Future<void> _loadInitial() async {
     if (_fetching) return;
 
@@ -149,22 +158,23 @@ class _FriendChatPageState extends State<FriendChatPage> {
         limit: 50,
       );
       fetched.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-      if (mounted) {
-        setState(() {
-          _messages = fetched;
-          _messageIds
-            ..clear()
-            ..addAll(fetched.map((e) => e.id));
-        });
-      }
+      if (!mounted) return;
 
+      setState(() {
+        _messages = fetched;
+        _messageIds
+          ..clear()
+          ..addAll(fetched.map((e) => e.id));
+      });
+
+      // 하단으로 스크롤
       await Future.delayed(const Duration(milliseconds: 20));
       if (_scroll.hasClients) {
         _scroll.jumpTo(_scroll.position.maxScrollExtent);
       }
 
-      // ✅ 읽음 처리(실패 무시) → 유틸 사용으로 통일
-      await _markReadLatest();
+      // ✅ 진입 직후 읽음 처리(디바운스)
+      _scheduleMarkRead();
     } catch (e) {
       if (mounted) setState(() => _error = '메시지 불러오기 실패: $e');
     } finally {
@@ -173,6 +183,7 @@ class _FriendChatPageState extends State<FriendChatPage> {
     }
   }
 
+  // ---- 새로고침(증분) ----
   Future<void> _reload() async {
     if (_fetching) return;
     _fetching = true;
@@ -189,17 +200,20 @@ class _FriendChatPageState extends State<FriendChatPage> {
         // 중복 제거 병합
         final newOnes = fetched.where((m) => !_messageIds.contains(m.id)).toList()
           ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
         if (newOnes.isNotEmpty) {
           setState(() {
             _messages.addAll(newOnes);
             _messageIds.addAll(newOnes.map((e) => e.id));
           });
+
           await Future.delayed(const Duration(milliseconds: 20));
           if (_scroll.hasClients) {
             _scroll.jumpTo(_scroll.position.maxScrollExtent);
           }
-          // 읽음 커서(실패 무시)
-          _api.markRead(roomId: widget.roomId, lastMessageId: _messages.last.id).catchError((_) {});
+
+          // ✅ 최신까지 내려왔으면 읽음 처리(디바운스)
+          _scheduleMarkRead();
         }
       }
     } catch (e) {
@@ -209,6 +223,7 @@ class _FriendChatPageState extends State<FriendChatPage> {
     }
   }
 
+  // ---- 전송 ----
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
@@ -231,8 +246,8 @@ class _FriendChatPageState extends State<FriendChatPage> {
         _scroll.jumpTo(_scroll.position.maxScrollExtent);
       }
 
-      // 보낸 뒤에도 내 읽음 커서를 마지막으로(실패 무시)
-      _api.markRead(roomId: widget.roomId, lastMessageId: saved.id).catchError((_) {});
+      // 보낸 뒤에도 내 읽음 커서를 마지막으로(디바운스 → 과호출 방지)
+      _scheduleMarkRead();
 
       // 서버 시퀀스/다른 기기 메세지 동기화
       await _reload();
@@ -244,6 +259,47 @@ class _FriendChatPageState extends State<FriendChatPage> {
     }
   }
 
+  // ---- 읽음 처리 유틸 ----
+  bool _isAtBottom() {
+    if (!_scroll.hasClients) return false;
+    final p = _scroll.position;
+    // 약간의 여유(12px) 범위 내면 바닥으로 간주
+    return p.pixels >= (p.maxScrollExtent - 12);
+  }
+
+  void _scheduleMarkRead() {
+    if (_messages.isEmpty) return;
+    _readDebounce?.cancel();
+    _readDebounce = Timer(const Duration(milliseconds: 400), _markReadNow);
+  }
+
+  Future<void> _markReadNow() async {
+    if (_messages.isEmpty) return;
+    try {
+      // lastMessageId 생략 시 서버가 최신으로 올릴 수 있게 구현되어 있다면:
+      // await _api.markRead(widget.roomId);
+      // 확실하게 마지막까지 보장하려면 id 지정:
+      await _api.markRead(
+        roomId: widget.roomId,
+        lastMessageId: _messages.last.id,
+      );
+    } catch (_) {
+      // 실패는 무시(낙관적 처리)
+    }
+  }
+
+  // ✅ 뒤로가기/종료 직전 “최신” 보장용
+  Future<void> _markReadLatest() async {
+    if (_messages.isEmpty) return;
+    try {
+      await _api.markRead(
+        roomId: widget.roomId,
+        lastMessageId: _messages.last.id,
+      );
+    } catch (_) {}
+  }
+
+  // ---- 메뉴 ----
   Future<void> _onSelectMenu(_MenuAction action) async {
     switch (action) {
       case _MenuAction.reload:
@@ -256,9 +312,7 @@ class _FriendChatPageState extends State<FriendChatPage> {
           confirmText: '나가기',
         );
         if (ok == true && mounted) {
-          // ✅ 나가기 직전에도 읽음 커서 보장
-          await _markReadLatest();
-          // 목록 갱신 신호만 위로 — Detail이 이어서 List까지 pop(true) 처리
+          await _markReadLatest(); // ✅ 나가기 직전
           Navigator.of(context).pop(true);
         }
         break;
@@ -290,6 +344,7 @@ class _FriendChatPageState extends State<FriendChatPage> {
     );
   }
 
+  // ---- UI ----
   Widget _buildBubble(ChatMessage m) {
     final mainColor = Theme.of(context).colorScheme.primary;
     final isMine = _normalizeId(m.senderId) == _meUuid;
@@ -331,7 +386,7 @@ class _FriendChatPageState extends State<FriendChatPage> {
             // ✅ 뒤로가기 버튼으로 나갈 때도 읽음 커서 보장
             await _markReadLatest();
             if (!mounted) return;
-            Navigator.of(context).pop(true); // ← 읽음 갱신 신호
+            Navigator.of(context).pop(true);
           },
         ),
         title: Text(widget.friendName),
@@ -365,11 +420,11 @@ class _FriendChatPageState extends State<FriendChatPage> {
       ),
       body: WillPopScope(
         onWillPop: () async {
-          // ✅ 물리/제스처 뒤로가기로 나갈 때도 읽음 커서 보장
+          // ✅ 물리/제스처 뒤로가기 시에도 보장
           await _markReadLatest();
           if (!mounted) return false;
-          Navigator.of(context).pop(true); // ← 동일 신호
-          return false; // 우리가 직접 pop 했음
+          Navigator.of(context).pop(true);
+          return false; // 우리가 직접 pop 처리
         },
         child: Column(
           children: [
@@ -383,11 +438,17 @@ class _FriendChatPageState extends State<FriendChatPage> {
                             child: Text(_error!, textAlign: TextAlign.center),
                           ),
                         )
-                      : ListView.builder(
-                          controller: _scroll,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          itemCount: _messages.length,
-                          itemBuilder: (_, i) => _buildBubble(_messages[i]),
+                      : NotificationListener<ScrollEndNotification>(
+                          onNotification: (_) {
+                            if (_isAtBottom()) _scheduleMarkRead(); // ✅ 바닥 도달
+                            return false;
+                          },
+                          child: ListView.builder(
+                            controller: _scroll,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            itemCount: _messages.length,
+                            itemBuilder: (_, i) => _buildBubble(_messages[i]),
+                          ),
                         ),
             ),
             // 입력 영역

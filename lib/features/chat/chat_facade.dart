@@ -29,7 +29,7 @@ class ChatRoomFacade {
   ChatRoomFacade({
     required this.meUserId,
     required this.roomId,
-  }) : api = ChatApi(meUserId) {
+  }) : api = ChatApi(meUserId: meUserId) {
     ws = ChatWsClient.instance(meUserId);
   }
 
