@@ -9,6 +9,7 @@ export class QueryProductDto {
   @IsOptional() @IsIn(['ASC','DESC']) order: 'ASC'|'DESC' = 'DESC';
   @IsOptional() @IsString() q?: string;
   @IsOptional() @IsString() category?: string;
+  @IsOptional() @IsString() categoryPrefix?: string;
   @IsOptional() @Type(() => Number) @IsInt() priceWonMin?: number;
   @IsOptional() @Type(() => Number) @IsInt() priceWonMax?: number;
   @IsOptional() @IsEnum(ProductStatus) status?: ProductStatus;

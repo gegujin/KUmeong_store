@@ -30,19 +30,34 @@ export class ProductsService {
     const orderDir: 'ASC' | 'DESC' =
       ((q?.order ?? 'DESC').toString().toUpperCase() === 'ASC' ? 'ASC' : 'DESC');
 
-    const qb = this.repo
-      .createQueryBuilder('p')
-      .where('p.deletedAt IS NULL');
+    const qb = this.repo.createQueryBuilder('p').where('p.deletedAt IS NULL');
 
+    // 기본 상태(미지정 시 LISTED)
     const status = (q?.status as ProductStatus) ?? ProductStatus.LISTED;
     qb.andWhere('p.status = :status', { status });
 
+    // 키워드 검색(제목/설명/카테고리)
     if (q?.q) {
       qb.andWhere('(p.title LIKE :kw OR p.description LIKE :kw OR p.category LIKE :kw)', {
         kw: `%${q.q}%`,
       });
     }
-    if (q?.category) qb.andWhere('p.category = :category', { category: q.category });
+
+    // --- 카테고리 필터 ---
+    // 정확 일치가 오면 우선 적용
+    const catExact = q?.category?.trim();
+    const catPrefixRaw = !catExact ? q?.categoryPrefix?.trim() : undefined;
+
+    if (catExact) {
+      qb.andWhere('p.category = :category', { category: catExact });
+    } else if (catPrefixRaw) {
+      // %, _, \ 이스케이프 → 접두사 매칭
+      const esc = catPrefixRaw.replace(/([%_\\])/g, '\\$1');
+      const pref = `${esc}%`;
+      qb.andWhere('p.category LIKE :pref ESCAPE "\\\\"', { pref });
+    }
+
+    // 가격 범위
     if (q?.priceWonMin != null) qb.andWhere('p.priceWon >= :min', { min: Number(q.priceWonMin) });
     if (q?.priceWonMax != null) qb.andWhere('p.priceWon <= :max', { max: Number(q.priceWonMax) });
 
@@ -55,6 +70,7 @@ export class ProductsService {
     const pages = Math.max(1, Math.ceil(total / limit));
     return { items, page, limit, total, pages };
   }
+
 
   /** 단건 조회: 소프트 삭제된 레코드는 404 */
   async findOne(id: string): Promise<Product> {
@@ -70,8 +86,8 @@ export class ProductsService {
       priceWon: dto.priceWon,
       category: dto.category,
       description: dto.description,
-      status: dto.status ?? ProductStatus.LISTED,
-      sellerId, // ✅ 서버 주입
+      status: ProductStatus.LISTED,  // ✅ 기본값 보장
+      sellerId,                      // ✅ 서버에서 자동 주입
     } as DeepPartial<Product>);
 
     return this.repo.save(entity);

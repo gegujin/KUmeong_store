@@ -83,7 +83,7 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
       if (next.isAuthed && me.isNotEmpty) {
         final firstSet = _meUuid == null;
         _meUuid = me;
-        _chatApi ??= ChatApi(me);
+        _chatApi ??= ChatApi(meUserId: me);
         debugPrint('[FriendScreen] session ready, me=$_meUuid');
 
         if (firstSet && !_didFirstLoad) {
@@ -368,69 +368,76 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
                                           ? f.displayName.trim()
                                           : '친구';
 
-                                      // 상세 페이지로 이동
-                                      final changed = await Navigator.push<bool>(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => FriendDetailPage(
-                                            friendName: partnerName,
-                                            meUserId: me,
-                                            peerUserId: peerUuidNorm,
-                                          ),
-                                        ),
+                                      // ✅ 채팅방 roomId 확보(없으면 서버에서 생성)
+                                      final roomId = await _getRoomIdByPeer(peerUuidNorm);
+
+                                      // ✅ 채팅 화면으로 이동 (GoRouter 사용)
+                                      final result = await context.pushNamed(
+                                        R.RouteNames.friendChat,
+                                        extra: {
+                                          'friendName': partnerName,
+                                          'meUserId': me,
+                                          'roomId': roomId,
+                                        },
                                       );
 
                                       if (!mounted) return;
 
-                                      // ★ 낙관적 0 배지 → 짧은 지연 → 실제 재계산
-                                      if (changed == true) {
+                                      // ✅ 1) 낙관적 업데이트: 복귀 즉시 해당 친구 배지 0으로 선반영
+                                      final poppedWithRoomOk =
+                                          (result is Map && result['roomId'] == roomId) ||
+                                              (result == true);
+                                      if (poppedWithRoomOk) {
                                         _unread[peerUuidNorm] = 0;
-                                        setState(() {});
-                                        await Future.delayed(
-                                          const Duration(milliseconds: 250),
-                                        );
+                                        setState(() {}); // 즉시 반영
                                       }
 
+                                      // ✅ 2) 백엔드 재조회로 최종 동기화
                                       await _refreshUnreadAll();
-                                      setState(() {}); // 배지 즉시 반영
+                                      setState(() {}); // 최종 반영
                                     } catch (e) {
                                       if (!mounted) return;
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('친구 상세 화면으로 이동 중 오류: $e')),
+                                        SnackBar(content: Text('채팅 화면으로 이동 중 오류: $e')),
                                       );
                                     }
                                   },
 
                                   // 롱탭: 친구 상세로 이동(동일 로직 적용)
                                   onLongPress: () async {
-                                    final me = _meUuid ?? '';
-                                    final peerUuidNorm =
-                                        _normalizeId(f.userId, label: 'peerUserId');
-                                    if (me.isEmpty || peerUuidNorm.isEmpty) return;
+                                    try {
+                                      final me = _meUuid?.trim() ?? '';
+                                      final peerUuidNorm =
+                                          _normalizeId(f.userId, label: 'peerUserId').trim();
+                                      if (me.isEmpty || peerUuidNorm.isEmpty) return;
 
-                                    final changed = await Navigator.push<bool>(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => FriendDetailPage(
-                                          friendName: partnerName,
-                                          meUserId: me,
-                                          peerUserId: peerUuidNorm,
-                                        ),
-                                      ),
-                                    );
+                                      final partnerName = f.displayName.trim().isNotEmpty
+                                          ? f.displayName.trim()
+                                          : '친구';
+                                      final roomId = await _getRoomIdByPeer(peerUuidNorm);
 
-                                    if (!mounted) return;
-
-                                    if (changed == true) {
-                                      _unread[peerUuidNorm] = 0;
-                                      setState(() {});
-                                      await Future.delayed(
-                                        const Duration(milliseconds: 250),
+                                      final result = await context.pushNamed(
+                                        R.RouteNames.friendChat,
+                                        extra: {
+                                          'friendName': partnerName,
+                                          'meUserId': me,
+                                          'roomId': roomId,
+                                        },
                                       );
-                                    }
 
-                                    await _refreshUnreadAll();
-                                    setState(() {});
+                                      if (!mounted) return;
+
+                                      final poppedWithRoomOk =
+                                          (result is Map && result['roomId'] == roomId) ||
+                                              (result == true);
+                                      if (poppedWithRoomOk) {
+                                        _unread[peerUuidNorm] = 0; // 낙관적 0
+                                        setState(() {});
+                                      }
+
+                                      await _refreshUnreadAll();
+                                      setState(() {});
+                                    } catch (_) {}
                                   },
                                 );
                               },

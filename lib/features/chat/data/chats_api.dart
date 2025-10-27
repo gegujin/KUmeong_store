@@ -89,7 +89,7 @@ class ChatMessage {
 // ─────────────────────────────────────────────
 class ChatApi {
   final String meUserId;
-  ChatApi(this.meUserId);
+  ChatApi({required this.meUserId});
 
   String _normalizeRoomId(String roomId) {
     final s = roomId.trim();
@@ -106,8 +106,8 @@ class ChatApi {
     final j = await HttpX.get(
       '/chat/rooms/$rid/messages',
       query: {'sinceSeq': sinceSeq, 'limit': limit},
-      headers: {'X-User-Id': meUserId},
-      noCache: true, // ✅ 캐시 완전 무력화(웹은 __ts 쿼리, 네이티브는 헤더까지)
+      // headers: {'X-User-Id': meUserId}, // ❌ JWT 주입이면 생략
+      noCache: true,
     );
 
     final data = (j['data'] is List) ? j['data'] as List : const [];
@@ -123,11 +123,9 @@ class ChatApi {
     final j = await HttpX.postJson(
       '/chat/rooms/$rid/messages',
       {
-        'text': text,
-        'senderId': meUserId,
-        'roomId': rid,
+        'text': text, // ✅ 서버가 senderId/roomId를 JWT/파라미터로 판단
       },
-      headers: {'X-User-Id': meUserId},
+      // headers: {'X-User-Id': meUserId}, // ❌ 불필요하면 제거
     );
 
     final data = (j['data'] is Map) ? j['data'] as Map : j as Map;
@@ -137,16 +135,24 @@ class ChatApi {
   /// 읽음 커서 갱신
   Future<void> markRead({
     required String roomId,
-    required String lastMessageId,
+    String? lastMessageId, // 옵션
   }) async {
     final rid = _normalizeRoomId(roomId);
+
+    if (lastMessageId == null || lastMessageId.isEmpty) {
+      // 구버전 호환: 바디 없이 → putJson에 빈 맵 전달
+      await HttpX.putJson('/chat/rooms/$rid/read', const {});
+      return;
+    }
+
+    // 신버전: /read_cursor
     await HttpX.putJson(
       '/chat/rooms/$rid/read_cursor',
       {
         'lastMessageId': lastMessageId,
-        'userId': meUserId,
+        // 'userId': meUserId, // 서버가 JWT로 식별하면 불필요
       },
-      headers: {'X-User-Id': meUserId},
+      // headers: {'X-User-Id': meUserId}, // 필요 없으면 제거
     );
   }
 }
