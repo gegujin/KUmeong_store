@@ -22,6 +22,8 @@ export enum ProductStatus {
   SOLD = 'SOLD',
 }
 
+@Index('idx_products_category', ['category'])
+// ✅ 실제 테이블명: products
 @Entity({ name: 'products' })
 @Index('ix_products_seller', ['sellerId'])
 @Index('ix_products_createdAt', ['createdAt'])

@@ -8,7 +8,8 @@ export type NotificationType =
   | 'FRIEND_REQUEST_CANCELLED'
   | 'UNFRIENDED';
 
-@Entity('notifications')
+// ✅ 실제 테이블명: notifications
+@Entity({ name: 'notifications' })
 @Index('ix_notif_user_created', ['userId', 'createdAt'])
 export class NotificationEntity {
   @PrimaryGeneratedColumn('increment') id!: number;

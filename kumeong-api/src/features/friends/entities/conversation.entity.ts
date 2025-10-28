@@ -1,6 +1,7 @@
 // C:\Users\82105\KU-meong Store\kumeong-api\src\features\friend\entities\conversation.entity.ts
 import { Entity, Column, PrimaryColumn, CreateDateColumn, Index } from 'typeorm';
 
+// ✅ 실제 테이블명: conversations
 @Entity({ name: 'conversations' })
 @Index('uq_conv_pair', ['participantA', 'participantB'], { unique: true })
 export class Conversation {

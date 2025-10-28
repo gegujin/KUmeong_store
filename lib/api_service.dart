@@ -22,10 +22,12 @@ T? _get<T>(Object? obj, String key) {
   return null;
 }
 
-Map<String, dynamic> _asMap(dynamic v) => (v is Map<String, dynamic>) ? v : <String, dynamic>{};
+Map<String, dynamic> _asMap(dynamic v) =>
+    (v is Map<String, dynamic>) ? v : <String, dynamic>{};
 
-List<Map<String, dynamic>> _asListOfMap(dynamic v) =>
-    (v is List) ? v.whereType<Map<String, dynamic>>().toList() : <Map<String, dynamic>>[];
+List<Map<String, dynamic>> _asListOfMap(dynamic v) => (v is List)
+    ? v.whereType<Map<String, dynamic>>().toList()
+    : <Map<String, dynamic>>[];
 
 /// 유연한 JSON 루트(data / user / rows / items ...) 추출
 Map<String, dynamic> _extractDataMap(Map<String, dynamic> root) {
@@ -72,8 +74,10 @@ class ApiService {
   }
 
   // ── 즐겨찾기(찜) 목록 ─────────────────────────────────────────
-  Future<List<dynamic>> fetchMyFavoriteItems({int page = 1, int limit = 50}) async {
-    final j = await HttpX.get('/favorites', query: {'page': page, 'limit': limit});
+  Future<List<dynamic>> fetchMyFavoriteItems(
+      {int page = 1, int limit = 50}) async {
+    final j =
+        await HttpX.get('/favorites', query: {'page': page, 'limit': limit});
     return _extractList(j);
   }
 }
@@ -104,7 +108,8 @@ Future<String?> login(String email, String password) async {
   }
 }
 
-Future<String?> register(String email, String password, String name, {String? univToken}) async {
+Future<String?> register(String email, String password, String name,
+    {String? univToken}) async {
   try {
     final payload = {
       'email': _normalizeEmail(email),
@@ -138,7 +143,8 @@ Future<String?> register(String email, String password, String name, {String? un
 Future<String> resolveFriendRoomId(String peerId) async {
   final j = await HttpX.get('/chat/friend-room', query: {'peerId': peerId});
   // 응답 형태 지원: { ok:true, roomId:'...' } 또는 { data:{roomId:'...'} }
-  final roomId = _get<String>(j, 'roomId') ?? _get<String>(_extractDataMap(j), 'roomId');
+  final roomId =
+      _get<String>(j, 'roomId') ?? _get<String>(_extractDataMap(j), 'roomId');
   if (roomId == null || roomId.isEmpty) {
     throw StateError('FRIEND_ROOM_RESOLVE_FAILED');
   }
@@ -320,6 +326,90 @@ Future<List<Map<String, dynamic>>> fetchProducts(String token) async {
   } catch (e, st) {
     debugPrint('[API] 상품 조회 예외: $e\n$st');
     return [];
+  }
+}
+
+// =======================================================
+// ❤️ 즐겨찾기(찜) 토글
+//  - 우선 A) /products/{id}/favorite 시도
+//  - 404/경로없음이면 B) /favorites/toggle 로 폴백
+//  - 성공 시 true/false, 401(비로그인)이나 판별불가면 null
+// =======================================================
+Future<bool?> toggleFavoriteById(String productId) async {
+  if (productId.isEmpty) {
+    throw ArgumentError('productId is empty');
+  }
+
+  Future<bool?> _parseBool(dynamic j) async {
+    final data = (j is Map)
+        ? _extractDataMap(j.cast<String, dynamic>())
+        : <String, dynamic>{};
+    if (data['isFavorited'] is bool) return data['isFavorited'] as bool;
+    if (data['favorited'] is bool) return data['favorited'] as bool;
+    if (data['favorite'] is bool) return data['favorite'] as bool;
+
+    if (data['ok'] == true) {
+      final inner = _get<Map>(data, 'data');
+      if (inner != null) {
+        final b =
+            inner['isFavorited'] ?? inner['favorited'] ?? inner['favorite'];
+        if (b is bool) return b as bool;
+      }
+    }
+    return null;
+  }
+
+  bool _is401(dynamic j) {
+    try {
+      if (j is Map && (j['status'] == 401 || j['statusCode'] == 401))
+        return true;
+    } catch (_) {}
+    return false;
+  }
+
+  bool _isNotFoundOrRouteMissing(dynamic j) {
+    try {
+      if (j is Map) {
+        final sc = j['status'] ?? j['statusCode'];
+        if (sc == 404) return true;
+        final msg = (j['message'] ?? '').toString();
+        if (msg.contains('Cannot POST') || msg.contains('Not Found'))
+          return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  try {
+    // A) REST 스타일: /products/{id}/favorite
+    final j = await HttpX.postJson('/products/$productId/favorite', {});
+    if (_is401(j)) return null; // 비로그인 → 호출부에서 안내
+    final parsed = await _parseBool(j);
+    if (parsed != null) return parsed;
+
+    // 파싱 실패했지만 404/경로 문제면 B로 폴백
+    if (_isNotFoundOrRouteMissing(j)) {
+      // fall through to B
+    } else {
+      // 다른 원인(200이어도 포맷 불명확) → null로 반환
+      return null;
+    }
+  } catch (e) {
+    // 네트워크/서버 예외 시 B 경로로 폴백
+    debugPrint('[API] favorite(A) 예외: $e → B 경로 시도');
+  }
+
+  try {
+    // B) 토글 API: /favorites/toggle  (body로 productId 전달)
+    final j2 =
+        await HttpX.postJson('/favorites/toggle', {'productId': productId});
+    if (_is401(j2)) return null;
+    final parsed2 = await _parseBool(j2);
+    return parsed2; // 여전히 null이면 호출부에서 "로그인 필요/실패" 처리
+  } catch (e, st) {
+    debugPrint('[API] favorite(B) 예외: $e\n$st');
+    // 호출부에서 롤백/스낵바 처리하므로 여기선 예외 던지지 않고 null
+    return null;
   }
 }
 

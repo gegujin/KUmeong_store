@@ -6,6 +6,11 @@ import 'package:kumeong_store/models/latlng.dart' as model;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
+import 'dart:math' as math; // ✅ ETA 계산용
+
+// ✅ DeliveryStatus로 이동 시 Args 전달 (경로는 프로젝트에 맞게 조정)
+// 맨 위 import 구역
+import 'package:kumeong_store/features/delivery/delivery_rider_screen.dart';
 
 const Color kuInfo = Color(0xFF147AD6);
 
@@ -61,7 +66,6 @@ class _KuDeliveryDetailScreenState extends State<KuDeliveryDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
@@ -192,7 +196,7 @@ class _KuDeliveryDetailScreenState extends State<KuDeliveryDetailScreen> {
               start: widget.args.startCoord,
               end: widget.args.endCoord,
               buildMap: (context) {
-                // ▼▼▼ 나중에 실지도를 다시 켜고 싶으면 이 블록을 주석 해제하세요 ▼▼▼
+                // ▼▼▼ 실지도 표시를 원하면 이 블록을 주석 해제하세요 ▼▼▼
                 /*
                 return NaverMap(
                   options: NaverMapViewOptions(
@@ -230,9 +234,8 @@ class _KuDeliveryDetailScreenState extends State<KuDeliveryDetailScreen> {
                   },
                 );
                 */
-                // ▲▲▲ 임시 비활성화(주석 처리) 상태. 대신 아래 placeholder가 보입니다. ▲▲▲
-
-                return _MapPlaceholder(); // 현재는 플레이스홀더만 노출
+                // ▲▲▲ 현재는 플레이스홀더 표시 ▲▲▲
+                return _MapPlaceholder();
               },
             ),
           ),
@@ -247,12 +250,35 @@ class _KuDeliveryDetailScreenState extends State<KuDeliveryDetailScreen> {
             width: double.infinity,
             child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: kuInfo),
-              onPressed: () => context.pushNamed('request-delivery', extra: {
-                'title': widget.args.title,
-                'start': widget.args.start,
-                'end': widget.args.end,
-                'price': widget.args.price,
-              }),
+              // ✅ 여기만 교체됨: 확인 모달 → 네 누르면 DeliveryStatus로 이동
+              onPressed: () async {
+                final ok = await _confirmProceed(context);
+                if (ok != true) return;
+
+                // 간단 ETA 추정
+                final meters = _distanceMeters(
+                    widget.args.startCoord, widget.args.endCoord);
+                final etaMinutes = _estimateEtaMinutes(meters);
+
+                context.pushNamed(
+                  R.RouteNames.deliveryRider, // ✅ 라이더 화면 라우트 이름으로 교체
+                  extra: DeliveryRiderArgs(
+                    orderId: DateTime.now().millisecondsSinceEpoch.toString(),
+                    customerName: widget.args.sellerName, // 고객/의뢰자 명으로 쓸 값
+                    pickupName: widget.args.start,
+                    dropoffName: widget.args.end,
+                    price: widget.args.price,
+                    moveTypeText: '도보', // 필요 시 실제 이동수단으로 변경
+                    pickupCoord: widget.args.startCoord,
+                    dropoffCoord: widget.args.endCoord,
+                    productTitle: widget.args.title,
+                    imageUrl: widget.args.imageUrl,
+                    contactPhone: null, // 있으면 채워넣기
+                    route: [widget.args.startCoord, widget.args.endCoord],
+                  ),
+                );
+              },
+
               child: const Text('KU대리 진행하기',
                   style: TextStyle(color: Colors.white)),
             ),
@@ -396,4 +422,46 @@ class _MapPlaceholder extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// ✅ 추가된 유틸리티 (확인 모달, 거리/ETA 계산)
+Future<bool?> _confirmProceed(BuildContext context) {
+  return showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('배달 진행'),
+      content: const Text('배달을 진행하시겠습니까?\n진행 시 배달 현황 화면으로 이동합니다.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('아니오')),
+        FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('네')),
+      ],
+    ),
+  );
+}
+
+int _estimateEtaMinutes(double meters) {
+  // 도보 4.5km/h ≈ 75m/min, 최소 3분 ~ 최대 90분 클램프
+  final mpm = 75.0;
+  final eta = (meters / mpm).round();
+  return eta.clamp(3, 90);
+}
+
+double _distanceMeters(model.LatLng a, model.LatLng b) {
+  const R = 6371000.0; // 지구 반지름(m)
+  double _deg2rad(double d) => d * (math.pi / 180.0);
+  final dLat = _deg2rad(b.lat - a.lat);
+  final dLon = _deg2rad(b.lng - a.lng);
+  final la1 = _deg2rad(a.lat);
+  final la2 = _deg2rad(b.lat);
+
+  final h = (math.sin(dLat / 2) * math.sin(dLat / 2)) +
+      math.cos(la1) * math.cos(la2) * (math.sin(dLon / 2) * math.sin(dLon / 2));
+
+  final c = 2 * math.atan2(math.sqrt(h), math.sqrt(1 - h));
+  return R * c;
 }

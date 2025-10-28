@@ -10,7 +10,8 @@ import { randomUUID } from 'crypto';
 import { ChatMessage } from './chat-message.entity';
 import { ChatRead } from './chat-read.entity';
 
-@Entity({ name: 'chatRooms' })
+// ✅ 실제 테이블명: chatrooms
+@Entity({ name: 'chatrooms', synchronize: false })
 export class ChatRoom {
   // UUID/CHAR(36)
   @PrimaryColumn('char', { length: 36 })

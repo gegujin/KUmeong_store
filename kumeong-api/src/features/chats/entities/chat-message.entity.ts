@@ -1,4 +1,4 @@
-// C:\Users\82105\KU-meong Store\kumeong-api\src\features\chats\entities\chat-message.entity.ts
+// src/features/chats/entities/chat-message.entity.ts
 import {
   Entity,
   PrimaryColumn,
@@ -6,41 +6,45 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
-  Index,
   BeforeInsert,
 } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { ChatRoom } from './chat-room.entity';
 
-export type ChatMessageType = 'TEXT' | 'IMAGE' | 'FILE' | string;
+export type ChatMessageType = 'TEXT' | 'FILE' | 'SYSTEM' | string;
 
-@Entity({ name: 'chatMessages' })
-@Index('ix_chatMessages_room_created', ['roomId', 'createdAt', 'id'])
+// ✅ 실제 테이블명: chatMessages (camelCase) + DDL 차단
+@Entity({ name: 'chatMessages', synchronize: false })
 export class ChatMessage {
-  @PrimaryColumn('char', { length: 36 })
+  // PK
+  @PrimaryColumn('char', { length: 36, name: 'id' })
   id!: string;
 
-  @Column('char', { length: 36 })
+  @Column('char', { length: 36, name: 'roomId' })
   roomId!: string;
 
   @ManyToOne(() => ChatRoom, (r) => r.messages, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'roomId' })
   room!: ChatRoom;
 
-  @Column('char', { length: 36 })
+  @Column('char', { length: 36, name: 'senderId' })
   senderId!: string;
 
-  @Column({ type: 'varchar', length: 16, default: 'TEXT' })
+  @Column({ type: 'enum', enum: ['TEXT', 'FILE', 'SYSTEM'], name: 'type', default: 'TEXT' })
   type!: ChatMessageType;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'text', name: 'content', nullable: true })
   content?: string | null;
 
-  @Column({ type: 'varchar', length: 512, nullable: true })
+  @Column({ type: 'varchar', length: 500, name: 'fileUrl', nullable: true })
   fileUrl?: string | null;
 
-  @CreateDateColumn({ type: 'datetime', precision: 6 })
+  @CreateDateColumn({ type: 'datetime', name: 'createdAt' })
   createdAt!: Date;
+
+  // ⚠️ DB에 있는 AUTO_INCREMENT UNIQUE 컬럼 — 인덱스/제약은 DB가 관리
+  @Column('bigint', { unsigned: true, name: 'seq' })
+  seq!: string | number; // bigint라면 string으로 받아도 OK
 
   @BeforeInsert()
   assignId() {
