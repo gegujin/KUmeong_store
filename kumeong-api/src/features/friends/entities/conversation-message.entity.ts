@@ -1,6 +1,7 @@
 import { Entity, Column, PrimaryColumn, CreateDateColumn, Index } from 'typeorm';
 
-@Entity({ name: 'conversationMessages' })
+// ✅ 실제 테이블명: conversationmessages
+@Entity({ name: 'conversationmessages' })
 @Index('ix_cm_conv_created_id', ['conversationId', 'createdAt', 'id'])
 export class ConversationMessage {
   @PrimaryColumn({ type: 'char', length: 36, name: 'id' })

@@ -3,7 +3,8 @@ import { Entity, PrimaryColumn, Column, CreateDateColumn, Index } from 'typeorm'
 
 export type FriendReqStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELED';
 
-@Entity('friendRequests')
+// ✅ 실제 테이블명: friendrequests
+@Entity({ name: 'friendRequests', synchronize: false })
 @Index('uq_friend_req', ['fromUserId', 'toUserId'], { unique: true })
 @Index('ix_friend_req_to_status', ['toUserId', 'status', 'createdAt'])
 @Index('ix_friend_req_from_status', ['fromUserId', 'status', 'createdAt'])

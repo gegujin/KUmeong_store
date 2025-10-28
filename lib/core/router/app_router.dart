@@ -45,6 +45,10 @@ import 'package:kumeong_store/features/delivery/ku_delivery_detail_screen.dart'
 import 'package:kumeong_store/features/delivery/ku_delivery_signup_screen.dart'
     show KuDeliverySignupPage;
 
+// ⬇️ 이미 있는 import 유지 + gate 위젯 import가 있어야 함
+import 'package:kumeong_store/features/delivery/ku_delivery_gate.dart'
+    show KuDeliveryGate;
+
 // Settings
 import 'package:kumeong_store/features/settings/settings_screen.dart' show SettingsScreen;
 import 'package:kumeong_store/features/settings/payment_methods_screen.dart'
@@ -56,6 +60,9 @@ import 'package:kumeong_store/features/settings/app_info_screen.dart' show AppIn
 
 import 'package:kumeong_store/models/post.dart' show Product;
 import 'package:kumeong_store/core/widgets/app_bottom_nav.dart';
+
+// lib/core/router/app_router.dart
+import 'package:kumeong_store/features/delivery/delivery_rider_screen.dart'; // ⭐ 필수
 
 // ──────────────────────────────────────────────────────────────
 // Navigator Keys
@@ -255,19 +262,38 @@ final GoRouter appRouter = GoRouter(
     ),
 
     // ── Delivery
+    // ✅ KU대리: 게이트(가입 여부 확인 → 분기)
     GoRoute(
-        path: '/delivery/signup',
-        name: R.RouteNames.kuDeliverySignup,
-        builder: (context, state) => const KuDeliverySignupPage()),
+      path: '/delivery',
+      name: R.RouteNames.kuDeliveryEntry,
+      builder: (context, state) => const KuDeliveryGate(),
+    ),
+
     GoRoute(
-        path: '/delivery/feed',
-        name: R.RouteNames.kuDeliveryFeed,
-        builder: (context, state) => const KuDeliveryFeedScreen()),
+      path: '/delivery/signup',
+      name: R.RouteNames.kuDeliverySignup,
+      builder: (context, state) => const KuDeliverySignupPage(),
+    ),
+
+    GoRoute(
+      path: '/delivery/feed',
+      name: R.RouteNames.kuDeliveryFeed,
+      builder: (context, state) => const KuDeliveryFeedScreen(),
+    ),
+
     GoRoute(
       path: '/delivery/detail',
       name: R.RouteNames.kuDeliveryDetail,
       builder: (context, state) =>
           KuDeliveryDetailScreen(args: state.extra as KuDeliveryDetailArgs),
+    ),
+    GoRoute(
+      name: R.RouteNames.deliveryRider, // ✅ 위에서 쓴 이름과 동일
+      path: '/delivery/rider',
+      builder: (context, state) {
+        final args = state.extra as DeliveryRiderArgs;
+        return DeliveryRiderScreen(args: args);
+      },
     ),
     GoRoute(
       path: '/delivery/status',

@@ -147,8 +147,17 @@ export class AuthService {
   private signAccessToken(payload: JwtPayload): string {
     const secret = this.cfg.get<string>('JWT_ACCESS_SECRET', 'access_secret');
     const expiresIn = this.cfg.get<string>('JWT_ACCESS_EXPIRES_IN', '15m');
-    return this.jwt.sign(payload, { secret, expiresIn });
+    const issuer = this.cfg.get<string>('JWT_ISSUER');      // ✅ 추가
+    const audience = this.cfg.get<string>('JWT_AUDIENCE');  // ✅ 추가
+
+    return this.jwt.sign(payload, {
+      secret,
+      expiresIn,
+      ...(issuer ? { issuer } : {}),
+      ...(audience ? { audience } : {}),
+    });
   }
+
 
   /** 리프레시 토큰 발급 (stateless) */
   private signRefreshToken(payload: Pick<JwtPayload, 'sub'>): string {

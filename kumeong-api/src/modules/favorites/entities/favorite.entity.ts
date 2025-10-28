@@ -9,6 +9,7 @@ import {
 import { User } from '../../users/entities/user.entity';
 import { Product } from '../../products/entities/product.entity';
 
+// ✅ 실제 테이블명: favorites
 @Entity({ name: 'favorites' })
 export class Favorite {
   @PrimaryColumn({ type: 'char', length: 36 })

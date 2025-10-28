@@ -21,11 +21,13 @@ class RouteNames {
   static const homeDetail = productDetail;
 
   // ── KU대리
+  static const String kuDeliveryEntry = 'kuDeliveryEntry'; // ✅ 새로 추가
   static const kuDeliverySignup = 'kuDeliverySignup';
   static const deliveryStatus = 'delivery-status'; // 기존 값 유지
   static const kuDeliveryFeed = 'kuDeliveryFeed';
   static const kuDeliveryDetail = 'kuDeliveryDetail';
   static const kuDeliveryAlerts = 'kuDeliveryAlerts';
+  static const String deliveryRider = 'delivery-rider'; // ✅ 새로 추가
 
   // ── Chat
   static const chatRoom = 'chatRoom';

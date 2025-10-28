@@ -8,7 +8,8 @@ import {
 } from 'typeorm';
 import { ChatMessage } from './chat-message.entity';
 
-@Entity({ name: 'chatReceipts' })
+// ✅ 실제 테이블명: chatreceipts
+@Entity({ name: 'chatreceipts' })
 export class ChatReceipt {
   // 복합 PK
   @PrimaryColumn('char', { length: 36 })
