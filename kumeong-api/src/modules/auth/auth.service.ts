@@ -50,7 +50,7 @@ export class AuthService {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
   ) {}
 
-  // 공통 로깅 헬퍼
+  // --------- 공통 로깅 헬퍼 ---------
   private logResult(
     action: 'REGISTER' | 'LOGIN' | 'REFRESH',
     result: AuthResultCode,
@@ -68,7 +68,9 @@ export class AuthService {
     user: SafeUser;
   }> {
     const email = dto.email.trim().toLowerCase();
+
     try {
+      // 중복 이메일 체크 (삭제되지 않은 계정만)
       const exists = await this.userRepo.findOne({
         where: { email, deletedAt: IsNull() },
         select: { id: true, deletedAt: true },
@@ -90,7 +92,16 @@ export class AuthService {
       });
       await this.userRepo.save(newUser);
 
-      const safe: SafeUser = this.users.toSafeUser(newUser);
+      // SafeUser 변환 (서비스 헬퍼 있으면 사용)
+      const safe: SafeUser =
+        (this.users as any)['toSafeUser']
+          ? (this.users as any)['toSafeUser'](newUser)
+          : ({
+              id: newUser.id,
+              email: newUser.email,
+              name: newUser.name,
+              role: newUser.role as any,
+            } as SafeUser);
 
       const payload: JwtPayload = {
         sub: String(safe.id),
@@ -131,7 +142,9 @@ export class AuthService {
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      const meta = this.debug ? { email, userId: user.id, bcryptCompare: false } : { email, userId: user.id };
+      const meta = this.debug
+        ? { email, userId: user.id, bcryptCompare: false }
+        : { email, userId: user.id };
       this.logResult('LOGIN', AuthResultCode.PASSWORD_MISMATCH, meta);
       throw new UnauthorizedException('INVALID_CREDENTIALS');
     }
@@ -171,7 +184,11 @@ export class AuthService {
   ): Promise<{ accessToken: string; refreshToken: string; user: SafeUser }> {
     try {
       const safe = await this.validateUser(email, password);
-      const payload: JwtPayload = { sub: String(safe.id), email: safe.email!, role: safe.role! as unknown as UserRole };
+      const payload: JwtPayload = {
+        sub: String(safe.id),
+        email: safe.email!,
+        role: safe.role! as unknown as UserRole,
+      };
       const accessToken = this.signAccessToken(payload);
       const refreshToken = this.signRefreshToken({ sub: String(safe.id) });
       return { accessToken, refreshToken, user: safe };
@@ -227,12 +244,14 @@ export class AuthService {
     }
   }
 
-  // (선택) 개발용: 비번 리셋
+  // ---------- (선택) 개발용: 비번 리셋 헬퍼 ----------
   async resetPasswordDev(email: string, newPassword: string) {
     if (this.cfg.get<string>('NODE_ENV') !== 'development') {
       throw new ForbiddenException('dev only');
     }
-    const user = await this.userRepo.findOne({ where: { email: email.toLowerCase(), deletedAt: IsNull() } });
+    const user = await this.userRepo.findOne({
+      where: { email: email.toLowerCase(), deletedAt: IsNull() },
+    });
     if (!user) throw new NotFoundException('user not found');
 
     user.passwordHash = await bcrypt.hash(newPassword, 10);

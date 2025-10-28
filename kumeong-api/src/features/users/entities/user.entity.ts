@@ -1,10 +1,7 @@
+// kumeong-api/src/features/users/entities/user.entity.ts
 import {
-  Entity,
-  Column,
-  PrimaryColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
-  DeleteDateColumn,
+  Entity, Column, PrimaryColumn,
+  CreateDateColumn, UpdateDateColumn, DeleteDateColumn,
 } from 'typeorm';
 
 export enum UserRole {
@@ -12,44 +9,46 @@ export enum UserRole {
   ADMIN = 'ADMIN',
 }
 
-// ✅ 실제 테이블명: users
-@Entity({ name: 'users' })
+// ✅ 실제 테이블명: users (스키마 고정)
+@Entity({ name: 'users', synchronize: false })
 export class UserEntity {
-  @PrimaryColumn({ type: 'char', length: 36 })
+  @PrimaryColumn('char', { length: 36 })
   id!: string;
 
-  @Column({ length: 120, unique: true })
+  @Column({ type: 'varchar', length: 120, unique: true })
   email!: string;
 
-  @Column({ length: 100 })
+  @Column({ type: 'varchar', length: 100 })
   name!: string;
 
-  // 테이블 컬럼명: passwordHash (snake 아님)
-  @Column({ length: 255 })
+  @Column({ type: 'varchar', length: 255 })
   passwordHash!: string;
 
   @Column({ type: 'int', default: 0 })
   reputation!: number;
 
-  // 테이블에 role enum('USER','ADMIN') 이미 존재
   @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
   role!: UserRole;
 
-  // DESC 결과 기준: varchar(100)
   @Column({ type: 'varchar', length: 100, nullable: true })
   universityName?: string | null;
 
-  @Column({ type: 'tinyint', width: 1, default: false })
+  @Column({ type: 'tinyint', width: 1, default: 0 })
   universityVerified!: boolean;
 
-  // camelCase soft delete
-  @DeleteDateColumn()
+  @Column({ type: 'tinyint', width: 1, default: 0 })
+  isDeliveryMember!: boolean;
+
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  deliveryTransport?: string | null;
+
+  @DeleteDateColumn({ type: 'datetime', nullable: true })
   deletedAt?: Date | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'datetime' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'datetime' })
   updatedAt!: Date;
 }
 

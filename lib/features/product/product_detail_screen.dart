@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:kumeong_store/features/home/home_screen.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -10,55 +9,12 @@ import 'package:kumeong_store/core/theme.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
 
-// ⬇️ 서버 요청에 필요한 추가
+// 서버 요청
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:kumeong_store/api_service.dart'; // toggleFavoriteById() 사용
 
 const String baseUrl = 'http://localhost:3000/api/v1';
-
-Future<String?> _readToken() async {
-  final prefs = await SharedPreferences.getInstance();
-  return prefs.getString('accessToken');
-}
-
-/// 즐겨찾기 토글 API
-/// 성공 시 서버가 판단한 최종 상태(true/false) 반환
-/// 401 등 인증 필요하면 null 반환
-Future<bool?> toggleFavoriteById(String productId) async {
-  final token = await _readToken();
-  final headers = <String, String>{
-    'Content-Type': 'application/json; charset=utf-8',
-    if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
-  };
-
-  // ⛳️ 백엔드 라우트에 맞춰 필요시 경로 조정:
-  // 예) /favorites/{productId}/toggle  또는  /products/{id}/favorite/toggle
-  final uri = Uri.parse('$baseUrl/favorites/$productId/toggle');
-
-  final res = await http.post(uri, headers: headers);
-
-  // 인증 필요
-  if (res.statusCode == 401) return null;
-
-  // 일반 실패
-  if (res.statusCode < 200 || res.statusCode >= 300) {
-    throw '즐겨찾기 토글 실패 ${res.statusCode}: ${res.body}';
-  }
-
-  // 응답 파싱: { ok, isFavorited } or { data: { isFavorited } }
-  final obj = jsonDecode(res.body);
-  if (obj is Map) {
-    if (obj['isFavorited'] is bool) return obj['isFavorited'] as bool;
-    final data = obj['data'];
-    if (data is Map && data['isFavorited'] is bool) {
-      return data['isFavorited'] as bool;
-    }
-  }
-  return null; // 형식이 다르면 null 처리
-}
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({
@@ -78,7 +34,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   late final PageController _thumbController;
   int _thumbIndex = 0;
 
-  // '알 수 없음'도 비어 있는 값처럼 다루기 (임시 유틸)
+  // '알 수 없음'도 비어 있는 값처럼 다루기
   bool _isUnknownText(String? s) {
     if (s == null) return true;
     final t = s.trim();
@@ -91,7 +47,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   bool _creating = false; // 채팅방 생성 중
   bool _liked = true; // 찜 토글 상태
-  bool _liking = false; // 찜 토글 중복 방지
+  bool _liking = false; // 찜 토글 요청 중
 
   // ---------- 인증/요청 유틸 ----------
   Future<Map<String, String>> _authHeaders() async {
@@ -121,9 +77,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     super.initState();
     _thumbController = PageController();
 
-    // initialProduct가 있으면 일단 즉시 표시(UX 빠르게)
+    // initialProduct가 있으면 일단 즉시 표시 (UX 빠르게)
     if (widget.initialProduct != null) {
       _product = widget.initialProduct;
+      // isFavorited 동적 안전 접근
       try {
         final dyn = widget.initialProduct as dynamic;
         if (dyn != null && dyn.isFavorited is bool) {
@@ -136,6 +93,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     _loadIfNeeded();
   }
 
+  @override
+  void dispose() {
+    _thumbController.dispose();
+    super.dispose();
+  }
+
   // ✅ 실제 상세 불러오기 구현
   Future<void> _loadIfNeeded() async {
     setState(() {
@@ -146,7 +109,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     try {
       final fresh = await _fetchProduct(widget.productId);
       await _fillSellerNameIfMissing(fresh);
-
       _product = fresh;
 
       // 서버 응답에 isFavorited 반영
@@ -156,9 +118,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       } catch (_) {}
 
       setState(() {}); // 화면 갱신
-
-      // (옵션) 이름 비면 sellerId로 사용자 이름 조회
-      await _fillSellerNameIfMissing(fresh);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -195,8 +154,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   String _sellerName(Product p) {
     try {
-      if (p.seller != null && p.seller!.name.trim().isNotEmpty) {
-        final n = p.seller!.name.trim();
+      if (p.seller.name.trim().isNotEmpty) {
+        final n = p.seller.name.trim();
         return _isUnknownText(n) ? '' : n;
       }
     } catch (_) {}
@@ -228,8 +187,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   String _sellerLocation(Product p) {
     try {
-      if (p.seller != null && p.seller!.locationName.trim().isNotEmpty) {
-        return p.seller!.locationName.trim();
+      if (p.seller.locationName.trim().isNotEmpty) {
+        return p.seller.locationName.trim();
       }
     } catch (_) {}
 
@@ -289,11 +248,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   double _sellerRating(Product p) {
     try {
-      if (p.seller != null) {
-        final r = p.seller!.rating;
-        final v = (r is num ? r.toDouble() : 0.0);
-        return v.clamp(0.0, 5.0).toDouble();
-      }
+      final r = p.seller.rating;
+      final v = (r is num ? r.toDouble() : 0.0);
+      return v.clamp(0.0, 5.0).toDouble();
     } catch (_) {}
     try {
       final dyn = p as dynamic;
@@ -306,8 +263,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   String? _sellerAvatar(Product p) {
     try {
-      if (p.seller != null && p.seller!.avatarUrl.trim().isNotEmpty) {
-        return p.seller!.avatarUrl.trim();
+      if (p.seller.avatarUrl.trim().isNotEmpty) {
+        return p.seller.avatarUrl.trim();
       }
     } catch (_) {}
 
@@ -345,7 +302,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return null;
   }
 
-  // price/priceWon 호환
+  // price/priceWon 호환 (UI 표시용)
   int _getPrice(Product p) {
     try {
       final dyn = p as dynamic;
@@ -355,6 +312,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return 0;
     }
   }
+
+  // ===============================================
 
   String _formatPrice(int p) =>
       '${NumberFormat.decimalPattern('ko_KR').format(p)}원';
@@ -373,10 +332,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (_product == null && _error != null) {
       return Scaffold(body: Center(child: Text('상품을 불러오지 못했습니다: $_error')));
     }
+    if (_product == null) {
+      // 안전망
+      return const Scaffold(body: Center(child: Text('상품 데이터가 없습니다.')));
+    }
 
     final p = _product!;
 
-    // ✅ 등록자 이름: seller.name 우선, 없으면 폴백
+    // 등록자 이름: seller.name 우선, 없으면 폴백
     final String sellerName = (() {
       try {
         final n = p.seller.name;
@@ -385,11 +348,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return _sellerName(p);
     })();
 
-    // ✅ '알 수 없음'이면 빈 값으로 처리
+    // '알 수 없음'이면 화면에 빈 값으로 처리
     final String displaySellerName =
         _isUnknownText(sellerName) ? '' : sellerName;
 
-    // ✅ 등록 주소: locationText → addressText → seller.locationName → 헬퍼
+    // 등록 주소: locationText → addressText → seller.locationName → 헬퍼
     final String productAddress = (() {
       try {
         final dyn = p as dynamic;
@@ -497,8 +460,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: _SellerCard(
-                name: displaySellerName, // 등록자 이름(빈 값이면 숨김)
-                location: productAddress, // 등록 주소
+                name: displaySellerName,
+                location: productAddress,
                 rating: _sellerRating(p),
                 avatarUrl: _sellerAvatar(p),
                 colors: colors,
@@ -572,15 +535,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
           const SizedBox(height: 12),
 
-          // 태그 칩 (데모)
+          // 태그 칩 (임시)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _TagChips(tags: const ['운동용품']),
           ),
 
           const SizedBox(height: 16),
-
-          // // 내 위치 → 거래 장소 보기 (옵션)
+          // (옵션) 내 위치 → 거래 장소 보기 버튼을 쓰려면 아래 블록을 풀고 _onMapPressed를 연결하세요.
           // Padding(
           //   padding: const EdgeInsets.symmetric(horizontal: 16),
           //   child: ElevatedButton.icon(
@@ -649,7 +611,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  // ✅ 채팅방 생성 → 채팅방으로 이동 (API 연동 지점)
+  // ✅ 채팅방 생성 → 채팅방으로 이동 (임시 roomId)
   Future<void> _onStartChatPressed() async {
     final p = _product!;
     try {
@@ -674,6 +636,82 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
+  // ❤️ 찜 토글 (낙관적 업데이트 + 실패 롤백)
+  Future<void> _toggleLike() async {
+    if (_liking) return;
+    setState(() => _liking = true);
+
+    final String id = widget.productId;
+    if (id.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('상품 ID를 찾지 못했어요.')),
+      );
+      setState(() => _liking = false);
+      return;
+    }
+
+    // 낙관적 UI 업데이트
+    final prev = _liked;
+    setState(() => _liked = !prev);
+
+    try {
+      final next = await _apiToggleFavorite(id); // bool? 기대
+      if (next == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로그인이 필요하거나 요청이 실패했어요.')),
+        );
+      } else if (next != _liked) {
+        if (!mounted) return;
+        setState(() => _liked = next);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _liked = prev); // 롤백
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('실패: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _liking = false);
+    }
+  }
+
+  // 토글 API: 성공 시 최종 상태(true/false), 인증 필요/형식 불일치 시 null
+  Future<bool?> _apiToggleFavorite(String productId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final headers = <String, String>{
+      'Content-Type': 'application/json; charset=utf-8',
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+    };
+
+    // ⛳️ 백엔드 라우트에 맞춰 필요시 경로 조정
+    final uri = Uri.parse('$baseUrl/favorites/$productId/toggle');
+
+    final res = await http.post(uri, headers: headers);
+
+    // 인증 필요
+    if (res.statusCode == 401) return null;
+
+    // 일반 실패
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw '즐겨찾기 토글 실패 ${res.statusCode}: ${res.body}';
+    }
+
+    // 응답 파싱: { ok, isFavorited } or { data: { isFavorited } }
+    final obj = jsonDecode(res.body);
+    if (obj is Map) {
+      if (obj['isFavorited'] is bool) return obj['isFavorited'] as bool;
+      final data = obj['data'];
+      if (data is Map && data['isFavorited'] is bool) {
+        return data['isFavorited'] as bool;
+      }
+    }
+    return null;
+  }
+
+  // --- 지도/위치 유틸 (옵션) ---
   Future<void> _onMapPressed() async {
     if (!mounted) return;
     final p = _product!;
@@ -743,6 +781,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     throw '네이버 지도를 열 수 없습니다.';
   }
 
+  // --- 판매자 이름 보정 ---
   Future<String?> _fetchUserNameById(String userId) async {
     if (userId.isEmpty) return null;
     final uri = Uri.parse('$baseUrl/users/$userId');
@@ -761,8 +800,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Future<void> _fillSellerNameIfMissing(Product p) async {
     final currentName = p.seller.name.trim();
     final sellerId = p.seller.id.trim();
-    // '알 수 없음'도 빈 값으로 간주
-    if (!_isUnknownText(currentName)) return;
+    if (!_isUnknownText(currentName)) return; // '알 수 없음'도 빈 값으로 간주
     if (sellerId.isEmpty) return;
 
     final fetched = await _fetchUserNameById(sellerId);
@@ -773,50 +811,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       _product = p.copyWith(seller: p.seller.copyWith(name: fetched));
     });
   }
-
-  // ❤️ 찜 토글 (낙관적 업데이트 + 실패 롤백)
-  Future<void> _toggleLike() async {
-    if (_liking) return;
-    setState(() => _liking = true);
-
-    final String id = widget.productId;
-    if (id.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('상품 ID를 찾지 못했어요.')),
-      );
-      setState(() => _liking = false);
-      return;
-    }
-
-    // 낙관적 UI 업데이트
-    final prev = _liked;
-    setState(() => _liked = !prev);
-
-    try {
-      final next = await toggleFavoriteById(id); // bool? 기대
-      if (next == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('로그인이 필요하거나 요청이 실패했어요.')),
-        );
-      } else if (next != _liked) {
-        if (!mounted) return;
-        setState(() => _liked = next);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _liked = prev); // 롤백
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('실패: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _liking = false);
-    }
-  }
 }
 
-/// 판매자 카드 (값 없으면 숨김, 기본 문구 없음)
+// ======================= Sub Widgets =======================
+
 class _SellerCard extends StatelessWidget {
   const _SellerCard({
     required this.name,
@@ -845,7 +843,6 @@ class _SellerCard extends StatelessWidget {
           backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
               ? NetworkImage(avatarUrl!)
               : null,
-          // 이름 첫 글자도 데이터가 있을 때만 표시
           child: (avatarUrl == null || avatarUrl!.isEmpty)
               ? (name.isNotEmpty
                   ? Text(
@@ -863,7 +860,6 @@ class _SellerCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 이름 + '판매자' 뱃지 (이름이 있을 때만 노출)
               if (name.isNotEmpty)
                 Row(
                   mainAxisSize: MainAxisSize.min,
@@ -899,10 +895,7 @@ class _SellerCard extends StatelessWidget {
                     ),
                   ],
                 ),
-
               if (name.isNotEmpty) const SizedBox(height: 4),
-
-              // 위치(문구 없이, 값 있을 때만 표시)
               if (location.isNotEmpty)
                 Text(
                   location,
@@ -915,7 +908,7 @@ class _SellerCard extends StatelessWidget {
           ),
         ),
 
-        // 오른쪽: 별 + 신뢰 지수 (점수는 그대로)
+        // 오른쪽: 별 + 신뢰 지수
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
@@ -960,7 +953,6 @@ class _SellerCard extends StatelessWidget {
   }
 }
 
-/// 태그 칩 (원래 컴포넌트)
 class _TagChips extends StatelessWidget {
   const _TagChips({required this.tags});
   final List<String> tags;
@@ -991,7 +983,6 @@ class _TagChips extends StatelessWidget {
   }
 }
 
-/// 전체 화면 이미지 갤러리 (원래 UI)
 class PhotoGalleryPage extends StatefulWidget {
   const PhotoGalleryPage({
     super.key,

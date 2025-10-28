@@ -1,0 +1,5 @@
+[33m94c1bec2[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mrecover/clean[m[33m)[m recover: staged fixes from restore-pre-pull
+[33m32eac615[m Restore my local work (pre-pull 2025-10-27)
+[33m493b4fc4[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m feat: 합본 중 1(sql 합본 및 친구기능 다듬는 중)
+[33mf7ab3675[m chore: ignore large zip files
+[33mfd990d00[m stop tracking kumeong-api.zip

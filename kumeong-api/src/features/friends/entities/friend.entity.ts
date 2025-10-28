@@ -7,7 +7,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryColumn } from 'typeorm'
  * - pairMinId, pairMaxId : DB 가상 컬럼 (LEAST/GREATEST)
  * - UNIQUE (pairMinId, pairMaxId)는 DB 스키마에서 보장(엔티티에서는 select=false)
  */
-@Entity({ name: 'friends' })
+@Entity({ name: 'friends', synchronize: false })
 export class FriendEntity {
   @PrimaryColumn({ type: 'char', length: 36 })
   id!: string;

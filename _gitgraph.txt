@@ -1,0 +1,181 @@
+* 94c1bec2 (HEAD -> recover/clean) recover: staged fixes from restore-pre-pull
+* 32eac615 Restore my local work (pre-pull 2025-10-27)
+| * 0d7bc6bc (restore-pre-pull) recover: staged fixes from restore-pre-pull
+| * 4532fb74 WIP: messy state before recovery
+| | * 063a4fb6 (wip/recovery) WIP: messy state before recovery
+| | * 6c56eb6b test: pre-commit hook OK
+| |/  
+|/|   
+| * 2c9ea288 Restore my local work (pre-pull 2025-10-27)
+| | * f6f70937 (main) WIP: before restore-pre-pull
+| | | * cc8fbb5b (origin/feat/db-api-harmonize) chore: stop tracking huge zip blobs
+| | | * 9f09626a chore: stop tracking huge zip blobs
+| |_|/  
+|/| |   
+* | | 493b4fc4 (origin/main, origin/HEAD) feat: 합본 중 1(sql 합본 및 친구기능 다듬는 중)
+| |/  
+|/|   
+| | * 595db475 (origin/feat/bootstrap) feat: 합본 중 1(sql 합본 및 친구기능 다듬는 중)
+* | | f7ab3675 chore: ignore large zip files
+* | | fd990d00 stop tracking kumeong-api.zip
+| | * fe81ea33 feat : 친구기능 완료
+* | | 6fd57f97 feat : 친구기능 완료
+* | | cf15d8ca Merge 후 Stash 내용 적용 및 작업 재개
+| * | 17f8c7dd 관심목록, ui 수정
+* | | 683a6fa6 관심목록, ui 수정
+| * | 1b4c038c 관심상품 등록 일부 완성
+* | | ea2c618c 관심상품 등록 일부 완성
+| * | 4e097a63 카테고리 연결 성공
+* | | 85d6573e 카테고리 연결 성공
+| * | 61c5ca6e home 상품 등록 성공
+* | | cc313467 home 상품 등록 성공
+| * | 26a80347 상품 등록 성공(썸네일,위치 제외)
+* | | d90dcb99 상품 등록 성공(썸네일,위치 제외)
+| * | 15dd5f98 상품등록 로그인 성공
+* | | 634a3429 상품등록 로그인 성공
+| | * 872aa914 feat(auth,university): 학교 이메일 인증 기반 회원가입/로그인 플로우 완성
+| * | dbc31296 feat(auth,university): 학교 이메일 인증 기반 회원가입/로그인 플로우 완성
+* | | 0d644e4e feat(auth,university): 학교 이메일 인증 기반 회원가입/로그인 플로우 완성
+| | * 46cc34c3 feat : 이건 커밋받지마
+| | * ec27f870 feat : 이건 커밋받지마
+| * |   5a500916 Merge branch 'main' of https://github.com/gegujin/KUmung_store
+| |\ \  
+* | \ \   ad043fe0 Merge branch 'main' of https://github.com/gegujin/KUmung_store
+|\ \ \ \  
+| | | | * 0261a028 feat : 이건 커밋받지마
+| | * | | d4f50a73 feat : 이건 커밋받지마
+* | | | | e2975106 feat : 이건 커밋받지마
+| | | * | 3807f981 로그인 오류 해결
+| | |/ /  
+| * / / 078a8213 로그인 오류 해결
+|/ / /  
+| | * 92906d32 합본 수정1
+| * | 96a1a8bd 합본 수정1
+* | | b83be58f 합본 수정1
+| * | 5145fed9 Resolve merge; ignore upload dirs and keep placeholders
+* | | 84bc649a Resolve merge; ignore upload dirs and keep placeholders
+| | * cf72cf0d Merge branch 'main' of https://github.com/gegujin/KUmung_store
+| * |   34355c58 Merge branch 'main' of https://github.com/gegujin/KUmung_store
+| |\ \  
+* | \ \   63956805 Merge branch 'main' of https://github.com/gegujin/KUmung_store
+|\ \ \ \  
+| | * | | f659edac feat : 친구 기능 추가
+* | | | | 796d5cd6 feat : 친구 기능 추가
+| | | | * 39e21821 feat : 친구 기능 추가
+| | | * | 72e6706a 상품 등록 가능, 홈 화면 상품 등록 일부 가능
+| * | | | b270e775 상품 등록 가능, 홈 화면 상품 등록 일부 가능
+| | | | * 52b4c422 feat : 학교이메일 인증코드 수령 방법 수정과 그로인한 회원가입 수정
+| | * | | ea101a75 feat : 학교이메일 인증코드 수령 방법 수정과 그로인한 회원가입 수정
+| | |/ /  
+* | / / 68d74c6f feat : 학교이메일 인증코드 수령 방법 수정과 그로인한 회원가입 수정
+|/ / /  
+| * | b8cd6827 feat :  학교 이메일 인증 완료
+* | | 422437f5 feat :  학교 이메일 인증 완료
+| | * 287e4d3b feat :  학교 이메일 인증 완료
+| * | 56d99ba4 feat : 학교 이메일 인증 3단계
+* | | 527d10ff feat : 학교 이메일 인증 3단계
+| | * 365f130e feat : 학교 이메일 인증 3단계
+| | * 9abfe7dd school improve code1
+| * | 2f215688 school improve code1
+* | | 03e0e020 school improve code1
+| * | 66a67133 feat : 학교인증 6
+* | | 6107c52d feat : 학교인증 6
+| * | 9c53bb66 chore(secrets): stop tracking dumped sql & dev env file
+* | | 1c933f98 chore(secrets): stop tracking dumped sql & dev env file
+| | * 2959a20f feat : 학교인증 6
+| | * 4d18261c feat : 학교인증 5
+| | * 8362493c feat : 학교인증 과정 4
+| * |   f129b638 Merge branch 'main' of https://github.com/gegujin/KUmung_store
+| |\ \  
+* | \ \   5e68b4e8 Merge branch 'main' of https://github.com/gegujin/KUmung_store
+|\ \ \ \  
+| | |/ /  
+| |/| |   
+| | * | 9b52aebf feat : 학교인증 만드는 중 4
+* | | | 631794e3 feat : 학교인증 만드는 중 4
+| | | * 7fdfa357 feat : 학교인증 만드는 중 4
+| * | | e6089998 수정
+| * | |   5b08047a 회원가입, 로그인 백엔드 연결 / 충돌 해결 후 커밋
+| |\ \ \  
+| |/ / /  
+|/| | |   
+| * | | 8763ebe7 로그인, 회원가입 백엔드 연결
+| | * | c16332af test: pre-commit hook OK
+| |/ /  
+|/| |   
+* | | 212c8207 chore(cleanup): finalize EOL & ignore rules; add android/local.properties.example; remove stop/dir
+* | | d5a2ef7d chore: enforce LF for .gitattributes and my.cnf.example
+* | | 59d4c5da chore: add .gitattributes (normalize line endings)
+* | | 64788704 chore(secrets): untrack my.cnf and add my.cnf.example
+* | | 5229c222 chore(cleanup): untrack generated/local/secrets
+* | | f7dd4ddb chore(repo): tighten .gitignore (Flutter/Android/Node/secrets)
+|/ /  
+* | a7f01fd6 로그인 성공
+* | 2952134c feat : 뭔데 이렇게 파일이 많지?
+* |   1ef6b819 서버 수정
+|\ \  
+* | | 294372b8 서버 고치기
+| | * d89c1b18 feat : 이메일 인증 과정 3
+| * | 4e99bf2b feat : 이메일 인증 과정 3
+| * | ef88dd9f feat : 학교 이메일 인증 구현중 2
+| | * 054f240c feat : 학교 이메일 인증 구현중 2
+| | * 62d87a78 feat : 학교 인증 알고리즘 구현 중
+| * | 385e17a8 feat : @kku.ac.kr 이메일 인증하는 과정 중
+|/ /  
+| * 5678bf6f feat : .env 등 로그인, 회원가입가능하게 수정
+* | cd9933d2 feat : main.ts 수정
+| * e760a50b feat : 이게 뭐지?
+* | 1a31ff7f api 추가
+| | * d572eb5d (origin/feat/auth-login) fix(auth): add Env.apiBase/Uri, LoadingSpinner; fix login request & error handling
+| | * e2379023 chore: first commit from existing folder
+* | | c2dae27f kumeong-api
+* | | 2bf39aac kumeong-api 추가
+* | | c4ceebba api 추가
+| | * ba264ebe feat(auth): wire login screen to AuthApi.login and route to /
+| | * 4d036bb2 chore(deps): add http as direct dependency
+| | * cef05e89 feat(auth): add env config & /auth/login API client
+| | * 90824dcd chore(submodule): untrack kumeong-api (frontend-only repo); ignore local backend folder
+| | * 443a9c58 chore(submodule): ignore untracked for kumeong-api in git status
+| | * 6886c404 feat(auth): 로그인 화면 및 /auth/login 연동 추가
+| * f07cd2c4 ﻿feat(build): Nest 11/TypeORM 0.3 정합 및 환경별 실행 스크립트 추가 feat(tsconfig): moduleResolution/node·rootDir/outDir 등 기본 옵션 정리 feat(env): .env.example 추가 및 .gitignore에 env/data 제외 규칙 반영 feat(config): envFilePath로 .development/.test/.production 자동 로드 feat(database): mysql/sqlite 스위치 가능한 DatabaseModule 도입(SnakeNamingStrategy·migrationsRun/sync 제어) feat(api): AppModule 단일 연결(TypeOrmModule.forRootAsync)·DB_KIND 분기·SQLite 경로 사용·env.validation 조건부 검증 feat(users): User 엔티티에 role(USER/ADMIN) 추가 및 이메일 소문자 정규화·createdAt 인덱스 feat(users): UsersModule/Controller/Service 구성(해시 저장·안전 조회) feat(types): SafeUser 타입 도입 및 Express Request.user 보강 feat(auth): JwtStrategy/Guard 개선(@Public/@CurrentUser·OptionalJwt 지원, JWT payload/응답에 role 포함) feat(auth-dto): Register/Login DTO 검증 및 Swagger 예시 추가 feat(products-entity): Product 엔티티(SQLite 호환) — owner_id FK·status(simple-enum)·images(simple-json)·타임스탬프·인덱스(ownerId/createdAt/price) feat(products-guard): OwnerGuard 추가(소유자만 수정/삭제, ADMIN 우회) feat(products-api): 공개 라우트(@Public)와 보호 라우트(@UseGuards JwtAuthGuard, OwnerGuard) 분리·생성 시 owner 주입·Swagger 스키마 정리 feat(products-list): QueryProductDto 도입(페이지/정렬/검색/필터) 및 findAll 페이지네이션 응답(OkPageProductDto 문서화) feat(api-core): 전역 성공 응답 인터셉터·글로벌 예외 필터 적용 + ValidationPipe 암묵 변환 활성화 feat(repo-clean): 잘못된 파일(uery-product.dto.ts) 제거·list-products.query.ts → QueryProductDto로 통일 feat(dev-docs): VS Code REST Client용 test.http 및 README 로컬 실행 가이드 추가
+| * 6a969f50 chore: initial code import
+| * e8331e84 chore(repo): add .gitignore
+* 0aa2465a sql 추가
+* 137084ed feat : 설정페이지 라우터 수정
+* 7dbb2b47 마이페이지, 배달 현황, 구매 내역 수정
+* 10734cd4 feat(nav,delivery): 홈/카테고리 하단바 정리 및 KU대리 네비게이션 수정
+* 1932e523 feat : 라우터 수정
+* 10ae3da5 feat : 찜 목록 수정과 디테일 수정(하트활성화)
+* 501c4289 feat : 라우터 누락사항 추가
+* f6db9876 feat : hero 오류로 인한 라우터 수정으로 인해 전반적인 수정
+* 4ea063e1 디자인 수정
+* 2203ab4f KU대리 리스트 수정
+* bf0180d5 KU대리 회원가입 추가
+* 3ab0ffe0 feat : 충돌이 나서 수정함
+* 44bab914 feat : 서브페이지에서 루트페이지로 이동할 수 있게 수정(충돌이 나서 수정함)
+* 9a013737 fix(settings): rename SettingsPage -> SettingsScreen and unify references
+* 4b83bdc9 KU 페이지 추가
+*   923b5b17 Merge origin/main: resolve conflicts (prefer ours) in home/mypage/settings
+|\  
+* \   44f34258 Merge origin/main into main: resolve conflicts in mypage/settings; add delivery & settings screens
+|\ \  
+| | * b562ab00 KU 페이지 추가
+| |/| 
+* | | c91c6b81 feat : home 주석 삭제
+| |/  
+|/|   
+| * 50c88636 mypage, settings, ku_delinvery 수정
+* | 4e2ff679 feat : home – FAB 2개 제거하고 오버레이 세로 메뉴(상품등록/KU대리) 추가, 바깥탭·X로 닫기, AppBar 옵션 정리 buy – 거래수단 태그 적용, KU대리 진행중 시 ‘배달 현황 보기’(kuInfo 색) 노출, 완료 시 ‘리뷰 작성하기’ 이동, 데모데이터 조정 delivery-status – 위치 카드 추가(‘네이버 지도로 보기’), 모바일 실지도/웹 플레이스홀더, 거리·예상시간 표시, 길찾기 오픈(url_launcher) settings – 섹션 순서 재정렬(알림설정>결제·정산>계정관리>고객지원>기타) + DND 시간대 + 소리/진동 통합 스위치(배지 제거) + 로그아웃/회원탈퇴 플로우(LoginPage) router – delivery-status 네임드 라우트 사용 및 로그인 초기 라우트 정비 common – Haversine 거리계산(dart:math) 및 KRW 포맷 유틸 추가/정리
+* | 7c5d9547 feat : 하단바 수정완료(GoRouter 수정)
+|/  
+* 2ccb09e7 새로운 화면 및 기능 추가
+* f5056b9b feat(nav): 공용 AppBottomNav 4탭(홈/채팅/관심목록/마이페이지) 도입 및 HomePage 적용 feat(route): /favorites 라우트 추가 및 HeartPage 연결 fix(mypage): 하단바 활성 인덱스 3으로 수정(홈→마이페이지) docs(nav): 카테고리/하위 카테고리 하단바 유지용 ShellRoute 설계안 추가
+*   56c313b2 Merge branch 'main' of https://github.com/gegujin/KUmung_store
+|\  
+* | c4c3c653 feat: 주석 삭제
+| * a9f16d7b 새로운 화면 및 기능 추가
+|/  
+* c962e6ce 새로운 화면 및 기능 추가
+* a4620ce6 새로운 화면 및 기능 추가
+* 58e04817 chore: ignore android/local.properties and add example file
+* 39c5bbd3 chore: initial commit with proper ignores

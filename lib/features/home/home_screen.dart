@@ -1,22 +1,29 @@
-import 'dart:convert';
-import 'dart:io';
+// C:\KUmung_store\lib\features\home\home_screen.dart
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:kumeong_store/models/post.dart';
 import 'package:kumeong_store/core/ui/hero_tags.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
-
-import '../product/product_list_screen.dart';
-import '../home/alarm_screen.dart';
-import '../mypage/mypage_screen.dart';
-import 'package:kumeong_store/core/widgets/app_bottom_nav.dart';
+import 'package:kumeong_store/core/widgets/app_bottom_nav.dart'; // 쓰면 유지, 안 쓰면 제거해도 됨
 import '../../core/theme.dart';
 import '../../api_service.dart';
 import 'dart:html' as html; // Web 전용 localStorage
 
 const Color kuInfo = Color(0xFF147AD6);
+
+// ✅ 로컬 데모 상품 (Product/demoProduct 의존 제거)
+const Map<String, dynamic> kDemoProduct = {
+  'id': 'demo-product',
+  'title': '데모 상품',
+  'imageUrls': <String>[],
+  'location': '위치 정보 없음',
+  'time': '',
+  'price': 0,
+  'isLiked': false,
+  'likes': 0,
+  'views': 0,
+};
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -38,7 +45,7 @@ class _HomePageState extends State<HomePage>
     _loadTokenAndProducts();
   }
 
-  /// ✅ 수정 ①: 비동기 로딩 구조 개선
+  /// ✅ 토큰 + 상품 로드
   Future<void> _loadTokenAndProducts() async {
     if (kIsWeb) {
       token = html.window.localStorage['accessToken'];
@@ -47,19 +54,18 @@ class _HomePageState extends State<HomePage>
       token = prefs.getString('accessToken');
     }
 
-    final products = <Map<String, dynamic>>[_toHomeMap(demoProduct)];
+    // 데모 1개로 초기화
+    final products = <Map<String, dynamic>>[_toHomeMap(kDemoProduct)];
 
     if (token != null) {
       try {
-        final productsFromApi = await fetchProducts(token!); // ← 실제 호출
-        // Product이면 _toHomeMap이 내부에서 toMapForHome() 호출, Map이면 필드 정규화
+        final productsFromApi = await fetchProducts(token!); // 실제 호출
         products.addAll(productsFromApi.map(_toHomeMap));
       } catch (e) {
         debugPrint('상품 불러오기 오류: $e');
       }
     }
 
-    // 비동기 완료 후 한 번만 setState 호출
     setState(() {
       allProducts = products;
     });
@@ -78,9 +84,8 @@ class _HomePageState extends State<HomePage>
     setState(() => _isMenuOpen = !_isMenuOpen);
   }
 
+  // ✅ Map 기반 정규화 (Product 타입 제거)
   Map<String, dynamic> _toHomeMap(dynamic src) {
-    if (src is Product) return src.toMapForHome();
-
     if (src is Map) {
       final m = Map<String, dynamic>.from(src);
 
@@ -142,10 +147,11 @@ class _HomePageState extends State<HomePage>
         'isLiked': (m['isLiked'] ?? m['favorited'] ?? false) == true,
         'likes': _toInt(likes),
         'views': _toInt(views),
+        'seller': m['seller'], // 위치 폴백용
       };
     }
 
-    // 알 수 없는 타입
+    // 알 수 없는 타입 폴백
     return {
       'id': 'unknown',
       'title': '',
@@ -218,7 +224,7 @@ class _HomePageState extends State<HomePage>
 
               final title = product['title'] as String? ?? '';
 
-              /// ✅ 수정: locationName이 비어있으면 seller.locationName 사용
+              /// ✅ locationName이 비어있으면 seller.locationName 사용
               final locationValue = product['location'];
               String location = '';
               if (locationValue is Map) {
@@ -337,7 +343,7 @@ class _HomePageState extends State<HomePage>
             },
           ),
 
-          /// ✅ FAB 외부 탭시 닫기 처리
+          /// ✅ FAB 외부 탭 시 닫기
           if (_isMenuOpen)
             Positioned.fill(
               child: GestureDetector(
@@ -358,7 +364,6 @@ class _HomePageState extends State<HomePage>
               child: AnimatedOpacity(
                 opacity: _isMenuOpen ? 1 : 0,
                 duration: const Duration(milliseconds: 200),
-                // ... AnimatedOpacity(
                 child: _MenuCard(
                   children: [
                     _MenuItem(
@@ -367,7 +372,7 @@ class _HomePageState extends State<HomePage>
                       label: 'KU대리',
                       onTap: () {
                         _toggleFabMenu();
-                        // ✅ 게이트로 진입 → membership 확인 후 자동 분기
+                        // ✅ 게이트 라우트로 진입 → membership 확인 후 자동 분기
                         context.goNamed(R.RouteNames.kuDeliveryEntry);
                       },
                     ),
@@ -379,16 +384,16 @@ class _HomePageState extends State<HomePage>
                       onTap: () async {
                         _toggleFabMenu();
                         if (!mounted) return;
-                        final Product? newProduct =
-                            await context.pushNamed<Product>(
+
+                        // ✅ Product 제네릭 제거 → dynamic 수신 후 _toHomeMap으로 반영
+                        final dynamic newProduct = await context.pushNamed(
                           R.RouteNames.productEdit,
                           pathParameters: {'productId': 'demo-product'},
                         );
 
-                        /// ✅ 등록된 상품 즉시 반영
                         if (newProduct != null && mounted) {
                           setState(() {
-                            final newMap = newProduct.toMapForHome();
+                            final newMap = _toHomeMap(newProduct);
                             allProducts.insert(0, newMap);
                           });
                         }
@@ -467,9 +472,11 @@ class _MenuItem extends StatelessWidget {
             Icon(icon, color: iconColor, size: 26),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(label,
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w700)),
+              child: Text(
+                label,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
             ),
           ],
         ),

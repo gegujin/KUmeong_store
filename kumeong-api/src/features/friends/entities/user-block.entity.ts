@@ -1,16 +1,15 @@
 // kumeong-api/src/features/friends/entities/user-block.entity.ts
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
+import { Column, CreateDateColumn, Entity, PrimaryColumn, Unique } from 'typeorm';
 
 /**
- * userBlocks 테이블
- * - PK: BIGINT (자동 증가)
+ * userBlocks 테이블 (UUID PK)
+ * - blockerId / blockedId : 차단 관계
  * - UNIQUE(blockerId, blockedId)
  */
-@Entity({ name: 'userBlocks' })
+@Entity({ name: 'userBlocks', synchronize: false })
 @Unique('uq_user_block', ['blockerId', 'blockedId'])
 export class UserBlockEntity {
-  // BIGINT는 JS number 범위를 넘어갈 수 있으므로 string으로 받는 것이 안전
-  @PrimaryGeneratedColumn({ type: 'bigint' })
+  @PrimaryColumn({ type: 'char', length: 36 })
   id!: string;
 
   @Column({ type: 'char', length: 36 })

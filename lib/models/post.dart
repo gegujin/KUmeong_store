@@ -305,6 +305,7 @@ class Seller {
       return '';
     }
 
+    // 중첩 객체들까지 훑어서 이름 뽑기 (profile, account, user 등)
     String pickNameDeep(Map<String, dynamic> m) {
       final flat = pickNameFlat(m);
       if (flat.isNotEmpty) return flat;
@@ -327,6 +328,7 @@ class Seller {
         }
       }
 
+      // 일반화된 중첩 스캔(깊이 2)
       for (final entry in m.entries) {
         final v = entry.value;
         if (v is Map<String, dynamic>) {
@@ -343,11 +345,13 @@ class Seller {
       return '';
     }
 
+    // 아바타/지역 중첩 추출 헬퍼
     String pickStringDeep(Map<String, dynamic> m, List<String> keys) {
       for (final k in keys) {
         final v = m[k];
         if (v is String && v.trim().isNotEmpty) return v.trim();
       }
+      // profile/account 등에서 재시도
       for (final parent in ['profile', 'account', 'user']) {
         final v = m[parent];
         if (v is Map<String, dynamic>) {
@@ -395,15 +399,23 @@ class Product {
   final String id;
   final String title;
   final String description;
-  final int price; // 서버 price 또는 priceWon을 흡수해 저장
-  final int? priceWon; // 서버가 별도로 주면 보관
+
+  /// 서버 price 또는 priceWon을 흡수해 저장(원)
+  final int price;
+
+  /// 서버가 별도로 주면 보관
+  final int? priceWon;
   final List<String> imageUrls;
   final DateTime createdAt;
   final Seller seller;
   final LatLng location;
   final String? category;
-  final List<dynamic>? images; // Web: XFile, Mobile: File
-  final String? locationText; // 서버 locationText 보관
+
+  /// 원본 이미지 배열(Web: XFile, Mobile: File 등)
+  final List<dynamic>? images;
+
+  /// 서버 locationText 보관
+  final String? locationText;
 
   // 홈/상세 보조 필드
   int likes;
@@ -423,8 +435,8 @@ class Product {
     required this.location,
     this.category,
     this.images,
-    this.locationText,
     this.priceWon,
+    this.locationText,
     this.likes = 0,
     this.views = 0,
     this.isLiked = false,
@@ -475,7 +487,7 @@ class Product {
   }
 
   factory Product.fromJson(Map<String, dynamic> json) {
-    // ---------- 로컬 헬퍼 ----------
+    // ===== 로컬 헬퍼들 =====
     String _pickFirstNonEmptyString(List<dynamic> xs) {
       for (final v in xs) {
         if (v == null) continue;
@@ -495,11 +507,10 @@ class Product {
       return '';
     }
 
-    String _nameFromMap(Map m, {String? contextKey}) {
+    String _nameFromMap(Map m) {
       final excludeExact = {'productname', 'categoryname'};
       final excludeContains = ['product_name', 'category_name'];
       String? best;
-
       bool _shouldUseKey(String key) {
         final k = key.toLowerCase();
         if (excludeExact.contains(k)) return false;
@@ -518,9 +529,7 @@ class Product {
         final val = entry.value;
         if (val is String && val.trim().isNotEmpty && _shouldUseKey(key)) {
           final v = val.trim();
-          if (best == null || key.toLowerCase().endsWith('name')) {
-            best = v;
-          }
+          if (best == null || key.toLowerCase().endsWith('name')) best = v;
         }
       }
 
@@ -540,7 +549,8 @@ class Product {
       return best ?? '';
     }
 
-    String _deepScanForName(dynamic node, {int depth = 0, String? parentKey}) {
+    // 재귀(깊이 4)로 이름 후보 찾기
+    String _deepScanForName(dynamic node, {int depth = 0}) {
       if (depth > 4 || node == null) return '';
       const hotKeys = [
         'seller',
@@ -561,22 +571,19 @@ class Product {
       ];
 
       if (node is Map) {
-        final direct = _nameFromMap(node, contextKey: parentKey);
+        final direct = _nameFromMap(node);
         if (direct.isNotEmpty) return direct;
 
         for (final entry in node.entries) {
           final k = entry.key.toString().toLowerCase();
           final v = entry.value;
           if (v is Map && hotKeys.any((h) => k.contains(h))) {
-            final hit = _deepScanForName(v, depth: depth + 1, parentKey: k);
+            final hit = _deepScanForName(v, depth: depth + 1);
             if (hit.isNotEmpty) return hit;
           }
         }
-
-        for (final entry in node.entries) {
-          final v = entry.value;
-          final hit = _deepScanForName(v,
-              depth: depth + 1, parentKey: entry.key.toString());
+        for (final v in node.values) {
+          final hit = _deepScanForName(v, depth: depth + 1);
           if (hit.isNotEmpty) return hit;
         }
         return '';
@@ -584,17 +591,15 @@ class Product {
 
       if (node is List) {
         for (final it in node) {
-          final hit =
-              _deepScanForName(it, depth: depth + 1, parentKey: parentKey);
+          final hit = _deepScanForName(it, depth: depth + 1);
           if (hit.isNotEmpty) return hit;
         }
         return '';
       }
-
       return '';
     }
 
-    // ---------- 이미지 ----------
+    // 이미지
     final imgs = (json['imageUrls'] as List?)
             ?.where((e) => e != null)
             .map((e) => e.toString())
@@ -615,7 +620,7 @@ class Product {
                 ? [json['thumbnail'].toString()]
                 : const <String>[]));
 
-    // ---------- createdAt ----------
+    // createdAt
     DateTime parseCreatedAt(dynamic v) {
       if (v is int) {
         return v > 1e12
@@ -628,7 +633,7 @@ class Product {
       return DateTime.now();
     }
 
-    // ---------- location ----------
+    // location
     LatLng parseLatLng(dynamic v) {
       if (v is Map<String, dynamic>) {
         final lat = (v['lat'] is num) ? (v['lat'] as num).toDouble() : 0.0;
@@ -641,7 +646,7 @@ class Product {
       return const LatLng(lat: 0, lng: 0);
     }
 
-    // ---------- seller ----------
+    // seller 확장 탐색
     final dynamic rawSeller = json['seller'] ??
         json['user'] ??
         json['owner'] ??
@@ -680,36 +685,41 @@ class Product {
       }
     }
 
+    // sellerId 보강
     final sellerIdStr =
         (json['sellerId'] ?? json['seller_id'] ?? json['sellerID'] ?? '')
             .toString();
-
     if (sellerMap.isEmpty && sellerIdStr.isNotEmpty) {
       sellerMap = {'id': sellerIdStr, 'name': ''};
     } else if (!sellerMap.containsKey('id') && sellerIdStr.isNotEmpty) {
       sellerMap = {...sellerMap, 'id': sellerIdStr};
     }
 
-    // 위치 텍스트 보관
+    // 위치 텍스트: locationText → location → seller.locationName
     final sellerLocName = (sellerMap['locationName'] ?? '').toString();
-    final locText = (json['locationText'] ??
+    final String? locText = (json['locationText'] ??
             json['location'] ??
             (sellerLocName.isNotEmpty ? sellerLocName : null))
         ?.toString();
 
-    // ---------- 가격: price / priceWon 허용 ----------
+    // 디버그 로그 (원하면 주석처리)
+    dev.log('TOP_KEYS=${json.keys.toList()}', name: 'Product.fromJson');
+    dev.log('SELLER_RAW=${json['seller']}', name: 'Product.fromJson');
+    dev.log('SELLER_KEYS=${sellerMap.keys.toList()}', name: 'Product.fromJson');
+
+    // 가격: price / priceWon 모두 수용
     final priceAny = json['price'] ?? json['priceWon'] ?? 0;
-    final priceInt = (priceAny is num)
+    final int priceInt = (priceAny is num)
         ? priceAny.toInt()
         : int.tryParse(priceAny.toString().replaceAll(RegExp(r'[, ]'), '')) ??
             0;
 
     final priceWonAny = json['priceWon'];
-    final priceWonInt = (priceWonAny is num)
+    final int? priceWonInt = (priceWonAny is num)
         ? priceWonAny.toInt()
         : int.tryParse('${priceWonAny ?? ''}');
 
-    // ---------- 판매자 이름 해석 보강 ----------
+    // 판매자 이름 해석 보강
     String resolvedSellerName = _pickFirstNonEmptyString([
       sellerMap['name'],
       sellerMap['nickname'],
@@ -719,6 +729,7 @@ class Product {
 
     if (resolvedSellerName.isEmpty) {
       resolvedSellerName = _pickFirstNonEmptyString([
+        // 탑레벨 별칭
         json['sellerName'],
         json['userName'],
         json['ownerName'],
@@ -735,7 +746,8 @@ class Product {
         json['storeName'],
         json['nickname'],
         json['nickName'],
-        json['displayName'],
+
+        // 대체 객체
         json['createdBy'],
         json['creator'],
         json['registrant'],
@@ -745,22 +757,18 @@ class Product {
         json['account'],
         json['profile'],
         json['writer'],
-        json['poster'],
-        json['member'],
         json['publisher'],
         json['shop'],
         json['store'],
       ]);
     }
 
+    // 그래도 없으면 JSON 전체 재귀 스캔
     if (resolvedSellerName.isEmpty && json.isNotEmpty) {
       try {
         resolvedSellerName = _deepScanForName(json.cast<String, dynamic>());
       } catch (_) {}
     }
-
-    dev.log('resolvedSellerName="$resolvedSellerName"',
-        name: 'Product.fromJson');
 
     Seller parsedSeller = Seller.fromJson(sellerMap);
     if ((parsedSeller.name).trim().isEmpty) {
@@ -769,26 +777,36 @@ class Product {
       );
     }
 
-    // ---------- 좋아요/즐겨찾기/조회수 ----------
-    bool isLiked = (json['isLiked'] is bool) ? json['isLiked'] as bool : false;
+    // 좋아요/즐겨찾기/조회수
+    final int likes = (json['likes'] is num)
+        ? (json['likes'] as num).toInt()
+        : int.tryParse('${json['likes'] ?? 0}') ?? 0;
+    final int views = (json['views'] is num)
+        ? (json['views'] as num).toInt()
+        : int.tryParse('${json['views'] ?? 0}') ?? 0;
+    final bool isLiked = json['isLiked'] == true;
     final bool isFavorited =
         json['isFavorited'] == true || json['isFavorited'] == 1;
-    final int favoriteCount = (() {
-      int? asInt(dynamic v) {
-        if (v is num) return v.toInt();
-        if (v is String && v.isNotEmpty) {
-          return int.tryParse(v.replaceAll(RegExp(r'[, ]'), ''));
-        }
-        return null;
+    int favoriteCount = 0;
+    int? asInt(dynamic v) {
+      if (v is num) return v.toInt();
+      if (v is String && v.isNotEmpty) {
+        return int.tryParse(v.replaceAll(RegExp(r'[, ]'), ''));
       }
+      return null;
+    }
 
-      final parsed =
-          asInt(json['favoriteCount']) ?? asInt(json['favCount']) ?? 0;
-      return parsed < 0 ? 0 : parsed;
-    })();
+    favoriteCount =
+        asInt(json['favoriteCount']) ?? asInt(json['favCount']) ?? 0;
+    if (favoriteCount < 0) favoriteCount = 0;
 
     return Product(
-      id: (json['id'] ?? '').toString(),
+      id: (json['id'] ??
+              json['productId'] ??
+              json['uuid'] ??
+              json['postId'] ??
+              'unknown')
+          .toString(),
       title: (json['title'] ?? json['name'] ?? '').toString(),
       price: priceInt,
       priceWon: priceWonInt,
@@ -800,12 +818,8 @@ class Product {
       category: (json['category'] != null) ? json['category'].toString() : null,
       images: json['images'] != null ? List<dynamic>.from(json['images']) : [],
       locationText: locText,
-      likes: (json['likes'] is num)
-          ? (json['likes'] as num).toInt()
-          : int.tryParse('${json['likes'] ?? 0}') ?? 0,
-      views: (json['views'] is num)
-          ? (json['views'] as num).toInt()
-          : int.tryParse('${json['views'] ?? 0}') ?? 0,
+      likes: likes,
+      views: views,
       isLiked: isLiked,
       isFavorited: isFavorited,
       favoriteCount: favoriteCount,
@@ -839,12 +853,16 @@ extension ProductMap on Product {
     final imageUrl = (imageUrls.isNotEmpty)
         ? imageUrls.first
         : 'https://via.placeholder.com/150?text=No+Image';
-    final locationName =
-        seller.locationName.isNotEmpty ? seller.locationName : '위치 정보 없음';
+    final locText = locationText?.trim();
+    final sellerLoc = seller.locationName.trim();
+    final locationForList = (locText != null && locText.isNotEmpty)
+        ? locText
+        : (sellerLoc.isNotEmpty ? sellerLoc : '위치 정보 없음');
+
     return {
       'id': id,
       'title': title,
-      'location': locationName,
+      'location': locationForList,
       'time': _formatTime(createdAt),
       'likes': likes,
       'views': views,
@@ -854,6 +872,7 @@ extension ProductMap on Product {
       'imageUrls': imageUrls,
       'thumbnailUrl': imageUrl,
       'locationText': locationText,
+      'seller': seller.toJson(),
     };
   }
 
@@ -867,7 +886,7 @@ extension ProductMap on Product {
   }
 }
 
-// 더미 상품 데이터
+// 더미 상품 데이터 (HomePage에서 사용)
 final demoProduct = Product(
   id: 'p-001',
   title: 'Willson 농구공 팝니다!',
