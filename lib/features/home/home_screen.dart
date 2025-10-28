@@ -25,7 +25,8 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> allProducts = [];
   String searchText = '';
   bool _isMenuOpen = false;
@@ -87,7 +88,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       List<String> imageUrls = [];
       if (m['imageUrls'] is List) {
         imageUrls = List<String>.from(
-          (m['imageUrls'] as List).where((e) => e != null).map((e) => e.toString()),
+          (m['imageUrls'] as List)
+              .where((e) => e != null)
+              .map((e) => e.toString()),
         );
       } else if (m['images'] is List) {
         imageUrls = (m['images'] as List)
@@ -109,8 +112,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       // 위치 정규화
       dynamic location = m['location'];
       if (location == null || (location is String && location.isEmpty)) {
-        final locName =
-            m['locationName'] ?? (m['seller'] is Map ? (m['seller'] as Map)['locationName'] : null);
+        final locName = m['locationName'] ??
+            (m['seller'] is Map ? (m['seller'] as Map)['locationName'] : null);
         if (locName != null && locName.toString().isNotEmpty) {
           location = {'name': locName.toString()};
         }
@@ -118,13 +121,19 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
       final price = m['price'] ?? m['amount'] ?? m['totalPrice'] ?? 0;
       final time = m['time'] ?? m['createdAt'] ?? m['updatedAt'] ?? '';
-      final likes = m['likes'] ?? m['favoriteCount'] ?? m['favorites'] ?? m['favCount'] ?? 0;
+      final likes = m['likes'] ??
+          m['favoriteCount'] ??
+          m['favorites'] ??
+          m['favCount'] ??
+          0;
       final views = m['views'] ?? m['viewCount'] ?? 0;
 
-      int _toInt(dynamic v) => (v is num) ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
+      int _toInt(dynamic v) =>
+          (v is num) ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
 
       return {
-        'id': m['id'] ?? m['productId'] ?? m['uuid'] ?? m['postId'] ?? 'unknown',
+        'id':
+            m['id'] ?? m['productId'] ?? m['uuid'] ?? m['postId'] ?? 'unknown',
         'title': m['title'] ?? m['name'] ?? m['subject'] ?? '',
         'imageUrls': imageUrls,
         'location': location ?? '위치 정보 없음',
@@ -155,7 +164,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final mainColor = Theme.of(context).colorScheme.primary;
 
     final filteredProducts = allProducts
-        .where((p) => (p['title'] as String).toLowerCase().contains(searchText.toLowerCase()))
+        .where((p) => (p['title'] as String)
+            .toLowerCase()
+            .contains(searchText.toLowerCase()))
         .toList();
 
     return Scaffold(
@@ -175,8 +186,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   hintText: '상품 검색',
                   fillColor: Colors.white,
                   filled: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(3)),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(3)),
                 ),
                 onChanged: (v) => setState(() => searchText = v),
               ),
@@ -198,10 +211,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               final product = filteredProducts[index];
               final liked = (product['isLiked'] ?? false) as bool;
 
-              final imageUrl =
-                  (product['imageUrls'] != null && (product['imageUrls'] as List).isNotEmpty)
-                      ? (product['imageUrls'] as List).first
-                      : null;
+              final imageUrl = (product['imageUrls'] != null &&
+                      (product['imageUrls'] as List).isNotEmpty)
+                  ? (product['imageUrls'] as List).first
+                  : null;
 
               final title = product['title'] as String? ?? '';
 
@@ -209,17 +222,25 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               final locationValue = product['location'];
               String location = '';
               if (locationValue is Map) {
-                location = (locationValue['name']?.toString().isNotEmpty ?? false)
+                location = (locationValue['name']?.toString().isNotEmpty ??
+                        false)
                     ? locationValue['name']
-                    : (locationValue['locationName']?.toString().isNotEmpty ?? false)
+                    : (locationValue['locationName']?.toString().isNotEmpty ??
+                            false)
                         ? locationValue['locationName']
-                        : (product['seller']?['locationName']?.toString().isNotEmpty ?? false)
+                        : (product['seller']?['locationName']
+                                    ?.toString()
+                                    .isNotEmpty ??
+                                false)
                             ? product['seller']['locationName']
                             : '위치 정보 없음';
               } else if (locationValue is String && locationValue.isNotEmpty) {
                 location = locationValue;
               } else {
-                location = (product['seller']?['locationName']?.toString().isNotEmpty ?? false)
+                location = (product['seller']?['locationName']
+                            ?.toString()
+                            .isNotEmpty ??
+                        false)
                     ? product['seller']['locationName']
                     : '위치 정보 없음';
               }
@@ -231,11 +252,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 onTap: () {
                   context.pushNamed(
                     R.RouteNames.productDetail,
-                    pathParameters: {'productId': product['id'] ?? 'demo-product'},
+                    pathParameters: {
+                      'productId': product['id'] ?? 'demo-product'
+                    },
                   );
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -251,14 +275,16 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                                   width: 80,
                                   height: 80,
                                   color: Colors.grey[300],
-                                  child: const Icon(Icons.broken_image, color: Colors.white70),
+                                  child: const Icon(Icons.broken_image,
+                                      color: Colors.white70),
                                 ),
                               )
                             : Container(
                                 width: 80,
                                 height: 80,
                                 color: Colors.grey[300],
-                                child: const Icon(Icons.image, color: Colors.white70),
+                                child: const Icon(Icons.image,
+                                    color: Colors.white70),
                               ),
                       ),
                       const SizedBox(width: 10),
@@ -270,10 +296,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                               title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 4),
-                            Text('$location | $time', style: const TextStyle(color: Colors.grey)),
+                            Text('$location | $time',
+                                style: const TextStyle(color: Colors.grey)),
                             const SizedBox(height: 4),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -291,7 +319,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                               child: GestureDetector(
                                 onTap: () => _toggleLike(index),
                                 child: Icon(
-                                  liked ? Icons.favorite : Icons.favorite_border,
+                                  liked
+                                      ? Icons.favorite
+                                      : Icons.favorite_border,
                                   color: liked ? Colors.red : Colors.grey,
                                   size: 22,
                                 ),
@@ -328,6 +358,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               child: AnimatedOpacity(
                 opacity: _isMenuOpen ? 1 : 0,
                 duration: const Duration(milliseconds: 200),
+                // ... AnimatedOpacity(
                 child: _MenuCard(
                   children: [
                     _MenuItem(
@@ -336,7 +367,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                       label: 'KU대리',
                       onTap: () {
                         _toggleFabMenu();
-                        context.pushNamed(R.RouteNames.kuDeliverySignup);
+                        // ✅ 게이트로 진입 → membership 확인 후 자동 분기
+                        context.goNamed(R.RouteNames.kuDeliveryEntry);
                       },
                     ),
                     const Divider(height: 1, color: Color(0xFFF1F3F5)),
@@ -347,12 +379,13 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                       onTap: () async {
                         _toggleFabMenu();
                         if (!mounted) return;
-                        final Product? newProduct = await context.pushNamed<Product>(
+                        final Product? newProduct =
+                            await context.pushNamed<Product>(
                           R.RouteNames.productEdit,
                           pathParameters: {'productId': 'demo-product'},
                         );
 
-                        /// ✅ 수정 ②: 등록된 상품 즉시 반영
+                        /// ✅ 등록된 상품 즉시 반영
                         if (newProduct != null && mounted) {
                           setState(() {
                             final newMap = newProduct.toMapForHome();
@@ -398,7 +431,8 @@ class _MenuCard extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
           boxShadow: const [
-            BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 6)),
+            BoxShadow(
+                color: Colors.black26, blurRadius: 20, offset: Offset(0, 6)),
           ],
         ),
         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -433,7 +467,9 @@ class _MenuItem extends StatelessWidget {
             Icon(icon, color: iconColor, size: 26),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              child: Text(label,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700)),
             ),
           ],
         ),

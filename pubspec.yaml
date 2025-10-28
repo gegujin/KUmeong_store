@@ -53,3 +53,6 @@ flutter:
 
   # assets:
   #   - assets/images/
+
+# DB 스키마명 일치!
+DB_NAME=kumeong_store:

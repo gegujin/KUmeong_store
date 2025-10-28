@@ -8,7 +8,8 @@ import {
 } from 'typeorm';
 import { randomUUID } from 'crypto';
 
-@Entity('email_verifications')
+// ✅ 실제 테이블명: email_verifications
+@Entity({ name: 'email_verifications' })
 export class EmailVerification {
   /** UUID 기본키 (CHAR(36)) */
   @PrimaryColumn({ type: 'char', length: 36 })

@@ -1,11 +1,11 @@
-// src/modules/auth/auth.service.ts
+// kumeong-api/src/modules/auth/auth.service.ts
 import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
   ForbiddenException,
   NotFoundException,
-  Logger, // ★추가
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -25,7 +25,7 @@ type JwtPayload = {
   role: UserRole;
 };
 
-// ★추가: 표준화된 결과 코드
+// 표준화된 결과 코드
 enum AuthResultCode {
   OK = 'OK',
   EMAIL_TAKEN = 'EMAIL_TAKEN',
@@ -40,8 +40,8 @@ enum AuthResultCode {
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name); // ★추가
-  private readonly debug = this.cfg.get<boolean>('AUTH_DEBUG') ?? true; // ★추가
+  private readonly logger = new Logger(AuthService.name);
+  private readonly debug = this.cfg.get<boolean>('AUTH_DEBUG') ?? true;
 
   constructor(
     private readonly users: UsersService,
@@ -50,7 +50,7 @@ export class AuthService {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
   ) {}
 
-  // --------- 공통 로깅 헬퍼 --------- // ★추가
+  // 공통 로깅 헬퍼
   private logResult(
     action: 'REGISTER' | 'LOGIN' | 'REFRESH',
     result: AuthResultCode,
@@ -131,7 +131,6 @@ export class AuthService {
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      // 비밀번호 자체는 절대 로그에 남기지 않음
       const meta = this.debug ? { email, userId: user.id, bcryptCompare: false } : { email, userId: user.id };
       this.logResult('LOGIN', AuthResultCode.PASSWORD_MISMATCH, meta);
       throw new UnauthorizedException('INVALID_CREDENTIALS');
@@ -147,7 +146,15 @@ export class AuthService {
   private signAccessToken(payload: JwtPayload): string {
     const secret = this.cfg.get<string>('JWT_ACCESS_SECRET', 'access_secret');
     const expiresIn = this.cfg.get<string>('JWT_ACCESS_EXPIRES_IN', '15m');
-    return this.jwt.sign(payload, { secret, expiresIn });
+    const issuer = this.cfg.get<string>('JWT_ISSUER');
+    const audience = this.cfg.get<string>('JWT_AUDIENCE');
+
+    return this.jwt.sign(payload, {
+      secret,
+      expiresIn,
+      ...(issuer ? { issuer } : {}),
+      ...(audience ? { audience } : {}),
+    });
   }
 
   /** 리프레시 토큰 발급 (stateless) */
@@ -169,7 +176,6 @@ export class AuthService {
       const refreshToken = this.signRefreshToken({ sub: String(safe.id) });
       return { accessToken, refreshToken, user: safe };
     } catch (e) {
-      // UnauthorizedException 등 상위로 던지되, 시스템 에러면 추가 로그
       if (!(e instanceof UnauthorizedException)) {
         this.logResult('LOGIN', AuthResultCode.SYS_ERROR, { email, error: `${e}` });
       }
@@ -221,8 +227,8 @@ export class AuthService {
     }
   }
 
-  // ---------- (선택) 개발용: 비번 리셋 헬퍼 ----------
-  async resetPasswordDev(email: string, newPassword: string) { // ★옵션
+  // (선택) 개발용: 비번 리셋
+  async resetPasswordDev(email: string, newPassword: string) {
     if (this.cfg.get<string>('NODE_ENV') !== 'development') {
       throw new ForbiddenException('dev only');
     }

@@ -1,4 +1,4 @@
-// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\entities\product.entity.ts
+// kumeong-api/src/modules/products/entities/product.entity.ts
 import {
   Entity,
   Column,
@@ -27,19 +27,20 @@ export enum ProductStatus {
 @Index('ix_products_createdAt', ['createdAt'])
 @Index('ix_products_priceWon', ['priceWon'])
 @Index('ix_products_status', ['status'])
+@Index('ix_products_category', ['category'])
 export class Product {
-  // PK: UUID/CHAR(36) — 전역 정책
+  // PK: UUID/CHAR(36)
   @PrimaryColumn('char', { length: 36 })
   id!: string;
 
   @Column('varchar', { length: 200 })
   title!: string;
 
-  // price -> priceWon
+  // 가격 필드: price -> priceWon (원화 정수)
   @Column('int', { unsigned: true, name: 'priceWon' })
   priceWon!: number;
 
-  // ENUM 통일
+  // 상태 ENUM
   @Column('enum', { enum: ProductStatus, default: ProductStatus.LISTED })
   status!: ProductStatus;
 
@@ -50,9 +51,11 @@ export class Product {
   @Column({ length: 50, nullable: true })
   category?: string;
 
-  // ※ 스키마는 별도 productImages 테이블 사용 권장 → 컬럼 제거
+  // 위치 텍스트(거래 장소/등록 위치 표시용)
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  locationText?: string | null;
 
-  // 판매자 FK — UUID/CHAR(36) (ownerId -> sellerId)
+  // 판매자 FK — UUID/CHAR(36)
   @Column('char', { length: 36, name: 'sellerId' })
   sellerId!: string;
 
@@ -62,22 +65,21 @@ export class Product {
     nullable: false,
     eager: false,
   })
-
   @JoinColumn({ name: 'sellerId', referencedColumnName: 'id' })
   seller!: User;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn({ type: 'datetime', precision: 3 })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn({ type: 'datetime', precision: 3 })
   updatedAt!: Date;
 
+  @DeleteDateColumn({ type: 'datetime', precision: 3, nullable: true })
+  deletedAt?: Date | null;
+
+  // 이미지 관계 (별도 테이블)
   @OneToMany(() => ProductImage, (img) => img.product)
   images?: ProductImage[];
-
-  // 소프트 삭제 (DATETIME NULL)
-  @DeleteDateColumn({ type: 'datetime', nullable: true })
-  deletedAt?: Date | null;
 
   @BeforeInsert()
   assignId() {

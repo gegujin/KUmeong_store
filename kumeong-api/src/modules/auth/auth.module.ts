@@ -11,7 +11,8 @@ import { User } from '../users/entities/user.entity';
 
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-import { JwtStrategy } from './jwt.strategy';
+// 🔧 경로 수정: 실제 파일 경로로!
+import { JwtStrategy } from './strategies/jwt.strategy';
 
 import { EmailVerification } from './entities/email-verification.entity';
 import { EmailVerificationService } from './services/email-verification.service';
@@ -25,9 +26,11 @@ import { EmailVerificationController } from './controllers/email-verification.co
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => ({
-        secret: cfg.getOrThrow<string>('JWT_SECRET'),
+        // 🔧 ACCESS 계열 키로 통일
+        secret: cfg.getOrThrow<string>('JWT_ACCESS_SECRET'),
         signOptions: {
-          expiresIn: cfg.get<string>('JWT_EXPIRES', '7d'),
+          // 🔧 키 이름도 ACCESS 계열로
+          expiresIn: cfg.get<string>('JWT_ACCESS_EXPIRES_IN', '15m'),
           ...(cfg.get('JWT_ISSUER') ? { issuer: cfg.get('JWT_ISSUER') } : {}),
           ...(cfg.get('JWT_AUDIENCE') ? { audience: cfg.get('JWT_AUDIENCE') } : {}),
         },

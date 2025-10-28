@@ -12,7 +12,8 @@ export enum UserRole {
   ADMIN = 'ADMIN',
 }
 
-@Entity('users')
+// ✅ 실제 테이블명: users
+@Entity({ name: 'users' })
 export class UserEntity {
   @PrimaryColumn({ type: 'char', length: 36 })
   id!: string;

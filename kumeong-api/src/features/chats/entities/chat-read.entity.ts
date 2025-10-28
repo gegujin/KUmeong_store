@@ -9,7 +9,8 @@ import {
 } from 'typeorm';
 import { ChatRoom } from './chat-room.entity';
 
-@Entity({ name: 'chatReads' })
+// ✅ 실제 테이블명: chatreads
+@Entity({ name: 'chatreads' })
 export class ChatRead {
   // 복합 PK
   @PrimaryColumn('char', { length: 36 })

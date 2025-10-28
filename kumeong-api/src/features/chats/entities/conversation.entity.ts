@@ -15,6 +15,7 @@ import { randomUUID } from 'crypto';
  * - UNIQUE (participant_a, participant_b)
  * - INSERT 시 (A <= B) 정규화 자동 수행
  */
+// ✅ 실제 테이블명: conversations
 @Entity({ name: 'conversations' })
 @Unique('uq_conv_pair', ['participantA', 'participantB'])
 @Index('ix_conv_a', ['participantA'])

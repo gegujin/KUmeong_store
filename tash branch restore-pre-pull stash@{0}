@@ -1,0 +1,32 @@
+[33mf7ab3675[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{2025-10-27 21:19:15 +0900}: pull --rebase origin main (finish): returning to refs/heads/main
+[33mf7ab3675[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{2025-10-27 21:19:15 +0900}: pull --rebase origin main (start): checkout f7ab3675f3dd09d788765ce0ebae53d703d7383a
+[33m17f8c7dd[m HEAD@{2025-10-27 21:18:49 +0900}: reset: moving to HEAD
+[33m17f8c7dd[m HEAD@{2025-10-27 21:13:28 +0900}: pull origin main: updating HEAD
+[33m17f8c7dd[m HEAD@{2025-10-27 21:12:54 +0900}: pull origin main: updating HEAD
+[33m17f8c7dd[m HEAD@{2025-10-27 20:48:38 +0900}: pull origin main: updating HEAD
+[33m17f8c7dd[m HEAD@{2025-10-21 07:56:57 +0900}: commit: 관심목록, ui 수정
+[33m1b4c038c[m HEAD@{2025-10-20 03:14:27 +0900}: commit: 관심상품 등록 일부 완성
+[33m4e097a63[m HEAD@{2025-10-19 22:47:02 +0900}: commit: 카테고리 연결 성공
+[33m61c5ca6e[m HEAD@{2025-10-19 21:11:19 +0900}: commit: home 상품 등록 성공
+[33m26a80347[m HEAD@{2025-10-19 01:49:05 +0900}: commit: 상품 등록 성공(썸네일,위치 제외)
+[33m15dd5f98[m HEAD@{2025-10-18 23:44:10 +0900}: commit: 상품등록 로그인 성공
+[33mdbc31296[m HEAD@{2025-10-15 20:50:18 +0900}: pull origin main: Fast-forward
+[33m3807f981[m HEAD@{2025-10-14 16:13:07 +0900}: commit: 로그인 오류 해결
+[33m96a1a8bd[m HEAD@{2025-10-13 16:59:34 +0900}: pull origin main: Fast-forward
+[33m72e6706a[m HEAD@{2025-10-11 02:13:29 +0900}: reset: moving to HEAD
+[33m72e6706a[m HEAD@{2025-10-11 02:11:26 +0900}: commit: 상품 등록 가능, 홈 화면 상품 등록 일부 가능
+[33mb8cd6827[m HEAD@{2025-09-26 23:43:52 +0900}: pull origin main: Fast-forward
+[33m2f215688[m HEAD@{2025-09-26 21:35:11 +0900}: pull origin main: Fast-forward
+[33me6089998[m HEAD@{2025-09-24 20:57:10 +0900}: commit: 수정
+[33m5b08047a[m HEAD@{2025-09-24 20:54:34 +0900}: commit (merge): 회원가입, 로그인 백엔드 연결 / 충돌 해결 후 커밋
+[33m8763ebe7[m HEAD@{2025-09-24 20:38:22 +0900}: commit: 로그인, 회원가입 백엔드 연결
+[33ma7f01fd6[m HEAD@{2025-09-22 19:17:32 +0900}: commit: 로그인 성공
+[33m2952134c[m HEAD@{2025-09-22 14:56:34 +0900}: pull origin main: Fast-forward
+[33m1ef6b819[m HEAD@{2025-09-21 20:43:14 +0900}: commit (merge): 서버 수정
+[33m294372b8[m HEAD@{2025-09-21 20:29:05 +0900}: commit: 서버 고치기
+[33mcd9933d2[m HEAD@{2025-09-15 14:51:23 +0900}: reset: moving to origin/main
+[33m1a31ff7f[m HEAD@{2025-09-15 14:51:00 +0900}: checkout: moving from main to main
+[33m1a31ff7f[m HEAD@{2025-09-15 13:06:48 +0900}: commit: api 추가
+[33mc2dae27f[m HEAD@{2025-09-14 15:30:30 +0900}: commit: kumeong-api
+[33m2bf39aac[m HEAD@{2025-09-14 15:07:07 +0900}: commit: kumeong-api 추가
+[33mc4ceebba[m HEAD@{2025-09-14 14:56:56 +0900}: commit: api 추가

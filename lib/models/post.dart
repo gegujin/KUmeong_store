@@ -251,6 +251,7 @@
 // );
 
 // lib/models/post.dart
+import 'dart:developer' as dev; // 디버그 로그용
 import 'latlng.dart';
 
 /// 판매자 정보 모델
@@ -285,14 +286,98 @@ class Seller {
     );
   }
 
+  /// 중첩 객체까지 스캔해서 이름/아바타/지역을 추출
   factory Seller.fromJson(Map<String, dynamic> json) {
+    String pickNameFlat(Map<String, dynamic> m) {
+      for (final k in [
+        'name',
+        'fullName',
+        'realName',
+        'displayName',
+        'display_name',
+        'userName',
+        'username',
+        'nickname'
+      ]) {
+        final v = m[k];
+        if (v is String && v.trim().isNotEmpty) return v.trim();
+      }
+      return '';
+    }
+
+    String pickNameDeep(Map<String, dynamic> m) {
+      final flat = pickNameFlat(m);
+      if (flat.isNotEmpty) return flat;
+
+      for (final k in [
+        'profile',
+        'account',
+        'user',
+        'owner',
+        'author',
+        'creator',
+        'createdBy',
+        'registrant',
+        'member'
+      ]) {
+        final v = m[k];
+        if (v is Map<String, dynamic>) {
+          final hit = pickNameFlat(v);
+          if (hit.isNotEmpty) return hit;
+        }
+      }
+
+      for (final entry in m.entries) {
+        final v = entry.value;
+        if (v is Map<String, dynamic>) {
+          final hit = pickNameFlat(v);
+          if (hit.isNotEmpty) return hit;
+          for (final e2 in v.entries) {
+            if (e2.value is Map<String, dynamic>) {
+              final hit2 = pickNameFlat(e2.value as Map<String, dynamic>);
+              if (hit2.isNotEmpty) return hit2;
+            }
+          }
+        }
+      }
+      return '';
+    }
+
+    String pickStringDeep(Map<String, dynamic> m, List<String> keys) {
+      for (final k in keys) {
+        final v = m[k];
+        if (v is String && v.trim().isNotEmpty) return v.trim();
+      }
+      for (final parent in ['profile', 'account', 'user']) {
+        final v = m[parent];
+        if (v is Map<String, dynamic>) {
+          for (final k in keys) {
+            final vv = v[k];
+            if (vv is String && vv.trim().isNotEmpty) return vv.trim();
+          }
+        }
+      }
+      return '';
+    }
+
+    final pickedName = pickNameDeep(json);
+    final avatar =
+        pickStringDeep(json, ['avatarUrl', 'profileImageUrl', 'imageUrl']);
+    final locName =
+        pickStringDeep(json, ['locationName', 'regionName', 'addressText']);
+
     return Seller(
-      id: (json['id'] ?? '').toString(),
-      name: (json['name'] ?? '').toString(),
-      avatarUrl: (json['avatarUrl'] ?? '').toString(),
-      locationName: (json['locationName'] ?? '').toString(),
-      rating:
-          (json['rating'] is num) ? (json['rating'] as num).toDouble() : 0.0,
+      id: (json['id'] ?? json['_id'] ?? '').toString(),
+      name: pickedName,
+      avatarUrl: avatar,
+      locationName: locName,
+      rating: (json['rating'] is num)
+          ? (json['rating'] as num).toDouble()
+          : (json['trustScore'] is num)
+              ? (json['trustScore'] as num).toDouble()
+              : (json['reliability'] is num)
+                  ? (json['reliability'] as num).toDouble()
+                  : 0.0,
     );
   }
 
@@ -310,19 +395,22 @@ class Product {
   final String id;
   final String title;
   final String description;
-  final int price;
+  final int price; // 서버 price 또는 priceWon을 흡수해 저장
+  final int? priceWon; // 서버가 별도로 주면 보관
   final List<String> imageUrls;
   final DateTime createdAt;
   final Seller seller;
   final LatLng location;
   final String? category;
   final List<dynamic>? images; // Web: XFile, Mobile: File
+  final String? locationText; // 서버 locationText 보관
 
-  // 🔹 홈 화면용 필드
-
+  // 홈/상세 보조 필드
   int likes;
   int views;
   bool isLiked;
+  bool isFavorited; // 서버 isFavorited 동기화
+  int favoriteCount; // 서버 favoriteCount/favCount 합산
 
   Product({
     required this.id,
@@ -335,9 +423,13 @@ class Product {
     required this.location,
     this.category,
     this.images,
+    this.locationText,
+    this.priceWon,
     this.likes = 0,
     this.views = 0,
     this.isLiked = false,
+    this.isFavorited = false,
+    this.favoriteCount = 0,
   });
 
   String? get mainImage => imageUrls.isNotEmpty ? imageUrls.first : null;
@@ -347,20 +439,25 @@ class Product {
     String? title,
     String? description,
     int? price,
+    int? priceWon,
     List<String>? imageUrls,
     DateTime? createdAt,
     Seller? seller,
     LatLng? location,
     String? category,
     List<dynamic>? images,
+    String? locationText,
     int? likes,
     int? views,
     bool? isLiked,
+    bool? isFavorited,
+    int? favoriteCount,
   }) {
     return Product(
       id: id ?? this.id,
       title: title ?? this.title,
       price: price ?? this.price,
+      priceWon: priceWon ?? this.priceWon,
       description: description ?? this.description,
       imageUrls: imageUrls ?? this.imageUrls,
       createdAt: createdAt ?? this.createdAt,
@@ -368,21 +465,157 @@ class Product {
       location: location ?? this.location,
       category: category ?? this.category,
       images: images ?? this.images,
+      locationText: locationText ?? this.locationText,
       likes: likes ?? this.likes,
       views: views ?? this.views,
       isLiked: isLiked ?? this.isLiked,
+      isFavorited: isFavorited ?? this.isFavorited,
+      favoriteCount: favoriteCount ?? this.favoriteCount,
     );
   }
 
   factory Product.fromJson(Map<String, dynamic> json) {
-    // 이미지 처리
+    // ---------- 로컬 헬퍼 ----------
+    String _pickFirstNonEmptyString(List<dynamic> xs) {
+      for (final v in xs) {
+        if (v == null) continue;
+        if (v is String && v.trim().isNotEmpty) return v.trim();
+        if (v is Map) {
+          final n = v['name'] ??
+              v['fullName'] ??
+              v['realName'] ??
+              v['displayName'] ??
+              v['display_name'] ??
+              v['userName'] ??
+              v['username'] ??
+              v['nickname'];
+          if (n is String && n.trim().isNotEmpty) return n.trim();
+        }
+      }
+      return '';
+    }
+
+    String _nameFromMap(Map m, {String? contextKey}) {
+      final excludeExact = {'productname', 'categoryname'};
+      final excludeContains = ['product_name', 'category_name'];
+      String? best;
+
+      bool _shouldUseKey(String key) {
+        final k = key.toLowerCase();
+        if (excludeExact.contains(k)) return false;
+        if (excludeContains.any((s) => k.contains(s))) return false;
+        return k.endsWith('name') ||
+            k.contains('fullname') ||
+            k.contains('realname') ||
+            k.contains('display_name') ||
+            k.contains('displayname') ||
+            k.contains('username') ||
+            k.contains('nickname');
+      }
+
+      for (final entry in m.entries) {
+        final key = entry.key.toString();
+        final val = entry.value;
+        if (val is String && val.trim().isNotEmpty && _shouldUseKey(key)) {
+          final v = val.trim();
+          if (best == null || key.toLowerCase().endsWith('name')) {
+            best = v;
+          }
+        }
+      }
+
+      best ??= (() {
+        final n = m['name'] ??
+            m['fullName'] ??
+            m['realName'] ??
+            m['displayName'] ??
+            m['display_name'] ??
+            m['userName'] ??
+            m['username'] ??
+            m['nickname'];
+        if (n is String && n.trim().isNotEmpty) return n.trim();
+        return null;
+      })();
+
+      return best ?? '';
+    }
+
+    String _deepScanForName(dynamic node, {int depth = 0, String? parentKey}) {
+      if (depth > 4 || node == null) return '';
+      const hotKeys = [
+        'seller',
+        'user',
+        'owner',
+        'author',
+        'created',
+        'creator',
+        'registrant',
+        'account',
+        'profile',
+        'writer',
+        'poster',
+        'member',
+        'publisher',
+        'shop',
+        'store'
+      ];
+
+      if (node is Map) {
+        final direct = _nameFromMap(node, contextKey: parentKey);
+        if (direct.isNotEmpty) return direct;
+
+        for (final entry in node.entries) {
+          final k = entry.key.toString().toLowerCase();
+          final v = entry.value;
+          if (v is Map && hotKeys.any((h) => k.contains(h))) {
+            final hit = _deepScanForName(v, depth: depth + 1, parentKey: k);
+            if (hit.isNotEmpty) return hit;
+          }
+        }
+
+        for (final entry in node.entries) {
+          final v = entry.value;
+          final hit = _deepScanForName(v,
+              depth: depth + 1, parentKey: entry.key.toString());
+          if (hit.isNotEmpty) return hit;
+        }
+        return '';
+      }
+
+      if (node is List) {
+        for (final it in node) {
+          final hit =
+              _deepScanForName(it, depth: depth + 1, parentKey: parentKey);
+          if (hit.isNotEmpty) return hit;
+        }
+        return '';
+      }
+
+      return '';
+    }
+
+    // ---------- 이미지 ----------
     final imgs = (json['imageUrls'] as List?)
             ?.where((e) => e != null)
             .map((e) => e.toString())
             .toList(growable: false) ??
-        (json['thumbnail'] != null ? [json['thumbnail'].toString()] : const []);
+        (json['images'] is List
+            ? (json['images'] as List)
+                .map((e) {
+                  if (e is String) return e;
+                  if (e is Map) {
+                    final url = e['url'] ?? e['path'] ?? e['src'];
+                    return (url ?? '').toString();
+                  }
+                  return '';
+                })
+                .where((s) => s.isNotEmpty)
+                .toList(growable: false)
+            : (json['thumbnail'] != null
+                ? [json['thumbnail'].toString()]
+                : const <String>[]));
 
-    // createdAt 처리
+    // ---------- createdAt ----------
     DateTime parseCreatedAt(dynamic v) {
       if (v is int) {
         return v > 1e12
@@ -395,35 +628,187 @@ class Product {
       return DateTime.now();
     }
 
-    // location 처리
+    // ---------- location ----------
     LatLng parseLatLng(dynamic v) {
       if (v is Map<String, dynamic>) {
         final lat = (v['lat'] is num) ? (v['lat'] as num).toDouble() : 0.0;
         final lng = (v['lng'] is num) ? (v['lng'] as num).toDouble() : 0.0;
         return LatLng(lat: lat, lng: lng);
       } else if (v is String && v.isNotEmpty) {
+        // 문자열 좌표가 오면 대략 좌표(임시 폴백)
         return const LatLng(lat: 37.5665, lng: 126.9780);
       }
       return const LatLng(lat: 0, lng: 0);
     }
 
+    // ---------- seller ----------
+    final dynamic rawSeller = json['seller'] ??
+        json['user'] ??
+        json['owner'] ??
+        json['author'] ??
+        json['createdBy'] ??
+        json['creator'] ??
+        json['registrant'] ??
+        json['account'] ??
+        json['profile'] ??
+        json['writer'] ??
+        json['publisher'] ??
+        json['shop'] ??
+        json['store'];
+
+    Map<String, dynamic> sellerMap = const {};
+    if (rawSeller is Map) {
+      sellerMap = rawSeller.cast<String, dynamic>();
+    } else if (rawSeller is String && rawSeller.trim().isNotEmpty) {
+      sellerMap = {'name': rawSeller.trim()};
+    } else {
+      final nameAlias = (json['sellerName'] ??
+          json['userName'] ??
+          json['ownerName'] ??
+          json['authorName'] ??
+          json['creatorName'] ??
+          json['registrantName'] ??
+          json['profileName'] ??
+          json['accountName'] ??
+          json['displayName'] ??
+          json['nickname'] ??
+          json['nickName']);
+      if (nameAlias is String && nameAlias.trim().isNotEmpty) {
+        sellerMap = {'name': nameAlias.trim()};
+      } else {
+        sellerMap = const {};
+      }
+    }
+
+    final sellerIdStr =
+        (json['sellerId'] ?? json['seller_id'] ?? json['sellerID'] ?? '')
+            .toString();
+
+    if (sellerMap.isEmpty && sellerIdStr.isNotEmpty) {
+      sellerMap = {'id': sellerIdStr, 'name': ''};
+    } else if (!sellerMap.containsKey('id') && sellerIdStr.isNotEmpty) {
+      sellerMap = {...sellerMap, 'id': sellerIdStr};
+    }
+
+    // 위치 텍스트 보관
+    final sellerLocName = (sellerMap['locationName'] ?? '').toString();
+    final locText = (json['locationText'] ??
+            json['location'] ??
+            (sellerLocName.isNotEmpty ? sellerLocName : null))
+        ?.toString();
+
+    // ---------- 가격: price / priceWon 허용 ----------
+    final priceAny = json['price'] ?? json['priceWon'] ?? 0;
+    final priceInt = (priceAny is num)
+        ? priceAny.toInt()
+        : int.tryParse(priceAny.toString().replaceAll(RegExp(r'[, ]'), '')) ??
+            0;
+
+    final priceWonAny = json['priceWon'];
+    final priceWonInt = (priceWonAny is num)
+        ? priceWonAny.toInt()
+        : int.tryParse('${priceWonAny ?? ''}');
+
+    // ---------- 판매자 이름 해석 보강 ----------
+    String resolvedSellerName = _pickFirstNonEmptyString([
+      sellerMap['name'],
+      sellerMap['nickname'],
+      sellerMap['displayName'],
+      sellerMap['userName'],
+    ]);
+
+    if (resolvedSellerName.isEmpty) {
+      resolvedSellerName = _pickFirstNonEmptyString([
+        json['sellerName'],
+        json['userName'],
+        json['ownerName'],
+        json['authorName'],
+        json['writerName'],
+        json['posterName'],
+        json['memberName'],
+        json['accountName'],
+        json['profileName'],
+        json['creatorName'],
+        json['registrantName'],
+        json['publisherName'],
+        json['shopName'],
+        json['storeName'],
+        json['nickname'],
+        json['nickName'],
+        json['displayName'],
+        json['createdBy'],
+        json['creator'],
+        json['registrant'],
+        json['user'],
+        json['owner'],
+        json['author'],
+        json['account'],
+        json['profile'],
+        json['writer'],
+        json['poster'],
+        json['member'],
+        json['publisher'],
+        json['shop'],
+        json['store'],
+      ]);
+    }
+
+    if (resolvedSellerName.isEmpty && json.isNotEmpty) {
+      try {
+        resolvedSellerName = _deepScanForName(json.cast<String, dynamic>());
+      } catch (_) {}
+    }
+
+    dev.log('resolvedSellerName="$resolvedSellerName"',
+        name: 'Product.fromJson');
+
+    Seller parsedSeller = Seller.fromJson(sellerMap);
+    if ((parsedSeller.name).trim().isEmpty) {
+      parsedSeller = parsedSeller.copyWith(
+        name: resolvedSellerName.isNotEmpty ? resolvedSellerName : '알 수 없음',
+      );
+    }
+
+    // ---------- 좋아요/즐겨찾기/조회수 ----------
+    bool isLiked = (json['isLiked'] is bool) ? json['isLiked'] as bool : false;
+    final bool isFavorited =
+        json['isFavorited'] == true || json['isFavorited'] == 1;
+    final int favoriteCount = (() {
+      int? asInt(dynamic v) {
+        if (v is num) return v.toInt();
+        if (v is String && v.isNotEmpty) {
+          return int.tryParse(v.replaceAll(RegExp(r'[, ]'), ''));
+        }
+        return null;
+      }
+
+      final parsed =
+          asInt(json['favoriteCount']) ?? asInt(json['favCount']) ?? 0;
+      return parsed < 0 ? 0 : parsed;
+    })();
+
     return Product(
       id: (json['id'] ?? '').toString(),
       title: (json['title'] ?? json['name'] ?? '').toString(),
-      price: (json['price'] is num)
-          ? (json['price'] as num).toInt()
-          : int.tryParse(json['price']?.toString() ?? '0') ?? 0,
+      price: priceInt,
+      priceWon: priceWonInt,
       description: (json['description'] ?? '').toString(),
       imageUrls: imgs,
       createdAt: parseCreatedAt(json['createdAt']),
-      seller: Seller.fromJson(
-          (json['seller'] as Map?)?.cast<String, dynamic>() ?? const {}),
+      seller: parsedSeller,
       location: parseLatLng(json['location']),
       category: (json['category'] != null) ? json['category'].toString() : null,
       images: json['images'] != null ? List<dynamic>.from(json['images']) : [],
-      likes: json['likes'] ?? 0,
-      views: json['views'] ?? 0,
-      isLiked: json['isLiked'] ?? false,
+      locationText: locText,
+      likes: (json['likes'] is num)
+          ? (json['likes'] as num).toInt()
+          : int.tryParse('${json['likes'] ?? 0}') ?? 0,
+      views: (json['views'] is num)
+          ? (json['views'] as num).toInt()
+          : int.tryParse('${json['views'] ?? 0}') ?? 0,
+      isLiked: isLiked,
+      isFavorited: isFavorited,
+      favoriteCount: favoriteCount,
     );
   }
 
@@ -431,6 +816,7 @@ class Product {
         'id': id,
         'title': title,
         'price': price,
+        'priceWon': priceWon,
         'description': description,
         'imageUrls': imageUrls,
         'createdAt': createdAt.toIso8601String(),
@@ -438,13 +824,16 @@ class Product {
         'location': {'lat': location.lat, 'lng': location.lng},
         'category': category,
         'images': images ?? [],
+        'locationText': locationText,
         'likes': likes,
         'views': views,
         'isLiked': isLiked,
+        'isFavorited': isFavorited,
+        'favoriteCount': favoriteCount,
       };
 }
 
-// 🔹 홈 화면용 Map 변환 확장
+// 홈 화면용 Map 변환
 extension ProductMap on Product {
   Map<String, dynamic> toMapForHome() {
     final imageUrl = (imageUrls.isNotEmpty)
@@ -459,9 +848,12 @@ extension ProductMap on Product {
       'time': _formatTime(createdAt),
       'likes': likes,
       'views': views,
-      'price': '${price}원',
+      'price': price, // 숫자 유지 (UI에서 포맷팅)
+      'priceWon': priceWon ?? price, // 서버가 주면 함께 제공
       'isLiked': isLiked,
       'imageUrls': imageUrls,
+      'thumbnailUrl': imageUrl,
+      'locationText': locationText,
     };
   }
 
@@ -480,6 +872,7 @@ final demoProduct = Product(
   id: 'p-001',
   title: 'Willson 농구공 팝니다!',
   price: 25000,
+  priceWon: 25000,
   description:
       '모델명: NCAA Replica Game Ball\n크기: Size 7\n소재: 합성가죽\n신제품가: 4만원 초반',
   imageUrls: const [
@@ -496,8 +889,11 @@ final demoProduct = Product(
   ),
   location: const LatLng(lat: 37.500613, lng: 127.036431),
   category: '스포츠',
-  images: [],
+  images: const [],
   likes: 1,
   views: 5,
   isLiked: true,
+  isFavorited: true,
+  favoriteCount: 1,
+  locationText: '서울 강남구 역삼동',
 );

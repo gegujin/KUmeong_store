@@ -1,9 +1,9 @@
-// C:\Users\82105\KU-meong Store\kumeong-api\src\features\friends\entities\friend-request.entity.ts
+// kumeong-api/src/features/friends/entities/friend-request.entity.ts
 import { Entity, PrimaryColumn, Column, CreateDateColumn, Index } from 'typeorm';
 
 export type FriendReqStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELED';
 
-@Entity('friendRequests')
+@Entity({ name: 'friendRequests' })
 @Index('uq_friend_req', ['fromUserId', 'toUserId'], { unique: true })
 @Index('ix_friend_req_to_status', ['toUserId', 'status', 'createdAt'])
 @Index('ix_friend_req_from_status', ['fromUserId', 'status', 'createdAt'])
@@ -24,9 +24,9 @@ export class FriendRequestEntity {
   })
   status!: FriendReqStatus;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn({ type: 'datetime', precision: 3 })
   createdAt!: Date;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'datetime', precision: 3, nullable: true })
   decidedAt!: Date | null;
 }
