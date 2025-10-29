@@ -48,7 +48,8 @@ class _SchoolSignUpPageState extends State<SchoolSignUpPage> {
     super.dispose();
   }
 
-  String get _fullEmail => normalizeEmail('${_emailLocalController.text}@kku.ac.kr');
+  String get _fullEmail =>
+      normalizeEmail('${_emailLocalController.text}@kku.ac.kr');
 
   // --- 코드 TTL 타이머 ---
   void _startCodeTimer(Duration ttl) {
@@ -237,7 +238,8 @@ class _SchoolSignUpPageState extends State<SchoolSignUpPage> {
             msg = '발급된 인증번호가 없습니다. 먼저 발송해주세요.';
             break;
         }
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg)));
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -253,8 +255,10 @@ class _SchoolSignUpPageState extends State<SchoolSignUpPage> {
   }
 
   String get _cooldownText {
-    final mm = _cooldownRemain.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final ss = _cooldownRemain.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final mm =
+        _cooldownRemain.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final ss =
+        _cooldownRemain.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$mm:$ss';
   }
 
@@ -279,7 +283,8 @@ class _SchoolSignUpPageState extends State<SchoolSignUpPage> {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight - 20),
+              constraints:
+                  BoxConstraints(minHeight: constraints.maxHeight - 20),
               child: IntrinsicHeight(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -310,7 +315,8 @@ class _SchoolSignUpPageState extends State<SchoolSignUpPage> {
                         Expanded(
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _cooldownActive ? Colors.grey : mainColor,
+                              backgroundColor:
+                                  _cooldownActive ? Colors.grey : mainColor,
                               minimumSize: const Size(double.infinity, 48),
                             ),
                             onPressed: _cooldownActive ? null : _sendCode,
@@ -333,13 +339,15 @@ class _SchoolSignUpPageState extends State<SchoolSignUpPage> {
                           Expanded(
                             child: TextField(
                               controller: _codeController,
-                              decoration: const InputDecoration(labelText: '인증번호 입력'),
+                              decoration:
+                                  const InputDecoration(labelText: '인증번호 입력'),
                               keyboardType: TextInputType.number,
                               style: const TextStyle(fontSize: 16),
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Text(_codeExpired ? '만료됨' : _timerText, style: hintStyle),
+                          Text(_codeExpired ? '만료됨' : _timerText,
+                              style: hintStyle),
                           const SizedBox(width: 8),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(
@@ -347,7 +355,8 @@ class _SchoolSignUpPageState extends State<SchoolSignUpPage> {
                               minimumSize: const Size(100, 48),
                             ),
                             onPressed: _codeExpired ? null : _verifyCode,
-                            child: const Text('인증하기', style: TextStyle(color: Colors.white)),
+                            child: const Text('인증하기',
+                                style: TextStyle(color: Colors.white)),
                           ),
                         ],
                       ),
@@ -358,7 +367,8 @@ class _SchoolSignUpPageState extends State<SchoolSignUpPage> {
                         children: const [
                           Icon(Icons.check_circle, color: Colors.green),
                           SizedBox(width: 8),
-                          Text('이메일 인증 완료', style: TextStyle(color: Colors.green)),
+                          Text('이메일 인증 완료',
+                              style: TextStyle(color: Colors.green)),
                         ],
                       ),
                   ],
@@ -386,7 +396,8 @@ class _SchoolSignUpPageState extends State<SchoolSignUpPage> {
                         MaterialPageRoute(
                           builder: (_) => SignUpPage(
                             prefillEmail: _verifiedEmail!,
-                            univToken: _univToken, // null일 수 있음(백엔드 정책에 맞춰 필요 시 필수 처리)
+                            univToken:
+                                _univToken, // null일 수 있음(백엔드 정책에 맞춰 필요 시 필수 처리)
                             lockEmail: true,
                           ),
                         ),

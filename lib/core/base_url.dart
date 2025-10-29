@@ -1,18 +1,22 @@
 // lib/core/base_url.dart
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 
 /// ===============================
 /// ORIGIN 결정 (환경변수 > 플랫폼별 자동)
 /// ===============================
 /// 빌드 시 --dart-define=API_ORIGIN=http://192.168.0.5:3000 로 덮어쓰기 가능.
-const String _envOrigin = String.fromEnvironment('API_ORIGIN', defaultValue: '');
+const String _envOrigin =
+    String.fromEnvironment('API_ORIGIN', defaultValue: '');
 
 String _autoOrigin() {
   if (kIsWeb) {
     // 웹에선 현재 호스트를 따라가되, 백엔드 포트(3000)로 맞춘다.
     // 예: http://127.0.0.1:6529 → http://127.0.0.1:3000
     final base = Uri.base; // org-dartlang-app:/web_entrypoint.dart 일 수도 있음
-    final scheme = (base.scheme == 'https' || base.scheme == 'http') ? base.scheme : 'http';
+    final scheme = (base.scheme == 'https' || base.scheme == 'http')
+        ? base.scheme
+        : 'http';
     final host = (base.host.isNotEmpty) ? base.host : 'localhost';
     return Uri(
       scheme: scheme,
@@ -51,7 +55,8 @@ final String kApiBase = restBase();
 /// 내부 경로 정규화: 선두 슬래시 보장
 String _norm(String path) => path.startsWith('/') ? path : '/$path';
 
-bool _isAbsoluteUrl(String s) => s.startsWith('http://') || s.startsWith('https://');
+bool _isAbsoluteUrl(String s) =>
+    s.startsWith('http://') || s.startsWith('https://');
 
 Map<String, String> _stringifyQuery(Map<String, dynamic> raw) =>
     raw.map((k, v) => MapEntry(k, v?.toString() ?? ''));
@@ -95,6 +100,7 @@ String wsUrl({required String meUserId, String? roomId}) {
   final params = <String, String>{'me': meUserId};
   if (roomId != null && roomId.isNotEmpty) params['room'] = roomId;
 
-  final uri = Uri.parse('$wsOrigin/ws/realtime').replace(queryParameters: params);
+  final uri =
+      Uri.parse('$wsOrigin/ws/realtime').replace(queryParameters: params);
   return uri.toString();
 }

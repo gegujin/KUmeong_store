@@ -27,7 +27,8 @@ class FriendChatPage extends StatefulWidget {
 
 enum _MenuAction { reload, leave }
 
-class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObserver {
+class _FriendChatPageState extends State<FriendChatPage>
+    with WidgetsBindingObserver {
   final _controller = TextEditingController();
   final _scroll = ScrollController();
 
@@ -127,7 +128,8 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
   // 앱 비활성/백그라운드 전환 직전
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
       _scheduleMarkRead();
     }
   }
@@ -137,7 +139,8 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
     if (_fetching) return;
 
     final now = DateTime.now();
-    if (_lastFetchAt != null && now.difference(_lastFetchAt!) < const Duration(milliseconds: 500)) {
+    if (_lastFetchAt != null &&
+        now.difference(_lastFetchAt!) < const Duration(milliseconds: 500)) {
       return;
     }
     _fetching = true;
@@ -198,7 +201,9 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
       );
       if (fetched.isNotEmpty && mounted) {
         // 중복 제거 병합
-        final newOnes = fetched.where((m) => !_messageIds.contains(m.id)).toList()
+        final newOnes = fetched
+            .where((m) => !_messageIds.contains(m.id))
+            .toList()
           ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
         if (newOnes.isNotEmpty) {
@@ -445,7 +450,8 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
                           },
                           child: ListView.builder(
                             controller: _scroll,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
                             itemCount: _messages.length,
                             itemBuilder: (_, i) => _buildBubble(_messages[i]),
                           ),
@@ -464,7 +470,8 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
                         hintText: '메시지 입력...',
                         border: OutlineInputBorder(),
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                       ),
                       onSubmitted: (_) => _send(),
                     ),

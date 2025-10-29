@@ -8,8 +8,8 @@ class PaymentMethodScreen extends StatelessWidget {
   const PaymentMethodScreen({
     super.key,
     required this.isDelivery,
-    required this.roomId,           // 채팅방으로 네비게이션할 때 사용
-    this.productId,                 // 안심결제(백엔드 검증)에 필요(선택적)
+    required this.roomId, // 채팅방으로 네비게이션할 때 사용
+    this.productId, // 안심결제(백엔드 검증)에 필요(선택적)
     this.partnerName,
     this.productTitle,
     this.price,
@@ -19,7 +19,7 @@ class PaymentMethodScreen extends StatelessWidget {
     this.availablePoints,
   });
 
-  final bool isDelivery;   // ✅ KU대리(배달) 여부
+  final bool isDelivery; // ✅ KU대리(배달) 여부
   final String roomId;
   final String? productId;
 
@@ -42,8 +42,9 @@ class PaymentMethodScreen extends StatelessWidget {
       'chatRoom',
       pathParameters: {'roomId': roomId},
       extra: {
-        'isKuDelivery': kuDelivery,              // 배달이면 true → 채팅방에서 배달 패널
-        'securePaid': kuDelivery ? false : true, // 배달 직결: 패널만(확정 버튼 X) / 대면: 버튼 숨김 처리
+        'isKuDelivery': kuDelivery, // 배달이면 true → 채팅방에서 배달 패널
+        'securePaid':
+            kuDelivery ? false : true, // 배달 직결: 패널만(확정 버튼 X) / 대면: 버튼 숨김 처리
         if (partnerName != null) 'partnerName': partnerName,
       },
     );
@@ -112,15 +113,17 @@ class PaymentMethodScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: options.map((o) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: _PaymentOptionCard(
-              label: o.label,
-              icon: o.icon,
-              accentColor: o.color,
-              onTap: o.onTap,
-            ),
-          )).toList(),
+          children: options
+              .map((o) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: _PaymentOptionCard(
+                      label: o.label,
+                      icon: o.icon,
+                      accentColor: o.color,
+                      onTap: o.onTap,
+                    ),
+                  ))
+              .toList(),
         ),
       ),
     );
@@ -178,7 +181,8 @@ class _PaymentOptionCard extends StatelessWidget {
           children: [
             const Positioned(
               right: 16,
-              child: Icon(Icons.arrow_forward_ios, size: 20, color: Colors.white),
+              child:
+                  Icon(Icons.arrow_forward_ios, size: 20, color: Colors.white),
             ),
             Positioned(
               left: 16,
@@ -186,7 +190,10 @@ class _PaymentOptionCard extends StatelessWidget {
             ),
             Text(
               label,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white),
+              style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white),
             ),
           ],
         ),

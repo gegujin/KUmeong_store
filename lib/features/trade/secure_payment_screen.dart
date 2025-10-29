@@ -7,11 +7,17 @@ class PaymentResult {
   final String roomId;
   final bool success;
   final bool securePaid;
-  PaymentResult({required this.roomId, required this.success, this.securePaid = false});
+  PaymentResult(
+      {required this.roomId, required this.success, this.securePaid = false});
 }
 
 enum PaymentMethod {
-  walletTopup, accountEasy, cardEasy, normalCard, samsungPay, securePay,
+  walletTopup,
+  accountEasy,
+  cardEasy,
+  normalCard,
+  samsungPay,
+  securePay,
 }
 
 class SecurePaymentScreen extends StatefulWidget {
@@ -73,7 +79,6 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
     });
   }
 
-
   int get _rawPointInput {
     final raw = _pointCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
     return raw.isEmpty ? 0 : int.parse(raw);
@@ -103,8 +108,8 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
       'chatRoom',
       pathParameters: {'roomId': widget.roomId},
       extra: {
-        'securePaid': paid,          // 구매확정/결제 완료 여부
-        'isKuDelivery': isEscrow,    // 배달 패널 표시 여부
+        'securePaid': paid, // 구매확정/결제 완료 여부
+        'isKuDelivery': isEscrow, // 배달 패널 표시 여부
         'partnerName': widget.partnerName,
       },
     );
@@ -132,28 +137,28 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
           _addressCard(context),
           const SizedBox(height: 16),
           Divider(color: colors.outlineVariant),
-
           _sectionTitle(context, '상품 확인'),
           _productCard(context),
           const SizedBox(height: 16),
           Divider(color: colors.outlineVariant),
-
           _sectionTitle(context, '포인트 · 머니 사용'),
           _usagePanel(context, totalUsable),
           const SizedBox(height: 16),
           Divider(color: colors.outlineVariant),
-
           _sectionTitle(context, '결제 수단'),
-          _methodRadio(context, PaymentMethod.securePay, '안심결제', '에스크로 기반 안심결제'),
-          _methodRadio(context, PaymentMethod.walletTopup, '머니 충전 결제', '우리앱 머니를 충전하여 결제'),
-          _methodRadio(context, PaymentMethod.accountEasy, '계좌 간편결제', '계좌 연결 후 간편 결제'),
-          _methodRadio(context, PaymentMethod.cardEasy, '카드 간편결제', '카드 등록 후 원클릭 결제'),
-          _methodRadio(context, PaymentMethod.normalCard, '일반결제', '일반 카드/계좌 결제'),
+          _methodRadio(
+              context, PaymentMethod.securePay, '안심결제', '에스크로 기반 안심결제'),
+          _methodRadio(context, PaymentMethod.walletTopup, '머니 충전 결제',
+              '우리앱 머니를 충전하여 결제'),
+          _methodRadio(
+              context, PaymentMethod.accountEasy, '계좌 간편결제', '계좌 연결 후 간편 결제'),
+          _methodRadio(
+              context, PaymentMethod.cardEasy, '카드 간편결제', '카드 등록 후 원클릭 결제'),
+          _methodRadio(
+              context, PaymentMethod.normalCard, '일반결제', '일반 카드/계좌 결제'),
           _methodRadio(context, PaymentMethod.samsungPay, '삼성페이', '삼성페이로 결제'),
-
           const SizedBox(height: 16),
           Divider(color: colors.outlineVariant),
-
           _sectionTitle(context, '결제 요약'),
           _summaryCard(context),
           const SizedBox(height: 100),
@@ -178,9 +183,13 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
 
   // --- UI helpers ---
   Widget _sectionTitle(BuildContext context, String t) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Text(t, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurface)),
-  );
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(t,
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Theme.of(context).colorScheme.onSurface)),
+      );
 
   Widget _addressCard(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -196,7 +205,8 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
         children: [
           Icon(Icons.location_on_outlined, color: colors.primary),
           const SizedBox(width: 12),
-          Expanded(child: Text(_address, style: TextStyle(color: colors.onSurface))),
+          Expanded(
+              child: Text(_address, style: TextStyle(color: colors.onSurface))),
           const SizedBox(width: 8),
           OutlinedButton(
             onPressed: () async {
@@ -227,13 +237,15 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
       child: Row(
         children: [
           Container(
-            width: 72, height: 72,
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(
               color: kux.beigeSoft,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: kux.accentSoft),
             ),
-            child: Center(child: Text('이미지', style: TextStyle(color: colors.onSurface))),
+            child: Center(
+                child: Text('이미지', style: TextStyle(color: colors.onSurface))),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -241,16 +253,23 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (widget.categoryTop != null || widget.categorySub != null)
-                  Text('${widget.categoryTop ?? ''}'
-                       '${(widget.categoryTop != null && widget.categorySub != null) ? ' | ' : ''}'
-                       '${widget.categorySub ?? ''}',
-                    style: TextStyle(color: colors.onSurfaceVariant)),
+                  Text(
+                      '${widget.categoryTop ?? ''}'
+                      '${(widget.categoryTop != null && widget.categorySub != null) ? ' | ' : ''}'
+                      '${widget.categorySub ?? ''}',
+                      style: TextStyle(color: colors.onSurfaceVariant)),
                 const SizedBox(height: 2),
                 Text(widget.productTitle,
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: colors.onSurface)),
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: colors.onSurface)),
                 const SizedBox(height: 4),
                 Text('가격 ${_fmt.format(widget.price)}원',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: colors.onSurface)),
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: colors.onSurface)),
               ],
             ),
           ),
@@ -276,21 +295,33 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
         children: [
           Row(children: [
             const Text('사용 가능', style: TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(width: 6), Icon(Icons.help_outline, size: 16, color: colors.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Icon(Icons.help_outline, size: 16, color: colors.onSurfaceVariant),
             const Spacer(),
-            Text('${_fmt.format(totalUsable)}원', style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text('${_fmt.format(totalUsable)}원',
+                style: const TextStyle(fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 10),
-          Row(children: [const Text('포인트'), const Spacer(), Text('${_fmt.format(widget.availablePoints)}원')]),
+          Row(children: [
+            const Text('포인트'),
+            const Spacer(),
+            Text('${_fmt.format(widget.availablePoints)}원')
+          ]),
           const SizedBox(height: 6),
-          Row(children: [const Text('머니'), const Spacer(), Text('${_fmt.format(widget.availableMoney)}원')]),
+          Row(children: [
+            const Text('머니'),
+            const Spacer(),
+            Text('${_fmt.format(widget.availableMoney)}원')
+          ]),
           const SizedBox(height: 12),
           Row(children: [
             Expanded(
               child: TextField(
                 controller: _pointCtrl,
                 keyboardType: TextInputType.number,
-                onChanged: (_) { if (_alwaysAll) setState(() => _alwaysAll = false); },
+                onChanged: (_) {
+                  if (_alwaysAll) setState(() => _alwaysAll = false);
+                },
                 decoration: InputDecoration(
                   labelText: '사용',
                   filled: true,
@@ -299,7 +330,8 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
                     padding: const EdgeInsets.only(right: 12, top: 12),
                     child: Text('원', style: TextStyle(color: colors.onSurface)),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(color: kux.accentSoft),
@@ -319,15 +351,22 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
           ]),
           CheckboxListTile(
             value: _alwaysAll,
-            onChanged: (v) { setState(() { _alwaysAll = v ?? false; if (_alwaysAll) _applyAll(); }); },
-            dense: true, contentPadding: EdgeInsets.zero, title: const Text('항상 전액사용'),
+            onChanged: (v) {
+              setState(() {
+                _alwaysAll = v ?? false;
+                if (_alwaysAll) _applyAll();
+              });
+            },
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('항상 전액사용'),
             controlAffinity: ListTileControlAffinity.leading,
           ),
           if (_rawPointInput > maxUsable)
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text('사용 가능 포인트(${_fmt.format(maxUsable)}원)를 초과했어요.',
-                style: const TextStyle(color: Colors.red, fontSize: 12)),
+                  style: const TextStyle(color: Colors.red, fontSize: 12)),
             ),
         ],
       ),
@@ -335,7 +374,8 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
   }
 
   // ✅ 라디오 선택 시 이동하지 않음 — 버튼에서만 분기
-  Widget _methodRadio(BuildContext context, PaymentMethod m, String title, String? sub) {
+  Widget _methodRadio(
+      BuildContext context, PaymentMethod m, String title, String? sub) {
     final colors = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -370,9 +410,11 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
           _row('상품 금액', '${_fmt.format(widget.price)}원'),
           _row('포인트 사용', '- ${_fmt.format(_clampedPoint)}원'),
           _row('결제 수단', _method.toString().split('.').last),
-          const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
+          const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
           _row('최종 결제 금액', '${_fmt.format(_finalPay)}원',
-              valueStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              valueStyle:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
         ],
       ),
     );
@@ -385,9 +427,13 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
   }
 
   Widget _row(String label, String value, {TextStyle? valueStyle}) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(children: [Expanded(child: Text(label)), Text(value, style: valueStyle ?? const TextStyle(fontWeight: FontWeight.w600))]),
-  );
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(children: [
+          Expanded(child: Text(label)),
+          Text(value,
+              style: valueStyle ?? const TextStyle(fontWeight: FontWeight.w600))
+        ]),
+      );
 
   Future<String?> _mockPickAddress(BuildContext context, String current) async {
     final ctrl = TextEditingController(text: current);
@@ -395,10 +441,15 @@ class _SecurePaymentScreenState extends State<SecurePaymentScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('배송지 변경'),
-        content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: '주소 입력')),
+        content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(hintText: '주소 입력')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
-          FilledButton(onPressed: () => Navigator.pop(context, ctrl.text.trim()), child: const Text('적용')),
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('취소')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+              child: const Text('적용')),
         ],
       ),
     );

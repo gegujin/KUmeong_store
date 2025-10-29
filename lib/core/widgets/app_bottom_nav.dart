@@ -29,9 +29,12 @@ class AppBottomNav extends StatelessWidget {
       unselectedItemColor: Colors.grey,
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.home), label: '홈'),
-        BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: '1:1채팅'),
-        BottomNavigationBarItem(icon: Icon(Icons.favorite_border), label: '관심목록'),
-        BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: '마이페이지'),
+        BottomNavigationBarItem(
+            icon: Icon(Icons.chat_bubble_outline), label: '1:1채팅'),
+        BottomNavigationBarItem(
+            icon: Icon(Icons.favorite_border), label: '관심목록'),
+        BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline), label: '마이페이지'),
       ],
       onTap: (index) {
         if (onTap != null) {

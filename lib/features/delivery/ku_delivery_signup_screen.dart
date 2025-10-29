@@ -16,7 +16,8 @@ class KuDeliverySignupPage extends StatefulWidget {
 class _KuDeliverySignupPageState extends State<KuDeliverySignupPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _codeController = TextEditingController();
-  final TextEditingController _otherTransportController = TextEditingController();
+  final TextEditingController _otherTransportController =
+      TextEditingController();
 
   bool isCodeSent = false;
   bool isVerified = false;
@@ -213,10 +214,9 @@ class _KuDeliverySignupPageState extends State<KuDeliverySignupPage> {
               child: const Text(
                 "회원가입 완료",
                 style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white
-                ),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white),
               ),
             ),
           ),

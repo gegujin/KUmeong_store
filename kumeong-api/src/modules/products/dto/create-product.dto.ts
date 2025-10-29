@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  MinLength,   
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
@@ -22,6 +23,7 @@ export class CreateProductDto {
   )
   @IsString()
   @IsNotEmpty()
+  @MinLength(2)  
   @MaxLength(100)
   title!: string;
 
@@ -65,4 +67,17 @@ export class CreateProductDto {
   @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;
+
+  @ApiPropertyOptional({
+    example: '모시래',
+    description: '거래 위치(텍스트)',
+    maxLength: 100,
+  })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value,
+  )
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  locationText?: string; // ✅ 추가
 }

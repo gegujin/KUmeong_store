@@ -28,13 +28,17 @@ class FriendSummary {
     String _s(k) => (j[k] ?? '').toString();
     num _n(k) => (j[k] is num) ? j[k] as num : num.tryParse(_s(k)) ?? 0;
     return FriendSummary(
-      userId: _s('userId').isNotEmpty ? _s('userId') : (_s('friendId').isNotEmpty ? _s('friendId') : _s('id')),
+      userId: _s('userId').isNotEmpty
+          ? _s('userId')
+          : (_s('friendId').isNotEmpty ? _s('friendId') : _s('id')),
       displayName: _s('displayName').isNotEmpty
           ? _s('displayName')
           : (_s('friendName').isNotEmpty ? _s('friendName') : _s('name')),
       tradeCount: _n('tradeCount').toInt(),
       trustScore: _n('trustScore').toDouble(),
-      lastActiveAt: j['lastActiveAt'] != null ? DateTime.tryParse(_s('lastActiveAt')) : null,
+      lastActiveAt: j['lastActiveAt'] != null
+          ? DateTime.tryParse(_s('lastActiveAt'))
+          : null,
     );
   }
 }
@@ -68,13 +72,16 @@ class FriendApi {
   }
 
   /// POST /v1/friends/requests  { toUserId? , targetEmail? }
-  Future<void> sendFriendRequest({String? toUserId, String? targetEmail}) async {
+  Future<void> sendFriendRequest(
+      {String? toUserId, String? targetEmail}) async {
     final uri = Uri.parse('$baseUrl/v1/friends/requests');
     final payload = <String, dynamic>{
       if (toUserId != null && toUserId.isNotEmpty) 'toUserId': toUserId,
-      if (targetEmail != null && targetEmail.isNotEmpty) 'targetEmail': targetEmail,
+      if (targetEmail != null && targetEmail.isNotEmpty)
+        'targetEmail': targetEmail,
     };
-    final res = await http.post(uri, headers: await _authHeaders(), body: jsonEncode(payload));
+    final res = await http.post(uri,
+        headers: await _authHeaders(), body: jsonEncode(payload));
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception(res.body.isNotEmpty ? res.body : '친구 요청 전송 실패');
     }
@@ -87,6 +94,8 @@ class FriendApi {
     if (res.statusCode != 200) throw Exception('친구 목록을 불러오지 못했습니다.');
     final j = jsonDecode(res.body);
     final data = (j is Map) ? (j['data'] as List? ?? []) : (j as List? ?? []);
-    return data.map((e) => FriendSummary.fromJson(e as Map<String, dynamic>)).toList();
+    return data
+        .map((e) => FriendSummary.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 }

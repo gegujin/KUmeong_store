@@ -30,7 +30,8 @@ class FriendRequestRow {
         toUserId: j['toUserId'],
         status: j['status'],
         createdAt: DateTime.parse(j['createdAt']),
-        decidedAt: j['decidedAt'] != null ? DateTime.parse(j['decidedAt']) : null,
+        decidedAt:
+            j['decidedAt'] != null ? DateTime.parse(j['decidedAt']) : null,
         fromEmail: j['fromEmail'],
         toEmail: j['toEmail'],
       );
@@ -59,6 +60,8 @@ class FriendSummary {
         trustScore: j['trustScore'] ?? 0,
         tradeCount: j['tradeCount'] ?? 0,
         topItems: (j['topItems'] as List?)?.cast<String>() ?? const [],
-        lastActiveAt: j['lastActiveAt'] != null ? DateTime.parse(j['lastActiveAt']) : null,
+        lastActiveAt: j['lastActiveAt'] != null
+            ? DateTime.parse(j['lastActiveAt'])
+            : null,
       );
 }

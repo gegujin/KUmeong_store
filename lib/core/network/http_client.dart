@@ -13,7 +13,8 @@ class ApiException implements Exception {
   final String? bodyPreview;
   ApiException(this.message, {this.status, this.bodyPreview});
   @override
-  String toString() => 'ApiException(status=$status, message=$message, body=${bodyPreview ?? ""})';
+  String toString() =>
+      'ApiException(status=$status, message=$message, body=${bodyPreview ?? ""})';
 }
 
 class HttpX {
@@ -84,7 +85,8 @@ class HttpX {
       final decoded = jsonDecode(r.body);
       if (decoded is Map<String, dynamic>) return decoded;
       if (decoded is List) return {'data': decoded};
-      throw ApiException('JSON root is not an object/array', status: r.statusCode);
+      throw ApiException('JSON root is not an object/array',
+          status: r.statusCode);
     }
     try {
       final decoded = jsonDecode(r.body);
@@ -92,11 +94,13 @@ class HttpX {
       if (decoded is List) return {'data': decoded};
     } catch (_) {}
     final head = r.body.length > 300 ? r.body.substring(0, 300) : r.body;
-    throw ApiException('Non-JSON response', status: r.statusCode, bodyPreview: head);
+    throw ApiException('Non-JSON response',
+        status: r.statusCode, bodyPreview: head);
   }
 
   static void _log(String method, Uri url, http.Response r, {Object? body}) {
-    final bodyPreview = r.body.length > 400 ? '${r.body.substring(0, 400)}…' : r.body;
+    final bodyPreview =
+        r.body.length > 400 ? '${r.body.substring(0, 400)}…' : r.body;
     debugPrint(
       '[$method] $url  => ${r.statusCode}\n'
       'REQ:${body is String ? body : (body != null ? jsonEncode(body) : '-')}\n'
@@ -112,7 +116,8 @@ class HttpX {
     }
     if (r.statusCode < 200 || r.statusCode >= 300) {
       final head = r.body.length > 400 ? r.body.substring(0, 400) : r.body;
-      throw ApiException('HTTP ${r.statusCode}', status: r.statusCode, bodyPreview: head);
+      throw ApiException('HTTP ${r.statusCode}',
+          status: r.statusCode, bodyPreview: head);
     }
   }
 
@@ -131,7 +136,8 @@ class HttpX {
       final q = Map<String, dynamic>.from(query ?? const {});
       if (noCache) q['__ts'] = DateTime.now().millisecondsSinceEpoch.toString();
       final uri = apiUrl(path, _stringifyQuery(q));
-      final h = await _headers(extra: headers, withAuth: withAuth, noCache: noCache);
+      final h =
+          await _headers(extra: headers, withAuth: withAuth, noCache: noCache);
 
       final res = await http.get(uri, headers: h).timeout(_timeout);
       _log('GET', uri, res);
@@ -154,7 +160,8 @@ class HttpX {
       final q = Map<String, dynamic>.from(query ?? const {});
       if (noCache) q['__ts'] = DateTime.now().millisecondsSinceEpoch.toString();
       final uri = apiUrl(path, _stringifyQuery(q));
-      final h = await _headers(extra: headers, withAuth: withAuth, noCache: noCache);
+      final h =
+          await _headers(extra: headers, withAuth: withAuth, noCache: noCache);
 
       final res = await http.delete(uri, headers: h).timeout(_timeout);
       _log('DELETE', uri, res);
@@ -175,7 +182,9 @@ class HttpX {
     try {
       final uri = apiUrl(path, _stringifyQuery(query));
       final h = await _headers(extra: headers, withAuth: withAuth);
-      final res = await http.post(uri, headers: h, body: jsonEncode(body)).timeout(_timeout);
+      final res = await http
+          .post(uri, headers: h, body: jsonEncode(body))
+          .timeout(_timeout);
       _log('POST', uri, res, body: body);
       _ensureOk(res);
       return _parseJson(res);
@@ -194,7 +203,9 @@ class HttpX {
     try {
       final uri = apiUrl(path, _stringifyQuery(query));
       final h = await _headers(extra: headers, withAuth: withAuth);
-      final res = await http.put(uri, headers: h, body: jsonEncode(body)).timeout(_timeout);
+      final res = await http
+          .put(uri, headers: h, body: jsonEncode(body))
+          .timeout(_timeout);
       _log('PUT', uri, res, body: body);
       _ensureOk(res);
       return _parseJson(res);
@@ -213,7 +224,9 @@ class HttpX {
     try {
       final uri = apiUrl(path, _stringifyQuery(query));
       final h = await _headers(extra: headers, withAuth: withAuth);
-      final res = await http.patch(uri, headers: h, body: jsonEncode(body)).timeout(_timeout);
+      final res = await http
+          .patch(uri, headers: h, body: jsonEncode(body))
+          .timeout(_timeout);
       _log('PATCH', uri, res, body: body);
       _ensureOk(res);
       return _parseJson(res);

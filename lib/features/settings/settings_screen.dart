@@ -39,8 +39,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final j = await HttpX.get('/auth/me');
 
       // { user } | { data } | { ... } 안전 추출
-      final me = (j['user'] ?? j['data'] ?? j) as Map<String, dynamic>? ?? const {};
-      final who = (me['name'] ?? me['email'] ?? me['id'] ?? 'unknown').toString();
+      final me =
+          (j['user'] ?? j['data'] ?? j) as Map<String, dynamic>? ?? const {};
+      final who =
+          (me['name'] ?? me['email'] ?? me['id'] ?? 'unknown').toString();
 
       debugPrint('AUTH ME OK: $me');
 
@@ -106,7 +108,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('배달 상태 알림'),
             subtitle: const Text('픽업/이동 중/도착 등 상태 업데이트'),
             value: _notifDelivery,
-            onChanged: _notificationsEnabled ? (v) => setState(() => _notifDelivery = v) : null,
+            onChanged: _notificationsEnabled
+                ? (v) => setState(() => _notifDelivery = v)
+                : null,
           ),
           ListTile(
             title: const Text('방해 금지 시간대'),
@@ -122,7 +126,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: Text(_soundModeIsSound ? '소리' : '진동'),
             subtitle: const Text('알림 음향 모드'),
             value: _soundModeIsSound,
-            onChanged: _notificationsEnabled ? (v) => setState(() => _soundModeIsSound = v) : null,
+            onChanged: _notificationsEnabled
+                ? (v) => setState(() => _soundModeIsSound = v)
+                : null,
           ),
           const Divider(height: 1),
 
@@ -274,7 +280,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // 방해 금지 시간대 선택
   Future<void> _pickDndRange() async {
-    final start = await showTimePicker(context: context, initialTime: _dndStart);
+    final start =
+        await showTimePicker(context: context, initialTime: _dndStart);
     if (!mounted || start == null) return;
     final end = await showTimePicker(context: context, initialTime: _dndEnd);
     if (!mounted || end == null) return;

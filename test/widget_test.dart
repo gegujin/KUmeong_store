@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kumeong_store/main.dart';  // 패키지명 수정
+import 'package:kumeong_store/main.dart'; // 패키지명 수정
 
 void main() {
   testWidgets('앱이 로드되고 AppBar 타이틀이 보이는지 확인', (tester) async {

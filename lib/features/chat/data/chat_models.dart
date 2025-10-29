@@ -53,7 +53,8 @@ class ChatRoomSummary {
 
   factory ChatRoomSummary.fromJson(Map<String, dynamic> j) => ChatRoomSummary(
         id: j['id'] as String,
-        peerName: (j['peer']?['displayName'] ?? j['peerName'] ?? '친구').toString(),
+        peerName:
+            (j['peer']?['displayName'] ?? j['peerName'] ?? '친구').toString(),
         lastSnippet: j['lastSnippet']?.toString(),
         unreadCount: (j['unreadCount'] ?? 0) as int,
         lastMessageAt: j['lastMessageAt'] != null

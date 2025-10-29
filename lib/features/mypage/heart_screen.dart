@@ -1,6 +1,7 @@
 // lib/features/mypage/heart_screen.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:kumeong_store/api_service.dart'; // fetchMyFavoriteItems, toggleFavoriteDetailed, fetchProductById
 import 'package:kumeong_store/models/post.dart'; // Product + extension toMapForHome()
@@ -26,6 +27,27 @@ class _HeartPageState extends State<HeartPage> {
   List<Map<String, dynamic>> _items = [];
 
   late final VoidCallback _favListener;
+
+  // --------------------------------
+  // 업로드 이미지 URL 절대경로 변환
+  // --------------------------------
+  static const String _webHost = 'http://localhost:3000';
+  static const String _androidEmuHost = 'http://10.0.2.2:3000';
+  String get _host => kIsWeb ? _webHost : _androidEmuHost;
+
+  String _resolveImageUrl(String? url) {
+    if (url == null) return '';
+    final u = url.trim();
+    if (u.isEmpty) return '';
+    if (u.startsWith('http://') ||
+        u.startsWith('https://') ||
+        u.startsWith('data:') ||
+        u.startsWith('blob:')) {
+      return u;
+    }
+    if (u.startsWith('/uploads/')) return '$_host$u';
+    return '$_host/uploads/$u';
+  }
 
   // -------------------------------
   // Home과 동일한 표시 유틸
@@ -76,11 +98,16 @@ class _HeartPageState extends State<HeartPage> {
       final mapped = <Map<String, dynamic>>[];
       for (final p in products) {
         final m = p.toMapForHome();
-        final imgList = (m['imageUrls'] is List)
+
+        final rawList = (m['imageUrls'] is List)
             ? List<String>.from(m['imageUrls'])
             : const <String>[];
-        final thumb = (m['thumbnailUrl'] as String?) ??
+        final imgList =
+            rawList.map(_resolveImageUrl).where((e) => e.isNotEmpty).toList();
+
+        final thumbRaw = (m['thumbnailUrl'] as String?) ??
             (imgList.isNotEmpty ? imgList.first : null);
+        final thumb = _resolveImageUrl(thumbRaw);
 
         final id = (m['id'] ?? '') as String;
         if (id.isEmpty || seen.contains(id)) continue;
@@ -93,7 +120,7 @@ class _HeartPageState extends State<HeartPage> {
           'location': m['location'] ?? m['locationText'] ?? '위치 정보 없음',
           'isFavorited': true, // 서버 기준 즐겨찾기 목록
           'favoriteCount':
-              favStore.counts[id] ?? p.favoriteCount ?? 0, // ← Store 우선
+              favStore.counts[id] ?? p.favoriteCount ?? 0, // Store 우선
         });
       }
 
@@ -133,11 +160,17 @@ class _HeartPageState extends State<HeartPage> {
       final p = await fetchProductById(id);
       if (p == null) continue;
       final m = p.toMapForHome();
-      final imgList = (m['imageUrls'] is List)
+
+      final rawList = (m['imageUrls'] is List)
           ? List<String>.from(m['imageUrls'])
           : const <String>[];
-      final thumb = (m['thumbnailUrl'] as String?) ??
+      final imgList =
+          rawList.map(_resolveImageUrl).where((e) => e.isNotEmpty).toList();
+
+      final thumbRaw = (m['thumbnailUrl'] as String?) ??
           (imgList.isNotEmpty ? imgList.first : null);
+      final thumb = _resolveImageUrl(thumbRaw);
+
       final map = {
         ...m,
         'imageUrls': imgList,
@@ -266,12 +299,16 @@ class _HeartPageState extends State<HeartPage> {
                           final liked =
                               (product['isFavorited'] ?? false) as bool;
 
-                          // 이미지: thumbnailUrl → imageUrls[0]
-                          final imageUrl = product['thumbnailUrl'] ??
-                              ((product['imageUrls'] != null &&
-                                      (product['imageUrls'] as List).isNotEmpty)
-                                  ? (product['imageUrls'] as List).first
-                                  : null);
+                          // 이미지: thumbnailUrl(정규화됨) → imageUrls[0]
+                          final imageUrl = _resolveImageUrl(
+                            (product['thumbnailUrl'] as String?) ??
+                                ((product['imageUrls'] != null &&
+                                        (product['imageUrls'] as List)
+                                            .isNotEmpty)
+                                    ? (product['imageUrls'] as List).first
+                                        as String
+                                    : null),
+                          );
 
                           final title = product['title'] as String? ?? '';
 
@@ -312,7 +349,7 @@ class _HeartPageState extends State<HeartPage> {
                                 children: [
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(8),
-                                    child: imageUrl != null
+                                    child: (imageUrl.isNotEmpty)
                                         ? Image.network(
                                             imageUrl,
                                             width: 100,

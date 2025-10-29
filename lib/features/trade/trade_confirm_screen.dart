@@ -18,7 +18,8 @@ class TradeConfirmScreen extends StatelessWidget {
     final kux = Theme.of(context).extension<KuColors>()!;
     final scheme = Theme.of(context).colorScheme;
 
-    final resolvedRoomId = (roomId == null || roomId!.isEmpty) ? 'room-demo' : roomId!;
+    final resolvedRoomId =
+        (roomId == null || roomId!.isEmpty) ? 'room-demo' : roomId!;
 
     void _goPayment({required bool isDelivery}) {
       final qp = <String, String>{
@@ -99,7 +100,10 @@ class _TradeOptionCard extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: accentColor),
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: accentColor),
               ),
             ),
             const Icon(Icons.arrow_forward_ios, size: 20),

@@ -50,7 +50,9 @@ export class Product {
   @Column({ length: 50, nullable: true })
   category?: string;
 
-  // ※ 스키마는 별도 productImages 테이블 사용 권장 → 컬럼 제거
+  // ✅ 거래 위치(텍스트) — DTO(Create/Update)와 길이 맞춤
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  locationText?: string;
 
   // 판매자 FK — UUID/CHAR(36) (ownerId -> sellerId)
   @Column('char', { length: 36, name: 'sellerId' })
@@ -62,7 +64,6 @@ export class Product {
     nullable: false,
     eager: false,
   })
-
   @JoinColumn({ name: 'sellerId', referencedColumnName: 'id' })
   seller!: User;
 

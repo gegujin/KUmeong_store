@@ -95,11 +95,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
             return ListTile(
               onTap: () {
                 context.pushNamed(
-                R.RouteNames.chatRoomOverlay,             // ✅ 루트 레벨 오버레이
-                pathParameters: {'roomId': chat.id},
-                extra: { 'partnerName': chat.partnerName, 'isKuDelivery': false, 'securePaid': false },
-              );
-            },
+                  R.RouteNames.chatRoomOverlay, // ✅ 루트 레벨 오버레이
+                  pathParameters: {'roomId': chat.id},
+                  extra: {
+                    'partnerName': chat.partnerName,
+                    'isKuDelivery': false,
+                    'securePaid': false
+                  },
+                );
+              },
               leading: _Avatar(url: chat.avatarUrl),
               title: Text(
                 chat.partnerName,

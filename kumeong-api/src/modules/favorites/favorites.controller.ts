@@ -1,4 +1,4 @@
-// src/features/favorites/favorites.controller.ts
+// src/modules/favorites/favorites.controller.ts
 import {
   Controller,
   Post,
@@ -15,7 +15,7 @@ import { FavoritesService } from './favorites.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
-// 전역 prefix가 'api', URI 버전닝을 쓰고 있다면 아래 설정으로 /api/v1/favorites 가 됩니다.
+// 전역 prefix 'api' + 버저닝 → /api/v1/favorites
 @Controller({ path: 'favorites', version: '1' })
 export class FavoritesController {
   constructor(private readonly service: FavoritesService) {}
@@ -24,8 +24,10 @@ export class FavoritesController {
   async toggle(@Req() req: any, @Param('productId') productId: string) {
     const meId: string | undefined = req.user?.id;
     if (!meId) throw new UnauthorizedException('No user id in request');
-    const res = await this.service.toggle(meId, productId);
-    return { ok: true, ...res }; // { ok:true, isFavorited: true/false }
+
+    // FavoritesService.toggle 은 { isFavorited, favoriteCount } 를 반환해야 함
+    const { isFavorited, favoriteCount } = await this.service.toggle(meId, productId);
+    return { ok: true, data: { isFavorited, favoriteCount } };
   }
 
   @Get()

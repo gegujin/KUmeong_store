@@ -20,7 +20,8 @@ class FriendSummaryDto {
 
   factory FriendSummaryDto.fromJson(Map<String, dynamic> j) => FriendSummaryDto(
         // ✅ 서버 view 응답 우선: peerId → (fallback) friendId → userId → id
-        userId: (j['peerId'] ?? j['friendId'] ?? j['userId'] ?? j['id'] ?? '').toString(),
+        userId: (j['peerId'] ?? j['friendId'] ?? j['userId'] ?? j['id'] ?? '')
+            .toString(),
 
         // ✅ 표시명 우선순위: peerNameOrEmail → friendName → displayName → peerEmail → friendEmail → name
         displayName: (j['peerNameOrEmail'] ??
@@ -38,7 +39,8 @@ class FriendSummaryDto {
 
         // friendedAt 또는 lastActiveAt를 DateTime으로 파싱
         friendedAt: (j['friendedAt'] ?? j['lastActiveAt']) != null
-            ? DateTime.tryParse((j['friendedAt'] ?? j['lastActiveAt']).toString())
+            ? DateTime.tryParse(
+                (j['friendedAt'] ?? j['lastActiveAt']).toString())
             : null,
       );
 }

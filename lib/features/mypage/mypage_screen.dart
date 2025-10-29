@@ -40,7 +40,8 @@ class MyPage extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white),
             onPressed: () {
-              context.pushNamed(R.RouteNames.settings);  // ⬅️ MaterialPageRoute 사용 금지
+              context.pushNamed(
+                  R.RouteNames.settings); // ⬅️ MaterialPageRoute 사용 금지
             },
           ),
         ],
@@ -70,8 +71,7 @@ class MyPage extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               "$rating / 5.0",
-              style:
-                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 20),

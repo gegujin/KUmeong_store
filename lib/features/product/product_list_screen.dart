@@ -1,24 +1,95 @@
 import 'package:flutter/material.dart';
-import 'package:kumeong_store/core/widgets/app_bottom_nav.dart'; // 하단바
+import 'package:kumeong_store/core/widgets/app_bottom_nav.dart'; // 하단바 (미사용이면 삭제해도 OK)
 import '../mypage/mypage_screen.dart';
 import '../home/home_screen.dart';
 
+import 'package:kumeong_store/api_service.dart'; // fetchProductsByTagCards
+
 // =========================
-// 상품 페이지
+// 상품 페이지 (태그별 실제 목록)
 // =========================
-class ProductPage extends StatelessWidget {
-  final String category; // 선택된 하위 카테고리
-  final List<String> products;
+class ProductPage extends StatefulWidget {
+  final String category; // 화면에 표시할 하위 카테고리명
+  final String tag; // 실제 조회에 사용할 태그
 
   const ProductPage({
     super.key,
     required this.category,
-    required this.products,
+    required this.tag,
   });
 
   @override
+  State<ProductPage> createState() => _ProductPageState();
+}
+
+class _ProductPageState extends State<ProductPage> {
+  bool _loading = true;
+  String? _error;
+  List<Map<String, dynamic>> _items = [];
+
+  int _page = 1;
+  final int _limit = 20;
+  bool _hasMore = true;
+  final ScrollController _sc = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _sc.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _sc.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_hasMore &&
+        !_loading &&
+        _sc.position.pixels >= _sc.position.maxScrollExtent - 200) {
+      _load(next: true);
+    }
+  }
+
+  Future<void> _load({bool next = false}) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final page = next ? _page + 1 : 1;
+      final items = await fetchProductsByTagCards(
+        tag: widget.tag,
+        page: page,
+        limit: _limit,
+        sortField: 'createdAt',
+        order: 'DESC',
+      );
+
+      setState(() {
+        if (next) {
+          _items.addAll(items);
+          _page = page;
+        } else {
+          _items = items;
+          _page = 1;
+        }
+        _hasMore = items.length >= _limit;
+      });
+    } catch (e) {
+      setState(() {
+        _error = '$e';
+      });
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final mainColor = Theme.of(context).colorScheme.primary; // 색상 변경
+    final mainColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
       appBar: AppBar(
@@ -26,69 +97,151 @@ class ProductPage extends StatelessWidget {
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: () => Navigator.pop(context),
         ),
-        title: Text(category, style: const TextStyle(color: Colors.white)),
+        title:
+            Text(widget.category, style: const TextStyle(color: Colors.white)),
       ),
-      body: ListView.builder(
-        itemCount: products.length,
-        itemBuilder: (_, index) {
-          final productName = products[index];
-          return InkWell(
-            onTap: () {
-              print('$productName 클릭됨');
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
+      body: RefreshIndicator(
+        onRefresh: () => _load(next: false),
+        child: _error != null
+            ? ListView(
                 children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    color: Colors.grey[300],
-                  ), // 상품 이미지
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          productName,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: const [
-                            Text(
-                              '000 | 0일전',
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                            Text(
-                              '찜 0  조회수 0',
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Text('가격 00,000원'),
-                      ],
+                  const SizedBox(height: 80),
+                  Center(
+                      child: Text('불러오기 실패\n$_error',
+                          textAlign: TextAlign.center)),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: OutlinedButton(
+                      onPressed: () => _load(next: false),
+                      child: const Text('다시 시도'),
                     ),
                   ),
                 ],
+              )
+            : ListView.builder(
+                controller: _sc,
+                itemCount: _items.length + (_loading || _hasMore ? 1 : 0),
+                itemBuilder: (_, index) {
+                  if (index >= _items.length) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+
+                  final m = _items[index];
+                  final String title = (m['title'] ?? '') as String;
+                  final String? thumb = (m['thumbnailUrl'] as String?);
+                  final String loc = (m['locationText'] ?? '미정') as String;
+                  final String timeText = (m['timeText'] ?? '') as String;
+                  final int fav = _asInt(m['favoriteCount']);
+                  final int views = _asInt(m['views']);
+                  final String priceText = _fmtWon(m['priceWon']);
+                  final String id = (m['id'] ?? '') as String;
+
+                  return InkWell(
+                    onTap: () {
+                      // TODO: 상품 상세 라우팅 연결
+                      // 예) context.goNamed(R.RouteNames.productDetail, pathParameters: {'id': id});
+                      debugPrint('$title 클릭됨 (id=$id)');
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 80,
+                            height: 80,
+                            clipBehavior: Clip.hardEdge,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[200],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: (thumb != null && thumb.isNotEmpty)
+                                ? Image.network(thumb, fit: BoxFit.cover)
+                                : const Icon(Icons.image, color: Colors.grey),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      '$loc | $timeText',
+                                      style:
+                                          const TextStyle(color: Colors.grey),
+                                    ),
+                                    Text(
+                                      '찜 $fav  조회수 $views',
+                                      style:
+                                          const TextStyle(color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text('가격 $priceText'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
-            ),
-          );
-        },
       ),
     );
+  }
+
+  int _asInt(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String && v.isNotEmpty) {
+      final s = v.replaceAll(RegExp(r'[, ]'), '');
+      return int.tryParse(s) ?? 0;
+    }
+    return 0;
+  }
+
+  String _fmtWon(dynamic value) {
+    if (value == null) return '0원';
+    try {
+      final n = (value is num) ? value : num.parse(value.toString());
+      return '${_comma(n)}원';
+    } catch (_) {
+      return '$value원';
+    }
+  }
+
+  String _comma(num n) {
+    final s = n.toStringAsFixed(0);
+    final buf = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      final idx = s.length - i;
+      buf.write(s[i]);
+      if (idx > 1 && (idx - 1) % 3 == 0) buf.write(',');
+    }
+    return buf.toString();
   }
 }
 
 // =========================
-// 카테고리 페이지
+// 카테고리 페이지 (태그 → 목록 이동)
 // =========================
 class CategoryPage extends StatefulWidget {
   const CategoryPage({super.key});
@@ -115,7 +268,7 @@ class _CategoryPageState extends State<CategoryPage> {
 
   @override
   Widget build(BuildContext context) {
-    final mainColor = Theme.of(context).colorScheme.primary; // 색상 변경
+    final mainColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
       appBar: AppBar(
@@ -152,7 +305,7 @@ class _CategoryPageState extends State<CategoryPage> {
               }).toList(),
             ),
           ),
-          // 하위 카테고리
+          // 하위 카테고리 (탭 → 태그로 변환 → 목록 화면)
           Expanded(
             flex: 2,
             child: ListView(
@@ -161,18 +314,13 @@ class _CategoryPageState extends State<CategoryPage> {
                     (sub) => ListTile(
                       title: Text(sub),
                       onTap: () {
-                        // 더미 상품 예시
-                        List<String> exampleProducts = List.generate(
-                          5,
-                          (index) => '$sub 상품 ${index + 1}',
-                        );
-
+                        final tag = _tagFor(selectedCategory, sub);
                         Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => ProductPage(
                               category: sub,
-                              products: exampleProducts,
+                              tag: tag,
                             ),
                           ),
                         );
@@ -185,5 +333,18 @@ class _CategoryPageState extends State<CategoryPage> {
         ],
       ),
     );
+  }
+
+  // 하위 카테고리명을 태그 키로 변환하는 규칙
+  // 서버의 태그 스키마에 맞게 필요 시 보정
+  String _tagFor(String top, String sub) {
+    // 예: '태블릿/노트북' -> '태블릿-노트북' (슬래시/쉼표 제거, 공백 → 하이픈)
+    var t = sub
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\/\|,]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), '-')
+        .replaceAll(RegExp(r'[^a-z0-9\-ㄱ-ㅎ가-힣]'), '');
+    if (t.isEmpty) t = sub;
+    return t;
   }
 }

@@ -15,12 +15,10 @@ import * as http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 const methodOverride = require('method-override');
 
-// ✅ 추가: 파일·라인 포함 검증용 전역 파이프/필터/인터셉터
+// ✅ 전역 파이프/필터/인터셉터
 import { createGlobalValidationPipe } from './common/pipes/global-validation.pipe';
 import { ValidationErrorFilter } from './common/filters/validation-error.filter';
 import { RouteContextInterceptor } from './common/interceptors/route-context.interceptor';
-// (선택) 상세 HTTP 로깅이 필요하면 아래도 import 후 등록
-// import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 type Sub = { ws: WebSocket; roomId: string; userId?: string };
 
@@ -31,10 +29,10 @@ async function bootstrap() {
   const cfg = app.get(ConfigService);
 
   // ===== Prefix & URI Versioning =====
-  const apiPrefix = 'api'; // /api
+  const apiPrefix = 'api'; // → /api
   app.setGlobalPrefix(apiPrefix);
   app.enableVersioning({
-    type: VersioningType.URI, // /v1/...
+    type: VersioningType.URI, // → /api/v1/...
     defaultVersion: '1',
   });
   Logger.log(`[HTTP] prefix="/${apiPrefix}" (URI versioning /v1 enabled)`);
@@ -56,26 +54,23 @@ async function bootstrap() {
   app.use(methodOverride('X-HTTP-Method-Override'));
   app.use(methodOverride('_method'));
 
-  app.use('/uploads', express.static(join(__dirname, '..', 'public', 'uploads')));
+  // ===== 정적 서빙: /uploads → CWD/uploads 단일 매핑 (요청사항)
+  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
-  // ===== 전역 파이프/인터셉터/필터 (★ 핵심 변경 지점)
-  app.useGlobalPipes(createGlobalValidationPipe());         // ← 기존 ValidationPipe 교체
+  // ===== 전역 파이프/인터셉터/필터 =====
+  app.useGlobalPipes(createGlobalValidationPipe());
   app.useGlobalInterceptors(
-    new RouteContextInterceptor(),                         // ← 라우트/컨트롤러/핸들러 정보 주입
-    // new LoggingInterceptor(),                           // ← (옵션) HTTP 상세 로깅
-    new SuccessResponseInterceptor()
+    new RouteContextInterceptor(),
+    new SuccessResponseInterceptor(),
   );
-  app.useGlobalFilters(
-    new ValidationErrorFilter(),                            // ← DTO 검증 400을 파일/라인 포함해 변환
-    new GlobalExceptionFilter()
-  );
+  app.useGlobalFilters(new ValidationErrorFilter(), new GlobalExceptionFilter());
 
   // ===== Swagger =====
   const swaggerConfig = new DocumentBuilder()
     .setTitle('KU멍가게 API')
     .setDescription('캠퍼스 중고거래/배달(KU대리) 백엔드 v1')
     .setVersion('1.0.0')
-    .addServer(`/api`) // base만 두면 /v1은 URI 버전닝으로 자동 부착
+    .addServer(`/api`)
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'bearer')
     .build();
   const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig, {
@@ -188,6 +183,7 @@ async function bootstrap() {
   Logger.log(`🚀 Server running at http://localhost:${port}/api/v1`);
   Logger.log(`📘 Swagger:        http://localhost:${port}/${apiPrefix}/docs`);
   Logger.log(`🔌 WS endpoint:    ws://localhost:${port}/ws/realtime?room=<roomId>&me=<uuid>`);
+  Logger.log(`🖼  Static uploads: http://localhost:${port}/uploads/<fileName>`);
 }
 
 bootstrap().catch((e) => {

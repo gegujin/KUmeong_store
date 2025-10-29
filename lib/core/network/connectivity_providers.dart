@@ -13,13 +13,15 @@ ConnectivityResult _collapse(List<ConnectivityResult> results) {
   if (results.isEmpty) return ConnectivityResult.none;
   if (results.contains(ConnectivityResult.none)) return ConnectivityResult.none;
   if (results.contains(ConnectivityResult.wifi)) return ConnectivityResult.wifi;
-  if (results.contains(ConnectivityResult.mobile)) return ConnectivityResult.mobile;
+  if (results.contains(ConnectivityResult.mobile))
+    return ConnectivityResult.mobile;
   return results.first;
 }
 
 /// 초기 상태(checkConnectivity) 한 번 내보내고,
 /// 이후 onConnectivityChanged 스트림을 구독해서 단일값으로 흘려보내는 Provider
-final connectivityStreamProvider = StreamProvider<ConnectivityResult>((ref) async* {
+final connectivityStreamProvider =
+    StreamProvider<ConnectivityResult>((ref) async* {
   final connectivity = Connectivity();
 
   // 1) 초기값

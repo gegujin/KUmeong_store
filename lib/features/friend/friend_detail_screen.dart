@@ -73,8 +73,9 @@ class FriendDetailPage extends StatelessWidget {
             CircleAvatar(
               radius: 50,
               backgroundColor: Colors.grey[300],
-              backgroundImage:
-                  (avatarUrl != null && avatarUrl!.isNotEmpty) ? NetworkImage(avatarUrl!) : null,
+              backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
+                  ? NetworkImage(avatarUrl!)
+                  : null,
               child: (avatarUrl == null || avatarUrl!.isEmpty)
                   ? Text(
                       friendName.isNotEmpty ? friendName[0] : '?',
@@ -96,7 +97,8 @@ class FriendDetailPage extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(
                 5,
-                (index) => const Icon(Icons.star, color: Colors.amber, size: 28),
+                (index) =>
+                    const Icon(Icons.star, color: Colors.amber, size: 28),
               ),
             ),
             const SizedBox(height: 20),

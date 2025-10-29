@@ -35,7 +35,8 @@ class ChatWsClient {
   Future<int> _loadLastEventId() async {
     final sp = await SharedPreferences.getInstance();
     return sp.getInt('$_kLastEventKeyPrefix$_meUserId') ?? 0;
-    }
+  }
+
   Future<void> _saveLastEventId(int id) async {
     final sp = await SharedPreferences.getInstance();
     await sp.setInt('$_kLastEventKeyPrefix$_meUserId', id);

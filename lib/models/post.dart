@@ -355,7 +355,8 @@ class Product {
     this.isLiked = false,
   });
 
-  String? get mainImage => imageUrls.isNotEmpty ? imageUrls.first : null;
+  String? get mainImage =>
+      imageUrls.firstWhere((e) => e.trim().isNotEmpty, orElse: () => '');
 
   Product copyWith({
     String? id,
@@ -398,12 +399,28 @@ class Product {
   }
 
   factory Product.fromJson(Map<String, dynamic> json) {
-    // 이미지 처리
-    final imgs = (json['imageUrls'] as List?)
+    // 이미지 처리 (우선순위: imageUrls → images[].url → thumbnail)
+    List<String> imgs = (json['imageUrls'] as List?)
             ?.where((e) => e != null)
             .map((e) => e.toString())
+            .where((e) => e.trim().isNotEmpty)
             .toList(growable: false) ??
-        (json['thumbnail'] != null ? [json['thumbnail'].toString()] : const []);
+        const <String>[];
+
+    if (imgs.isEmpty) {
+      final imgsRel = (json['images'] as List?)
+              ?.where((e) => e is Map && (e as Map)['url'] != null)
+              .map((e) => ((e as Map)['url']).toString())
+              .where((e) => e.trim().isNotEmpty)
+              .toList(growable: false) ??
+          const <String>[];
+      if (imgsRel.isNotEmpty) imgs = imgsRel;
+    }
+
+    if (imgs.isEmpty && json['thumbnail'] != null) {
+      final thumb = json['thumbnail'].toString();
+      if (thumb.trim().isNotEmpty) imgs = [thumb];
+    }
 
     // createdAt 처리
     DateTime parseCreatedAt(dynamic v) {

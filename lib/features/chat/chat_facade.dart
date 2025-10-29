@@ -82,8 +82,10 @@ class ChatRoomFacade {
         }
 
         final ensuredText = (p['text'] ?? p['content'] ?? '').toString();
-        final ensuredTs =
-            (p['timestamp'] ?? p['createdAt'] ?? DateTime.now().toIso8601String()).toString();
+        final ensuredTs = (p['timestamp'] ??
+                p['createdAt'] ??
+                DateTime.now().toIso8601String())
+            .toString();
 
         final msg = ChatMessage.fromJson({
           'id': evt.refId ?? p['id'],
@@ -113,8 +115,9 @@ class ChatRoomFacade {
           );
         }
 
-        final updatedMax =
-            (_state.maxSeq == null || newSeq > _state.maxSeq!) ? newSeq : _state.maxSeq;
+        final updatedMax = (_state.maxSeq == null || newSeq > _state.maxSeq!)
+            ? newSeq
+            : _state.maxSeq;
 
         _state = _state.copyWith(
           messages: _append(_state.messages, msg),
@@ -133,7 +136,8 @@ class ChatRoomFacade {
   // ▶ 전송은 REST → 서버가 WS 브로드캐스트
   Future<void> sendText(String text) async {
     final sent = await api.sendMessage(roomId: roomId, text: text);
-    final nextMax = (sent.seq > (_state.maxSeq ?? 0)) ? sent.seq : _state.maxSeq;
+    final nextMax =
+        (sent.seq > (_state.maxSeq ?? 0)) ? sent.seq : _state.maxSeq;
     _state = _state.copyWith(
       messages: _append(_state.messages, sent),
       maxSeq: nextMax,
@@ -150,7 +154,8 @@ class ChatRoomFacade {
   // ===== Helpers =====
   List<ChatMessage> _append(List<ChatMessage> cur, ChatMessage m) {
     if (cur.isNotEmpty && cur.last.id == m.id) return cur; // 중복 방지
-    final list = [...cur, m]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final list = [...cur, m]
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return list;
   }
 
@@ -159,7 +164,8 @@ class ChatRoomFacade {
     for (final m in inc) {
       map[m.id] = m;
     }
-    final list = map.values.toList()..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final list = map.values.toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return list;
   }
 }

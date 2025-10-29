@@ -23,7 +23,9 @@ const kBaseUrl = String.fromEnvironment(
 /// // => http://localhost:3000/api/v1/friends
 /// ```
 Uri apiUrl(String path) {
-  final base = kBaseUrl.endsWith('/') ? kBaseUrl.substring(0, kBaseUrl.length - 1) : kBaseUrl;
+  final base = kBaseUrl.endsWith('/')
+      ? kBaseUrl.substring(0, kBaseUrl.length - 1)
+      : kBaseUrl;
   final normalized = path.startsWith('/') ? path : '/$path';
   return Uri.parse('$base/api/v1$normalized');
 }

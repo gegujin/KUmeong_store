@@ -17,7 +17,8 @@ class FriendRequestsScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<FriendRequestsScreen> createState() => _FriendRequestsScreenState();
+  ConsumerState<FriendRequestsScreen> createState() =>
+      _FriendRequestsScreenState();
 }
 
 class _FriendRequestsScreenState extends ConsumerState<FriendRequestsScreen> {
@@ -56,17 +57,21 @@ class _FriendRequestsScreenState extends ConsumerState<FriendRequestsScreen> {
           final decoded = jsonDecode(preview);
           if (decoded is Map<String, dynamic>) {
             final err = decoded['error'];
-            if (err is Map && err['message'] is String && (err['message'] as String).isNotEmpty) {
+            if (err is Map &&
+                err['message'] is String &&
+                (err['message'] as String).isNotEmpty) {
               return err['message'] as String;
             }
-            if (decoded['message'] is String && (decoded['message'] as String).isNotEmpty) {
+            if (decoded['message'] is String &&
+                (decoded['message'] as String).isNotEmpty) {
               return decoded['message'] as String;
             }
           }
         } catch (_) {
           // JSON이 아니면 원문 일부를 노출
           final t = preview.trim();
-          if (t.isNotEmpty) return t.length > 200 ? '${t.substring(0, 200)}…' : t;
+          if (t.isNotEmpty)
+            return t.length > 200 ? '${t.substring(0, 200)}…' : t;
         }
       }
 
@@ -100,7 +105,9 @@ class _FriendRequestsScreenState extends ConsumerState<FriendRequestsScreen> {
 
       setState(() {
         // ⏱ 최신순 정렬 + pending만 표시
-        _received = inc.where((e) => e.status.toLowerCase() == 'pending').toList()
+        _received = inc
+            .where((e) => e.status.toLowerCase() == 'pending')
+            .toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
         _sent = out.where((e) => e.status.toLowerCase() == 'pending').toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -138,7 +145,8 @@ class _FriendRequestsScreenState extends ConsumerState<FriendRequestsScreen> {
 
         // 상대 표시 이름(이메일 마스킹 활용)
         final isIAmReceiver = row.toUserId == meId;
-        final rawName = isIAmReceiver ? (row.fromEmail ?? '친구') : (row.toEmail ?? '친구');
+        final rawName =
+            isIAmReceiver ? (row.fromEmail ?? '친구') : (row.toEmail ?? '친구');
         final friendName = _maskEmail(rawName);
 
         // FriendChatPage로 이동 (roomId 전달)
@@ -286,11 +294,13 @@ class _FriendRequestsScreenState extends ConsumerState<FriendRequestsScreen> {
                             spacing: 8,
                             children: [
                               OutlinedButton(
-                                onPressed: _busy ? null : () => _rejectRow(e), // 거절
+                                onPressed:
+                                    _busy ? null : () => _rejectRow(e), // 거절
                                 child: const Text('거절'),
                               ),
                               FilledButton(
-                                onPressed: _busy ? null : () => _acceptRow(e), // 수락
+                                onPressed:
+                                    _busy ? null : () => _acceptRow(e), // 수락
                                 child: const Text('수락'),
                               ),
                             ],

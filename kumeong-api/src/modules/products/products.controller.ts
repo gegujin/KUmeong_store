@@ -1,5 +1,6 @@
-// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\products.controller.ts
+// src/modules/products/products.controller.ts
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -7,12 +8,16 @@ import {
   Param,
   Patch,
   Post,
-  Body,
+  Put,
   Query,
+  UnauthorizedException,
+  UploadedFiles,
   UseGuards,
-  UnauthorizedException, // ✅ 추가
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import type { Express } from 'express'; // ✅ 타입만 import해서 TS2694 방지
 
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -46,32 +51,56 @@ export class ProductsController {
     return { ok: true, data: item };
   }
 
-  /** 상품 생성 */
+  /** 상품 생성 (이미지 포함) */
   @ApiOperation({ summary: '상품 등록' })
+  @ApiConsumes('multipart/form-data') // ✅ Swagger에 파일 업로드 명시
   @UseGuards(JwtAuthGuard)
   @Post()
+  @UseInterceptors(FilesInterceptor('images', 10))
   async create(
-    @CurrentUser() me: { id: string }, // ✅ 안전하게 id만 사용
+    @CurrentUser() me: { id: string },
     @Body() dto: CreateProductDto,
+    @UploadedFiles() files: Express.Multer.File[] = [], // ✅ 정식 타입
   ): Promise<{ ok: true; data: Product }> {
     if (!me?.id) throw new UnauthorizedException('No authenticated user in request');
-    const created = await this.productsService.create(me.id, dto); // ✅ 서비스는 sellerId: string
+    // 서비스가 파일을 받아 productImages에 '/uploads/<filename>'로 저장하도록 구현되어 있어야 함
+    const created = await this.productsService.create(me.id, dto, files);
     return { ok: true, data: created };
   }
 
-  /** 상품 수정 */
-  @ApiOperation({ summary: '상품 수정' })
-  @Patch(':id')
-  async update(
+  /** 상품 수정 (PUT - 전부/대부분 교체, 이미지 포함 가능) */
+  @ApiOperation({ summary: '상품 수정(전부/대부분 교체, PUT)' })
+  @ApiConsumes('multipart/form-data')
+  @UseGuards(JwtAuthGuard)
+  @Put(':id')
+  @UseInterceptors(FilesInterceptor('images', 10))
+  async putUpdate(
     @Param('id') id: string,
     @Body() dto: UpdateProductDto,
+    @UploadedFiles() _images: Express.Multer.File[] = [], // 필요 시 서비스에 전달하도록 확장 가능
   ): Promise<{ ok: true; data: Product }> {
-    const updated = await this.productsService.update(id, dto);
+    const updated = await this.productsService.update(id, dto /* , _images */);
+    return { ok: true, data: updated };
+  }
+
+  /** 상품 수정 (PATCH - 부분 수정, 이미지 포함 가능) */
+  @ApiOperation({ summary: '상품 수정(부분 수정, PATCH)' })
+  @ApiConsumes('multipart/form-data')
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id')
+  @UseInterceptors(FilesInterceptor('images', 10))
+  async patchUpdate(
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+    @UploadedFiles() _images: Express.Multer.File[] = [], // 필요 시 서비스에 전달하도록 확장 가능
+  ): Promise<{ ok: true; data: Product }> {
+    const updated = await this.productsService.update(id, dto /* , _images */);
     return { ok: true, data: updated };
   }
 
   /** 상품 삭제 (소프트 삭제) */
   @ApiOperation({ summary: '상품 삭제' })
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   async remove(
     @Param('id') id: string,
@@ -79,4 +108,5 @@ export class ProductsController {
     const result = await this.productsService.remove(id);
     return { ok: true, data: result };
   }
+  
 }

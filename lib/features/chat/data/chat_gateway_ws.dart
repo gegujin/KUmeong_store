@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import 'package:kumeong_store/features/chat/data/chats_api.dart' show ChatApi; // HTTP용
+import 'package:kumeong_store/features/chat/data/chats_api.dart'
+    show ChatApi; // HTTP용
 import 'chat_models.dart' as models; // 인터페이스 타입
 import 'chat_gateway.dart';
 
@@ -41,7 +42,8 @@ class WsChatGateway implements ChatGateway {
 
       Map<String, dynamic>? payload;
       if (kind == 'chat' || kind == 'chat.msg') {
-        payload = (obj['data'] ?? obj['payload'] ?? obj['message']) as Map<String, dynamic>?;
+        payload = (obj['data'] ?? obj['payload'] ?? obj['message'])
+            as Map<String, dynamic>?;
       } else if (obj is Map<String, dynamic>) {
         if (obj.containsKey('id') && obj.containsKey('senderId')) {
           payload = obj;
@@ -56,10 +58,13 @@ class WsChatGateway implements ChatGateway {
         'roomId': (payload['roomId'] ?? payload['conversationId']).toString(),
         'senderId': (payload['senderId'] ?? payload['fromUserId']).toString(),
         'type': (payload['type'] ?? 'TEXT').toString(),
-        'text': (payload['text'] ?? payload['content'] ?? payload['contentText'])?.toString(),
-        'createdAt':
-            (payload['createdAt'] ?? payload['timestamp'] ?? DateTime.now().toIso8601String())
-                .toString(),
+        'text':
+            (payload['text'] ?? payload['content'] ?? payload['contentText'])
+                ?.toString(),
+        'createdAt': (payload['createdAt'] ??
+                payload['timestamp'] ??
+                DateTime.now().toIso8601String())
+            .toString(),
       };
 
       final msg = models.ChatMessage.fromJson(normalized);

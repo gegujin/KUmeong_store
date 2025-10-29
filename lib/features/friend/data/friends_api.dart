@@ -36,8 +36,9 @@ class FriendRequestRow {
     final status = (j['status'] ?? 'PENDING').toString();
 
     final createdRaw = (j['createdAt'] ?? j['requestedAt'])?.toString();
-    final createdAt =
-        createdRaw != null ? DateTime.parse(createdRaw) : DateTime.fromMillisecondsSinceEpoch(0);
+    final createdAt = createdRaw != null
+        ? DateTime.parse(createdRaw)
+        : DateTime.fromMillisecondsSinceEpoch(0);
 
     final decidedRaw = j['decidedAt']?.toString();
     final fromEmail = (j['fromEmail'] ?? j['otherEmail'])?.toString();
@@ -73,7 +74,8 @@ class FriendsApi {
 
   /// 친구요청 수락. 성공 시 roomId 반환.
   Future<String> acceptById(String requestId) async {
-    final j = await HttpX.postJson('/friends/requests/$requestId/accept', const {});
+    final j =
+        await HttpX.postJson('/friends/requests/$requestId/accept', const {});
     if (j is Map) {
       final data = (j['data'] is Map) ? j['data'] as Map : j;
       final rid = (data['roomId'] ?? data['id'] ?? '').toString();
@@ -109,20 +111,26 @@ class FriendsApi {
     final j = await HttpX.get('/friends/requests', query: {'box': box.name});
     final raw = (j is Map) ? j['data'] : null;
     final data = (raw is List) ? raw : const [];
-    final all = data.whereType<Map<String, dynamic>>().map(FriendRequestRow.fromJson).toList();
+    final all = data
+        .whereType<Map<String, dynamic>>()
+        .map(FriendRequestRow.fromJson)
+        .toList();
     return all.where((r) => r.box == null || r.box == box).toList();
   }
 
   Future<void> acceptByEmail(String fromEmail) async {
-    await HttpX.postJson('/friends/requests/by-email/accept', {'email': fromEmail});
+    await HttpX.postJson(
+        '/friends/requests/by-email/accept', {'email': fromEmail});
   }
 
   Future<void> rejectByEmail(String fromEmail) async {
-    await HttpX.postJson('/friends/requests/by-email/reject', {'email': fromEmail});
+    await HttpX.postJson(
+        '/friends/requests/by-email/reject', {'email': fromEmail});
   }
 
   Future<void> cancelByEmail(String toEmail) async {
-    await HttpX.postJson('/friends/requests/by-email/cancel', {'email': toEmail});
+    await HttpX.postJson(
+        '/friends/requests/by-email/cancel', {'email': toEmail});
   }
 
   // ─────────────────────────────────────────────────────────
@@ -134,15 +142,23 @@ class FriendsApi {
     final j = await HttpX.get('/friends');
     final raw = (j is Map) ? j['data'] : null;
     final data = (raw is List) ? raw : const [];
-    return data.whereType<Map<String, dynamic>>().map(FriendSummaryDto.fromJson).toList();
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map(FriendSummaryDto.fromJson)
+        .toList();
   }
 
   /// (옵션) FriendVm를 반환하는 목록 — 필요 시 사용
   Future<List<FriendSummaryDto>> list() async {
     try {
-      final j = await HttpX.get('/friends').timeout(const Duration(seconds: 10));
-      final data = (j is Map && j['data'] is List) ? j['data'] as List : const [];
-      return data.whereType<Map<String, dynamic>>().map(FriendSummaryDto.fromJson).toList();
+      final j =
+          await HttpX.get('/friends').timeout(const Duration(seconds: 10));
+      final data =
+          (j is Map && j['data'] is List) ? j['data'] as List : const [];
+      return data
+          .whereType<Map<String, dynamic>>()
+          .map(FriendSummaryDto.fromJson)
+          .toList();
     } on TimeoutException {
       throw ApiException('요청이 지연되었습니다. 네트워크 상태를 확인해주세요.');
     }

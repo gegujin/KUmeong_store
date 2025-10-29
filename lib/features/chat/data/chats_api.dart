@@ -54,11 +54,14 @@ class ChatMessage {
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     final rawSeq = json['seq'];
-    final int safeSeq =
-        rawSeq is num ? rawSeq.toInt() : (rawSeq is String ? int.tryParse(rawSeq) ?? 0 : 0);
+    final int safeSeq = rawSeq is num
+        ? rawSeq.toInt()
+        : (rawSeq is String ? int.tryParse(rawSeq) ?? 0 : 0);
 
-    final tsStr =
-        (json['timestamp'] ?? json['createdAt'] ?? DateTime.now().toIso8601String()).toString();
+    final tsStr = (json['timestamp'] ??
+            json['createdAt'] ??
+            DateTime.now().toIso8601String())
+        .toString();
 
     final text = (json['text'] ?? json['content'] ?? '').toString();
 
@@ -111,7 +114,10 @@ class ChatApi {
     );
 
     final data = (j['data'] is List) ? j['data'] as List : const [];
-    return data.whereType<Map<String, dynamic>>().map(ChatMessage.fromJson).toList();
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map(ChatMessage.fromJson)
+        .toList();
   }
 
   /// 메시지 전송

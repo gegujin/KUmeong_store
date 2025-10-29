@@ -1,0 +1,5 @@
+[33mcommit cc8fbb5b84a619a39a06cad2ed5f612e15c56709[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmerge/only-friend[m[33m, [m[1;31morigin/feat/db-api-harmonize[m[33m)[m
+Author: gegujin <gegujin7371@naver.com>
+Date:   Tue Oct 28 02:00:34 2025 +0900
+
+    chore: stop tracking huge zip blobs

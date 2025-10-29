@@ -4,26 +4,25 @@ import 'package:flutter/material.dart';
 // const Color kuPrimary        = Color(0xFF2E7D57); // 아주 진한 초록(앱바/주 버튼)
 // const Color kuPrimaryDark    = Color(0xFF07281D);
 // const Color kuPrimaryLight   = Color(0xFF12553E);
-const Color kuPrimary      = Color(0xFF3B8F68); // 산뜻한 진초록
-const Color kuPrimaryDark  = Color(0xFF1E5B41); // 차분한 어두운 초록
+const Color kuPrimary = Color(0xFF3B8F68); // 산뜻한 진초록
+const Color kuPrimaryDark = Color(0xFF1E5B41); // 차분한 어두운 초록
 const Color kuPrimaryLight = Color(0xFF4BAE83); // 밝은 포인트 초록
 
-
-const Color kuBg             = Colors.white;      // 배경
-const Color kuSurface        = Colors.white;      // 카드/서피스
-const Color kuTextPrimary    = Color(0xFF111111); // 본문
-const Color kuTextSecondary  = Color(0xFF6B7280); // 보조
-const Color kuOutline        = Color(0xFFCED4DA); // 입력창 테두리
+const Color kuBg = Colors.white; // 배경
+const Color kuSurface = Colors.white; // 카드/서피스
+const Color kuTextPrimary = Color(0xFF111111); // 본문
+const Color kuTextSecondary = Color(0xFF6B7280); // 보조
+const Color kuOutline = Color(0xFFCED4DA); // 입력창 테두리
 
 /// === Points (자유롭게 조합해서 사용) ===
-const Color kuLime           = Color(0xFFB7D63B); // 라임(배지/강조)
-const Color kuYellow         = Color(0xFFF1C40F); // 노랑(주의/포인트)
-const Color kuAccentSoft     = Color(0xFFBFD8A6); // 부드러운 연초록(칩/배경)
-const Color kuMintSoft       = Color(0xFFD2ECEF); // 패널 배경
-const Color kuGreenSoft      = Color(0xFFDCEFD2); // 패널 배경
-const Color kuError          = Color(0xFFB00020);
-const Color kuSuccess        = Color(0xFF1F9254);
-const Color kuInfo           = Color(0xFF147AD6);
+const Color kuLime = Color(0xFFB7D63B); // 라임(배지/강조)
+const Color kuYellow = Color(0xFFF1C40F); // 노랑(주의/포인트)
+const Color kuAccentSoft = Color(0xFFBFD8A6); // 부드러운 연초록(칩/배경)
+const Color kuMintSoft = Color(0xFFD2ECEF); // 패널 배경
+const Color kuGreenSoft = Color(0xFFDCEFD2); // 패널 배경
+const Color kuError = Color(0xFFB00020);
+const Color kuSuccess = Color(0xFF1F9254);
+const Color kuInfo = Color(0xFF147AD6);
 
 /// 기존 변수명 호환
 const Color kuGreen = kuPrimary;
@@ -42,7 +41,7 @@ class KuColors extends ThemeExtension<KuColors> {
   final Color accent;
   final Color badgeBg;
   final Color badgeFg;
-  final Color caution;   // 경고
+  final Color caution; // 경고
   final Color success;
   final Color info;
   final Color accentSoft;
@@ -165,7 +164,8 @@ final ThemeData appTheme = ThemeData(
     foregroundColor: Colors.white,
     centerTitle: true,
     elevation: 0,
-    titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white),
+    titleTextStyle: TextStyle(
+        fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white),
     iconTheme: IconThemeData(color: Colors.white),
   ),
 
@@ -237,13 +237,16 @@ final ThemeData appTheme = ThemeData(
     indicatorColor: Color(0x1A0A3A2A),
   ),
   listTileTheme: const ListTileThemeData(
-    titleTextStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: kuTextPrimary),
+    titleTextStyle: TextStyle(
+        fontSize: 16, fontWeight: FontWeight.w700, color: kuTextPrimary),
     subtitleTextStyle: TextStyle(fontSize: 13, color: kuTextSecondary),
   ),
-  dividerTheme: const DividerThemeData(color: Color(0xFFE5E7EB), thickness: .9, space: 1),
+  dividerTheme:
+      const DividerThemeData(color: Color(0xFFE5E7EB), thickness: .9, space: 1),
   snackBarTheme: const SnackBarThemeData(
     behavior: SnackBarBehavior.floating,
     backgroundColor: kuPrimary,
-    contentTextStyle: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+    contentTextStyle:
+        TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
   ),
 );

@@ -77,7 +77,8 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
     _friendsApi = friendsApi;
 
     _sessionSub = ref.listenManual<SessionState>(sessionProvider, (prev, next) {
-      final rawId = next.me?['userId'] ?? next.me?['id'] ?? next.me?['uuid'] ?? '';
+      final rawId =
+          next.me?['userId'] ?? next.me?['id'] ?? next.me?['uuid'] ?? '';
       final me = _normalizeId(rawId, label: 'session.me.userId');
 
       if (next.isAuthed && me.isNotEmpty) {
@@ -160,7 +161,8 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
 
         try {
           final roomId = await _getRoomIdByPeer(peerUuid);
-          final msgs = await chat.fetchMessagesSinceSeq(roomId: roomId, sinceSeq: 0, limit: 50);
+          final msgs = await chat.fetchMessagesSinceSeq(
+              roomId: roomId, sinceSeq: 0, limit: 50);
 
           int count = 0;
           for (final m in msgs) {
@@ -223,7 +225,8 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
             icon: const Icon(Icons.inbox_outlined),
             onPressed: () {
               final s = ref.read(sessionProvider);
-              final rawId = s.me?['userId'] ?? s.me?['id'] ?? s.me?['uuid'] ?? '';
+              final rawId =
+                  s.me?['userId'] ?? s.me?['id'] ?? s.me?['uuid'] ?? '';
               final meUuid = _normalizeId(rawId, label: 'session.me.userId');
               context.pushNamed(
                 R.RouteNames.friendRequests,
@@ -254,12 +257,15 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
                             children: [
                               Expanded(
                                 child: TextField(
-                                  onChanged: (v) => setState(() => _searchQuery = v),
+                                  onChanged: (v) =>
+                                      setState(() => _searchQuery = v),
                                   style: const TextStyle(color: Colors.white),
                                   decoration: InputDecoration(
                                     hintText: "친구 검색",
-                                    hintStyle: const TextStyle(color: Colors.white70),
-                                    prefixIcon: const Icon(Icons.search, color: Colors.white),
+                                    hintStyle:
+                                        const TextStyle(color: Colors.white70),
+                                    prefixIcon: const Icon(Icons.search,
+                                        color: Colors.white),
                                     filled: true,
                                     fillColor: Colors.black26,
                                     contentPadding: const EdgeInsets.symmetric(
@@ -322,24 +328,31 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
                             onRefresh: _reload,
                             child: ListView.separated(
                               itemCount: filtered.length,
-                              separatorBuilder: (_, __) => const Divider(height: 24),
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 24),
                               itemBuilder: (_, index) {
                                 final f = filtered[index];
                                 final peerUuid = _normalizeId(f.userId);
                                 final unread = _unread[peerUuid] ?? 0;
 
-                                final trust = f.trustScore.isNaN ? 0 : f.trustScore;
+                                final trust =
+                                    f.trustScore.isNaN ? 0 : f.trustScore;
                                 final trades = f.tradeCount;
 
                                 // ✅ 공통: 두 핸들러(onTap, onLongPress)에서 모두 쓰도록 여기서 계산
                                 final partnerName =
-                                    f.displayName.trim().isNotEmpty ? f.displayName.trim() : '친구';
+                                    f.displayName.trim().isNotEmpty
+                                        ? f.displayName.trim()
+                                        : '친구';
 
                                 return ListTile(
-                                  leading:
-                                      const CircleAvatar(radius: 25, child: Icon(Icons.person)),
-                                  title: Text(f.displayName.isEmpty ? '(이름 없음)' : f.displayName),
-                                  subtitle: Text('신뢰도 ${trust.toStringAsFixed(1)} · 거래 $trades건'),
+                                  leading: const CircleAvatar(
+                                      radius: 25, child: Icon(Icons.person)),
+                                  title: Text(f.displayName.isEmpty
+                                      ? '(이름 없음)'
+                                      : f.displayName),
+                                  subtitle: Text(
+                                      '신뢰도 ${trust.toStringAsFixed(1)} · 거래 $trades건'),
                                   trailing: _unreadBadge(unread),
 
                                   // 탭: 친구 상세 → 채팅 → 복귀
@@ -348,28 +361,38 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
                                       final me = _meUuid?.trim() ?? '';
                                       if (me.isEmpty) {
                                         if (!mounted) return;
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('로그인 정보가 없습니다. 다시 시도해주세요.')),
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                              content: Text(
+                                                  '로그인 정보가 없습니다. 다시 시도해주세요.')),
                                         );
                                         return;
                                       }
 
-                                      final peerUuidNorm =
-                                          _normalizeId(f.userId, label: 'peerUserId').trim();
+                                      final peerUuidNorm = _normalizeId(
+                                              f.userId,
+                                              label: 'peerUserId')
+                                          .trim();
                                       if (peerUuidNorm.isEmpty) {
                                         if (!mounted) return;
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('상대 사용자 ID가 유효하지 않습니다.')),
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                              content: Text(
+                                                  '상대 사용자 ID가 유효하지 않습니다.')),
                                         );
                                         return;
                                       }
 
-                                      final partnerName = f.displayName.trim().isNotEmpty
-                                          ? f.displayName.trim()
-                                          : '친구';
+                                      final partnerName =
+                                          f.displayName.trim().isNotEmpty
+                                              ? f.displayName.trim()
+                                              : '친구';
 
                                       // ✅ 채팅방 roomId 확보(없으면 서버에서 생성)
-                                      final roomId = await _getRoomIdByPeer(peerUuidNorm);
+                                      final roomId =
+                                          await _getRoomIdByPeer(peerUuidNorm);
 
                                       // ✅ 채팅 화면으로 이동 (GoRouter 사용)
                                       final result = await context.pushNamed(
@@ -384,9 +407,9 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
                                       if (!mounted) return;
 
                                       // ✅ 1) 낙관적 업데이트: 복귀 즉시 해당 친구 배지 0으로 선반영
-                                      final poppedWithRoomOk =
-                                          (result is Map && result['roomId'] == roomId) ||
-                                              (result == true);
+                                      final poppedWithRoomOk = (result is Map &&
+                                              result['roomId'] == roomId) ||
+                                          (result == true);
                                       if (poppedWithRoomOk) {
                                         _unread[peerUuidNorm] = 0;
                                         setState(() {}); // 즉시 반영
@@ -397,8 +420,11 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
                                       setState(() {}); // 최종 반영
                                     } catch (e) {
                                       if (!mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('채팅 화면으로 이동 중 오류: $e')),
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                            content:
+                                                Text('채팅 화면으로 이동 중 오류: $e')),
                                       );
                                     }
                                   },
@@ -407,14 +433,19 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
                                   onLongPress: () async {
                                     try {
                                       final me = _meUuid?.trim() ?? '';
-                                      final peerUuidNorm =
-                                          _normalizeId(f.userId, label: 'peerUserId').trim();
-                                      if (me.isEmpty || peerUuidNorm.isEmpty) return;
+                                      final peerUuidNorm = _normalizeId(
+                                              f.userId,
+                                              label: 'peerUserId')
+                                          .trim();
+                                      if (me.isEmpty || peerUuidNorm.isEmpty)
+                                        return;
 
-                                      final partnerName = f.displayName.trim().isNotEmpty
-                                          ? f.displayName.trim()
-                                          : '친구';
-                                      final roomId = await _getRoomIdByPeer(peerUuidNorm);
+                                      final partnerName =
+                                          f.displayName.trim().isNotEmpty
+                                              ? f.displayName.trim()
+                                              : '친구';
+                                      final roomId =
+                                          await _getRoomIdByPeer(peerUuidNorm);
 
                                       final result = await context.pushNamed(
                                         R.RouteNames.friendChat,
@@ -427,9 +458,9 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
 
                                       if (!mounted) return;
 
-                                      final poppedWithRoomOk =
-                                          (result is Map && result['roomId'] == roomId) ||
-                                              (result == true);
+                                      final poppedWithRoomOk = (result is Map &&
+                                              result['roomId'] == roomId) ||
+                                          (result == true);
                                       if (poppedWithRoomOk) {
                                         _unread[peerUuidNorm] = 0; // 낙관적 0
                                         setState(() {});

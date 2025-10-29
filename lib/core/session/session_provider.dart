@@ -17,7 +17,9 @@ class SessionState {
   /// 레거시 호환: { token | accessToken, me }
   factory SessionState.fromJson(Map<String, dynamic> j) {
     final t = (j['token'] ?? j['accessToken']) as String?;
-    final me = j['me'] is Map<String, dynamic> ? j['me'] as Map<String, dynamic> : null;
+    final me = j['me'] is Map<String, dynamic>
+        ? j['me'] as Map<String, dynamic>
+        : null;
     return SessionState(token: t, me: me);
   }
 

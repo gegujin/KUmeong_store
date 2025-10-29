@@ -14,8 +14,8 @@ class SignUpPage extends StatefulWidget {
   });
 
   final String? prefillEmail; // 학교 인증 이메일
-  final String? univToken;    // 학교 인증 토큰(JWT)
-  final bool lockEmail;       // 이메일 수정 불가 여부
+  final String? univToken; // 학교 인증 토큰(JWT)
+  final bool lockEmail; // 이메일 수정 불가 여부
 
   @override
   State<SignUpPage> createState() => _SignUpPageState();
@@ -25,14 +25,16 @@ class _SignUpPageState extends State<SignUpPage> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController nameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  final TextEditingController passwordConfirmController = TextEditingController();
+  final TextEditingController passwordConfirmController =
+      TextEditingController();
   bool isLoading = false;
 
   @override
   void initState() {
     super.initState();
     if ((widget.prefillEmail ?? '').isNotEmpty) {
-      emailController.text = widget.prefillEmail!.trim().toLowerCase(); // ✅ 소문자 고정
+      emailController.text =
+          widget.prefillEmail!.trim().toLowerCase(); // ✅ 소문자 고정
     }
   }
 
@@ -51,7 +53,10 @@ class _SignUpPageState extends State<SignUpPage> {
     final password = passwordController.text.trim();
     final passwordConfirm = passwordConfirmController.text.trim();
 
-    if (email.isEmpty || name.isEmpty || password.isEmpty || passwordConfirm.isEmpty) {
+    if (email.isEmpty ||
+        name.isEmpty ||
+        password.isEmpty ||
+        passwordConfirm.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('모든 항목을 입력해주세요')),
       );
@@ -127,7 +132,8 @@ class _SignUpPageState extends State<SignUpPage> {
             if (hasUnivToken)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
                   color: Colors.green.withOpacity(0.08),

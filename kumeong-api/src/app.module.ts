@@ -20,6 +20,7 @@ import { SystemModule } from './features/system/system.module';
 import { ProductImage } from '../src/modules/products/entities/product-image.entity';
 
 import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware';
+import { FavoritesModule } from './modules/favorites/favorites.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware
     FriendsModule,
     ChatsModule,
     SystemModule,
+    FavoritesModule,
   ],
 })
 export class AppModule implements NestModule {

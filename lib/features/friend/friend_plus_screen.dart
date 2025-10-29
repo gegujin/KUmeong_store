@@ -50,7 +50,8 @@ class _FriendPlusPageState extends State<FriendPlusPage> {
     try {
       if (_uuidRe.hasMatch(raw)) {
         // UUID는 바로 전송
-        await HttpX.postJson('/friends/requests', {'toUserId': raw.toLowerCase()});
+        await HttpX.postJson(
+            '/friends/requests', {'toUserId': raw.toLowerCase()});
       } else {
         // 이메일/닉네임 등 → lookup으로 id 확보
         final q = raw.toLowerCase();
@@ -62,20 +63,24 @@ class _FriendPlusPageState extends State<FriendPlusPage> {
           user = await HttpX.get('/users/lookup', query: {'email': q});
         }
         final data = (user['data'] is Map) ? user['data'] as Map : user;
-        final toUserId = (data['id'] ?? data['userId'] ?? data['uuid'] ?? '').toString();
+        final toUserId =
+            (data['id'] ?? data['userId'] ?? data['uuid'] ?? '').toString();
         if (toUserId.isEmpty) throw Exception('해당 사용자를 찾을 수 없습니다.');
         await HttpX.postJson('/friends/requests', {'toUserId': toUserId});
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('친구 요청 전송: $raw')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('친구 요청 전송: $raw')));
 
       // 부모에 표시용으로 입력 문자열을 그대로 반환
       Navigator.pop(context, raw);
     } on ApiException catch (e) {
       // 서버에서 내려준 메시지 노출
       setState(() {
-        _errorText = e.message.isNotEmpty ? e.message : '친구 요청 실패 (HTTP ${e.status ?? '-'})';
+        _errorText = e.message.isNotEmpty
+            ? e.message
+            : '친구 요청 실패 (HTTP ${e.status ?? '-'})';
       });
     } catch (e) {
       setState(() {

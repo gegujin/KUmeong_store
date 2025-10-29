@@ -1,17 +1,19 @@
 // lib/api_service.dart
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:kumeong_store/utils/storage.dart'; // ✅ TokenStorage 사용
 
-import 'core/base_url.dart'; // ✅ 절대 URL 빌더
+import 'package:kumeong_store/utils/storage.dart'; // ✅ TokenStorage
+import 'core/base_url.dart'; // ✅ apiUrl() 절대 URL 빌더
 import 'models/post.dart';
 
 const String baseUrl = 'http://localhost:3000/api/v1';
+
+// 앱 어디서나 토큰을 공통 경로로 읽기 위한 헬퍼
+Future<String?> getAccessToken() => TokenStorage.getToken();
 
 // ---------------------------------------------------------
 // 🧩 공통 유틸
@@ -27,7 +29,6 @@ T? _get<T>(Object? obj, String key) {
   return null;
 }
 
-/// 서버 응답 JSON 검증
 Map<String, dynamic> _parseJsonResponse(http.Response resp) {
   final ct = resp.headers['content-type'] ?? '';
   if (!ct.contains('application/json')) {
@@ -43,12 +44,14 @@ Map<String, dynamic> _parseJsonResponse(http.Response resp) {
 
 Future<String?> _getToken() => TokenStorage.getToken();
 
-Map<String, String> _authHeaders(String token) => {
+Map<String, String> _authHeaders(String token, {bool json = false}) => {
       'Authorization': 'Bearer $token',
+      if (json) 'Content-Type': 'application/json',
+      'Accept': 'application/json',
     };
 
 // ---------------------------------------------------------
-// 🔑 로그인
+// 🔑 로그인 / 회원가입
 // ---------------------------------------------------------
 Future<String?> login(String email, String password) async {
   final url = apiUrl('/auth/login');
@@ -63,7 +66,6 @@ Future<String?> login(String email, String password) async {
     );
     final body = _parseJsonResponse(resp);
     final data = _get<Map>(body, 'data') ?? body;
-
     if (resp.statusCode == 200) {
       final token = _get<String>(data, 'accessToken') ??
           _get<String>(body, 'accessToken');
@@ -77,9 +79,6 @@ Future<String?> login(String email, String password) async {
   }
 }
 
-// ---------------------------------------------------------
-// 📝 회원가입
-// ---------------------------------------------------------
 Future<String?> register(
   String email,
   String password,
@@ -113,7 +112,7 @@ Future<String?> register(
 }
 
 // ---------------------------------------------------------
-// 🧾 상품 등록 (Web/Mobile 완전 검증 통과 버전)
+// 🧾 상품 등록/수정 (Multipart)
 // ---------------------------------------------------------
 Future<Map<String, dynamic>?> createProductWithImages(
   Map<String, dynamic> productData,
@@ -122,11 +121,8 @@ Future<Map<String, dynamic>?> createProductWithImages(
 ) async {
   final uri = apiUrl('/products');
   final req = http.MultipartRequest('POST', uri);
-  req.headers['Authorization'] = 'Bearer $token';
+  req.headers.addAll(_authHeaders(token));
 
-  // ---------------------------------
-  // 🖼 이미지 첨부
-  // ---------------------------------
   for (final img in images) {
     try {
       if (img is XFile) {
@@ -157,14 +153,9 @@ Future<Map<String, dynamic>?> createProductWithImages(
     }
   }
 
-  // ---------------------------------
-  // 📦 필드 매핑 (서버가 받는 키로 정규화)
-  // ---------------------------------
-  // title
   final title = productData['title']?.toString().trim();
   if (title != null && title.isNotEmpty) req.fields['title'] = title;
 
-  // priceWon (문자/쉼표 허용)
   final rawPrice =
       (productData['priceWon'] ?? productData['price'])?.toString();
   final priceNum = rawPrice == null
@@ -172,13 +163,11 @@ Future<Map<String, dynamic>?> createProductWithImages(
       : int.tryParse(rawPrice.replaceAll(RegExp(r'[, ]'), '')) ?? 0;
   req.fields['priceWon'] = priceNum.toString();
 
-  // description / category
   final desc = productData['description']?.toString().trim();
   if (desc?.isNotEmpty == true) req.fields['description'] = desc!;
   final category = productData['category']?.toString().trim();
   if (category?.isNotEmpty == true) req.fields['category'] = category!;
 
-  // ✅ locationText (location으로 들어오면 자동 매핑)
   final locationText = (productData['locationText'] ??
           (productData['location'] is String ? productData['location'] : null))
       ?.toString()
@@ -187,7 +176,6 @@ Future<Map<String, dynamic>?> createProductWithImages(
     req.fields['locationText'] = locationText;
   }
 
-  // status (LISTED/RESERVED/SOLD 등)
   final status = productData['status']?.toString().trim();
   if (status?.isNotEmpty == true) req.fields['status'] = status!;
 
@@ -196,9 +184,6 @@ Future<Map<String, dynamic>?> createProductWithImages(
     debugPrint('🖼 첨부 이미지 수: ${req.files.length}');
   }
 
-  // ---------------------------------
-  // 🚀 요청 전송
-  // ---------------------------------
   try {
     final streamed = await req.send();
     final resp = await http.Response.fromStream(streamed);
@@ -219,9 +204,6 @@ Future<Map<String, dynamic>?> createProductWithImages(
   }
 }
 
-// ---------------------------------------------------------
-// ✏️ 상품 수정 (이미지 포함)
-// ---------------------------------------------------------
 Future<Map<String, dynamic>?> updateProductWithImages(
   String productId,
   Map<String, dynamic> productData,
@@ -229,10 +211,9 @@ Future<Map<String, dynamic>?> updateProductWithImages(
   String token,
 ) async {
   final uri = apiUrl('/products/$productId');
-  final req = http.MultipartRequest('PATCH', uri); // ✅ PATCH로 변경
-  req.headers['Authorization'] = 'Bearer $token';
+  final req = http.MultipartRequest('PATCH', uri);
+  req.headers.addAll(_authHeaders(token));
 
-  // 🖼 이미지 첨부
   for (final img in images) {
     try {
       if (img is XFile) {
@@ -263,7 +244,6 @@ Future<Map<String, dynamic>?> updateProductWithImages(
     }
   }
 
-  // 📦 필드 매핑
   final title = productData['title']?.toString().trim();
   if (title?.isNotEmpty == true) req.fields['title'] = title!;
 
@@ -280,7 +260,6 @@ Future<Map<String, dynamic>?> updateProductWithImages(
   final category = productData['category']?.toString().trim();
   if (category?.isNotEmpty == true) req.fields['category'] = category!;
 
-  // ✅ locationText 매핑
   final locationText = (productData['locationText'] ??
           (productData['location'] is String ? productData['location'] : null))
       ?.toString()
@@ -337,7 +316,7 @@ String _imgSubtype(String pathOrName) {
 }
 
 // ---------------------------------------------------------
-// 📥 상품 리스트 조회 (카테고리/검색/페이지 지원)
+// 📥 상품 리스트 조회
 // ---------------------------------------------------------
 Future<List<Product>> fetchProducts(
   String token, {
@@ -354,7 +333,7 @@ Future<List<Product>> fetchProducts(
   };
   if (category != null && category.isNotEmpty) params['category'] = category;
   if (query != null && query.isNotEmpty) params['query'] = query;
-  // ✅ 서버 검증을 통과하는 값만 전송
+
   const allowedSort = {'createdAt', 'price', 'title'};
   const allowedOrder = {'ASC', 'DESC'};
   if (sortField != null && allowedSort.contains(sortField)) {
@@ -368,10 +347,8 @@ Future<List<Product>> fetchProducts(
   final url = base.replace(queryParameters: params);
 
   try {
-    final resp =
-        await http.get(url, headers: {'Authorization': 'Bearer $token'});
+    final resp = await http.get(url, headers: _authHeaders(token));
     if (resp.statusCode != 200) {
-      // 🔁 방어적 재시도: sort/order로 400나면 정렬 제거 후 한 번 더
       final body = resp.body;
       final isSortError = resp.statusCode == 400 &&
           body.contains('"sort"') &&
@@ -382,8 +359,7 @@ Future<List<Product>> fetchProducts(
           ..remove('sort')
           ..remove('order');
         final retryUrl = base.replace(queryParameters: retryParams);
-        final retry = await http
-            .get(retryUrl, headers: {'Authorization': 'Bearer $token'});
+        final retry = await http.get(retryUrl, headers: _authHeaders(token));
         if (retry.statusCode == 200) {
           final decoded = _parseJsonResponse(retry);
           final raw = decoded['data'];
@@ -421,11 +397,154 @@ List<dynamic> _normalizeItems(dynamic raw) {
 }
 
 // ---------------------------------------------------------
+// 🏷️ 태그로 상품 리스트 조회
+//  - fetchProductsByTagCards : 카드(Map) 포맷으로 반환 (toMapForHome 적용)
+//  - fetchProductsByTag      : Product 객체 리스트로 반환
+// ---------------------------------------------------------
+Future<List<Map<String, dynamic>>> fetchProductsByTagCards({
+  required String tag,
+  int page = 1,
+  int limit = 20,
+  String? sortField, // 'createdAt' | 'price' | 'title'
+  String? order, // 'ASC' | 'DESC'
+}) async {
+  final token = await _getToken();
+
+  final params = <String, String>{
+    'page': '$page',
+    'limit': '$limit',
+    'tag': tag, // 서버가 tags(복수)면 여기만 'tags'로 바꿔주면 됨
+  };
+
+  const allowedSort = {'createdAt', 'price', 'title'};
+  const allowedOrder = {'ASC', 'DESC'};
+  if (sortField != null && allowedSort.contains(sortField)) {
+    params['sort'] = sortField;
+  }
+  if (order != null && allowedOrder.contains(order)) {
+    params['order'] = order;
+  }
+
+  final base = apiUrl('/products');
+  final url = base.replace(queryParameters: params);
+
+  try {
+    final headers = (token != null && token.isNotEmpty)
+        ? _authHeaders(token)
+        : {'Accept': 'application/json'};
+
+    // 1차 호출
+    http.Response resp = await http.get(url, headers: headers);
+
+    // 정렬 파라미터 유효성 오류(400) 시 재시도 (정렬 제거)
+    if (resp.statusCode != 200) {
+      final body = resp.body;
+      final isSortError = resp.statusCode == 400 &&
+          body.contains('"sort"') &&
+          body.contains('must be one of');
+
+      if (isSortError &&
+          (params.containsKey('sort') || params.containsKey('order'))) {
+        final retryParams = Map<String, String>.from(params)
+          ..remove('sort')
+          ..remove('order');
+        final retryUrl = base.replace(queryParameters: retryParams);
+        resp = await http.get(retryUrl, headers: headers);
+      }
+    }
+
+    if (resp.statusCode != 200) {
+      debugPrint('[API] 태그 상품 조회 실패: ${resp.statusCode} ${resp.body}');
+      return const [];
+    }
+
+    final decoded = _parseJsonResponse(resp);
+    final raw = decoded['data'];
+    final items = _normalizeItems(raw);
+
+    // Product -> 카드맵 포맷
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map((e) => Product.fromJson(e).toMapForHome())
+        .toList();
+  } catch (e, st) {
+    debugPrint('[API] 태그 상품 조회 예외: $e\n$st');
+    return const [];
+  }
+}
+
+Future<List<Product>> fetchProductsByTag({
+  required String tag,
+  int page = 1,
+  int limit = 20,
+  String? sortField, // 'createdAt' | 'price' | 'title'
+  String? order, // 'ASC' | 'DESC'
+}) async {
+  final token = await _getToken();
+  final params = <String, String>{
+    'page': '$page',
+    'limit': '$limit',
+    'tag': tag, // 서버가 tags(복수)면 여기만 'tags'로 바꿔
+  };
+
+  const allowedSort = {'createdAt', 'price', 'title'};
+  const allowedOrder = {'ASC', 'DESC'};
+  if (sortField != null && allowedSort.contains(sortField)) {
+    params['sort'] = sortField;
+  }
+  if (order != null && allowedOrder.contains(order)) {
+    params['order'] = order;
+  }
+
+  final base = apiUrl('/products');
+  final url = base.replace(queryParameters: params);
+
+  try {
+    final headers = (token != null && token.isNotEmpty)
+        ? _authHeaders(token)
+        : {'Accept': 'application/json'};
+
+    http.Response resp = await http.get(url, headers: headers);
+
+    // 정렬 파라미터 오류 대응 재시도
+    if (resp.statusCode != 200) {
+      final body = resp.body;
+      final isSortError = resp.statusCode == 400 &&
+          body.contains('"sort"') &&
+          body.contains('must be one of');
+
+      if (isSortError &&
+          (params.containsKey('sort') || params.containsKey('order'))) {
+        final retryParams = Map<String, String>.from(params)
+          ..remove('sort')
+          ..remove('order');
+        final retryUrl = base.replace(queryParameters: retryParams);
+        resp = await http.get(retryUrl, headers: headers);
+      }
+    }
+
+    if (resp.statusCode != 200) {
+      debugPrint('[API] 태그 상품(Product) 조회 실패: ${resp.statusCode} ${resp.body}');
+      return const [];
+    }
+
+    final decoded = _parseJsonResponse(resp);
+    final raw = decoded['data'];
+    final items = _normalizeItems(raw);
+
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map((e) => Product.fromJson(e))
+        .toList();
+  } catch (e, st) {
+    debugPrint('[API] 태그 상품(Product) 조회 예외: $e\n$st');
+    return const [];
+  }
+}
+
+// ---------------------------------------------------------
 // ❤️ Favorites (관심목록)
 // ---------------------------------------------------------
-
-/// 내 관심상품 목록 가져오기
-/// 반환: { items: [...], total, page, limit } 또는 null(실패/비로그인)
 Future<Map<String, dynamic>?> fetchMyFavorites({
   int page = 1,
   int limit = 50,
@@ -441,16 +560,19 @@ Future<Map<String, dynamic>?> fetchMyFavorites({
   try {
     final resp = await http.get(url, headers: _authHeaders(token));
     if (resp.statusCode == 401) {
-      // 화면에서 로그인 유도 가능하도록 구분
       throw Exception('401');
+    }
+    // ✅ 서버에 아직 /favorites 목록 엔드포인트가 없을 때(404) → 빈 목록 처리
+    if (resp.statusCode == 404) {
+      debugPrint('[API] /favorites 목록 미구현(404) → 빈 목록으로 처리');
+      return {'items': <dynamic>[], 'total': 0, 'page': page, 'limit': limit};
     }
     if (resp.statusCode != 200) {
       debugPrint('[API] 즐겨찾기 목록 실패: ${resp.statusCode} ${resp.body}');
       return null;
     }
     final body = _parseJsonResponse(resp);
-    final data = _get<Map>(body, 'data') ??
-        body; // { ok:true, data:{...} } or { items:... }
+    final data = _get<Map>(body, 'data') ?? body;
     final items = _get<List>(data, 'items') ?? const [];
     final total = _get<num>(data, 'total') ?? 0;
     final pg = _get<num>(data, 'page') ?? page;
@@ -468,7 +590,6 @@ Future<Map<String, dynamic>?> fetchMyFavorites({
   }
 }
 
-/// 내부 유틸: 서버 응답에서 isFavorited / favoriteCount 안전 추출
 ({bool? isFavorited, int? favoriteCount}) _readFavoritePayload(
     Map<String, dynamic> root) {
   final data = _get<Map>(root, 'data') ?? root;
@@ -482,91 +603,69 @@ Future<Map<String, dynamic>?> fetchMyFavorites({
   return (isFavorited: fav, favoriteCount: cnt);
 }
 
-/// 토글 결과를 (상태, 카운트)로 리턴하는 타입
 class FavoriteToggleResult {
   final bool isFavorited;
   final int? favoriteCount;
   FavoriteToggleResult(this.isFavorited, this.favoriteCount);
 }
 
-/// 특정 상품 하트 토글(상세). 성공 시 (isFavorited, favoriteCount) 반환.
-/// 실패 시:
-///  - 401 → Exception('401') throw (화면에서 로그인 유도)
-///  - 그 외 → Exception('favorite-toggle-failed:...') throw
+/// ✅ 우선 /products/:id/favorite → 실패 시 /favorites/:id/toggle
 Future<FavoriteToggleResult> toggleFavoriteDetailed(String productId) async {
   final token = await _getToken();
   if (token == null || token.isEmpty) {
     throw Exception('401');
   }
-  final url = apiUrl('/favorites/$productId/toggle');
 
-  try {
-    http.Response resp = await http.post(url, headers: _authHeaders(token));
+  // 1) 제품 경로 먼저 시도
+  final prodFav = apiUrl('/products/$productId/favorite');
 
-    if (resp.statusCode == 401) {
-      throw Exception('401');
-    }
-
-    // ✅ 404면 서버가 /favorites/:id/toggle를 지원하지 않을 수 있으니 폴백 시도
-    if (resp.statusCode == 404) {
-      final alt = apiUrl('/products/$productId/favorite');
-      // 우선 POST 시도 (토글 의미의 엔드포인트일 수 있음)
-      final altResp = await http.post(alt, headers: _authHeaders(token));
-      if (altResp.statusCode == 401) throw Exception('401');
-      if (altResp.statusCode >= 200 && altResp.statusCode < 300) {
-        if ((altResp.contentLength ?? 0) == 0 || altResp.body.isEmpty) {
-          // 바디가 없으면 상태/카운트는 알 수 없으므로 호출부의 낙관값 유지
-          return FavoriteToggleResult(true, null);
-        }
-        final altBody = _parseJsonResponse(altResp);
-        final parsed = _readFavoritePayload(altBody);
-        final fav = parsed.isFavorited ?? true;
-        return FavoriteToggleResult(fav, parsed.favoriteCount);
-      }
-      // POST가 405 등으로 막히면 DELETE도 시도 가능(선택)
-      if (altResp.statusCode == 405) {
-        final delResp = await http.delete(alt, headers: _authHeaders(token));
-        if (delResp.statusCode == 401) throw Exception('401');
-        if (delResp.statusCode >= 200 && delResp.statusCode < 300) {
-          if ((delResp.contentLength ?? 0) == 0 || delResp.body.isEmpty) {
-            return FavoriteToggleResult(false, null);
-          }
-          final delBody = _parseJsonResponse(delResp);
-          final parsed = _readFavoritePayload(delBody);
-          final fav = parsed.isFavorited ?? false;
-          return FavoriteToggleResult(fav, parsed.favoriteCount);
-        }
-      }
-      // 폴백도 실패 → 원래 에러로 보고
-      throw Exception('favorite-toggle-failed:${resp.statusCode}:${resp.body}');
-    }
-
-    // ✅ 2xx 전체를 성공으로 처리 (200, 201, 204 등)
-    final ok = resp.statusCode >= 200 && resp.statusCode < 300;
-    if (!ok) {
-      throw Exception('favorite-toggle-failed:${resp.statusCode}:${resp.body}');
-    }
-
-    // ✅ 204 No Content 같은 경우 바디가 없을 수 있음
+  // 1-a) POST 토글 시도
+  http.Response resp = await http.post(prodFav, headers: _authHeaders(token));
+  if (resp.statusCode == 401 || resp.statusCode == 403) {
+    throw Exception('401');
+  }
+  if (resp.statusCode >= 200 && resp.statusCode < 300) {
     if ((resp.contentLength ?? 0) == 0 || resp.body.isEmpty) {
-      // 상태/카운트는 알 수 없으므로 호출부의 낙관값을 유지하도록 null 카운트만 반환
-      return FavoriteToggleResult(true, null);
+      return FavoriteToggleResult(true, null); // 본문 없으면 낙관값 유지
     }
-
-    // ✅ JSON 파싱 (서버가 { ok, isFavorited } 또는 { ok, data:{ isFavorited } } 둘 다 지원)
     final body = _parseJsonResponse(resp);
     final parsed = _readFavoritePayload(body);
-    final fav = parsed.isFavorited ?? true; // 정보 없으면 보수적으로 true 가정
-    return FavoriteToggleResult(fav, parsed.favoriteCount);
-  } catch (e, st) {
-    debugPrint('[API] 즐겨찾기 토글 예외: $e\n$st');
-    rethrow;
+    return FavoriteToggleResult(
+        parsed.isFavorited ?? true, parsed.favoriteCount);
   }
+  // 1-b) POST가 405면 DELETE로 언토글 시도(설계가 add/remove 분리인 경우)
+  if (resp.statusCode == 405) {
+    final del = await http.delete(prodFav, headers: _authHeaders(token));
+    if (del.statusCode == 401 || del.statusCode == 403) throw Exception('401');
+    if (del.statusCode >= 200 && del.statusCode < 300) {
+      if ((del.contentLength ?? 0) == 0 || del.body.isEmpty) {
+        return FavoriteToggleResult(false, null);
+      }
+      final body = _parseJsonResponse(del);
+      final parsed = _readFavoritePayload(body);
+      return FavoriteToggleResult(
+          parsed.isFavorited ?? false, parsed.favoriteCount);
+    }
+  }
+
+  // 2) 대체 경로: /favorites/:id/toggle
+  final favToggle = apiUrl('/favorites/$productId/toggle');
+  final alt = await http.post(favToggle, headers: _authHeaders(token));
+  if (alt.statusCode == 401 || alt.statusCode == 403) throw Exception('401');
+  if (alt.statusCode == 404) {
+    throw Exception('favorite-toggle-failed:404');
+  }
+  if (alt.statusCode < 200 || alt.statusCode >= 300) {
+    throw Exception('favorite-toggle-failed:${alt.statusCode}:${alt.body}');
+  }
+  if ((alt.contentLength ?? 0) == 0 || alt.body.isEmpty) {
+    return FavoriteToggleResult(true, null);
+  }
+  final body = _parseJsonResponse(alt);
+  final parsed = _readFavoritePayload(body);
+  return FavoriteToggleResult(parsed.isFavorited ?? true, parsed.favoriteCount);
 }
 
-/// ✅ 호환용: 기존 시그니처를 유지하고 싶은 화면들을 위해 bool? 반환 버전
-///  - 성공: true/false
-///  - 401 또는 실패: null
 Future<bool?> toggleFavoriteById(String productId) async {
   try {
     final res = await toggleFavoriteDetailed(productId);
@@ -577,7 +676,6 @@ Future<bool?> toggleFavoriteById(String productId) async {
   }
 }
 
-/// ✅ 필요 시: 관심목록을 바로 Product 리스트로 받고 싶을 때
 Future<List<Product>> fetchMyFavoriteItems(
     {int page = 1, int limit = 50}) async {
   final m = await fetchMyFavorites(page: page, limit: limit);
@@ -590,7 +688,7 @@ Future<List<Product>> fetchMyFavoriteItems(
 }
 
 // ---------------------------------------------------------
-// 🔎 단건 상품 조회 (관심목록 즉시 반영용)
+// 🔎 단건 상품 조회
 // ---------------------------------------------------------
 Future<Product?> fetchProductById(String productId, {String? token}) async {
   final t = token ?? await _getToken();

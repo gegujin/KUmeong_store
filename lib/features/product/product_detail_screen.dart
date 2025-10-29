@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:kumeong_store/features/home/home_screen.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,6 +8,16 @@ import 'package:kumeong_store/models/post.dart';
 import 'package:kumeong_store/core/theme.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
+
+// ✅ 네트워크 로딩용
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:html' as html; // 웹에서 토큰 읽기용
+
+// ✅ API 베이스 (홈과 동일)
+const String _apiBase = 'http://localhost:3000/api/v1';
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({
@@ -33,7 +42,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   String? _error;
 
   bool _creating = false; // 채팅방 생성 중
-  bool _liked = true; // 찜 토글 상태
+  bool _liked = false; // 찜 토글 상태(스토어/서버 연동 시 갱신)
+
+  // 이미지 URL은 화면단에서 절대경로 보정해서 별도 보관
+  List<String> _images = [];
 
   void _toggleLike() {
     setState(() => _liked = !_liked);
@@ -41,21 +53,103 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     // await wishApi.toggle(productId: widget.productId, liked: _liked);
   }
 
+  // ✅ 초기 아이템을 즉시 반영(홈에서 extra로 넘어온 Product를 우선 표시)
   @override
   void initState() {
     super.initState();
     _thumbController = PageController();
-    _product = widget.initialProduct ?? demoProduct; // TODO: 연동 전 임시
-    _loadIfNeeded(); // TODO: 백엔드 연동 포인트
+
+    // 초기 렌더링: extra(Product)가 있으면 즉시 화면에 그림
+    _product = widget.initialProduct;
+
+    // 없으면 데모로 비어보이지 않게 표시(네트워크 로딩 후 보정)
+    _product ??= demoProduct;
+
+    // 초기 이미지 리스트 절대경로 보정
+    _images = _absAll(_product!.imageUrls);
+
+    // 서버에서 최신 정보 보정
+    _loadIfNeeded();
   }
 
+  @override
+  void dispose() {
+    _thumbController.dispose();
+    super.dispose();
+  }
+
+  // ✅ 상세 로딩 (productId 기준)
   Future<void> _loadIfNeeded() async {
-    // TODO(연동): productId로 API 호출하여 상세 로딩
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    // 토큰 로드
+    String? token;
+    if (kIsWeb) {
+      token = html.window.localStorage['accessToken'];
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      token = prefs.getString('accessToken');
+    }
+
+    try {
+      final uri = Uri.parse('$_apiBase/products/${widget.productId}');
+      final res = await http.get(uri, headers: {
+        if (token != null) 'Authorization': 'Bearer $token',
+      });
+
+      if (res.statusCode == 200) {
+        final map =
+            jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+        final data =
+            (map['data'] is Map) ? map['data'] as Map<String, dynamic> : map;
+
+        // Product.fromJson 사용
+        final fetched = Product.fromJson(data);
+        setState(() {
+          _product = fetched;
+          _images = _absAll(fetched.imageUrls); // 화면용 절대경로 리스트
+          _loading = false;
+        });
+      } else {
+        setState(() {
+          _loading = false;
+          _error = '(${res.statusCode}) 상세를 불러올 수 없습니다';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _error = '네트워크 오류: $e';
+      });
+    }
   }
 
   String _formatPrice(int p) =>
       '${NumberFormat.decimalPattern('ko_KR').format(p)}원';
   String _timeAgo(DateTime dt) => timeago.format(dt, locale: 'ko');
+
+  // ✅ 안전 문자열
+  String _safe(String? s, [String alt = '']) {
+    final t = (s ?? '').trim();
+    return t.isEmpty ? alt : t;
+  }
+
+  // ✅ 상품 위치 라벨 선택: Product.locationName → (동적 필드) → seller.locationName
+  String _productLocationLabel(Product p) {
+    // 우선순위: p.locationName (있다면) → p.seller.locationName → '위치 미정'
+    try {
+      final dynamic dp = p; // 동적 접근(정적 모델에 없을 수 있어요)
+      final String? locName = dp.locationName as String?;
+      if (locName != null && locName.trim().isNotEmpty) {
+        return locName.trim();
+      }
+    } catch (_) {}
+    final sellerLoc = _safe(p.seller.locationName);
+    return sellerLoc.isNotEmpty ? sellerLoc : '위치 미정';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +172,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () {
-            context.go('/home');
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/home');
+            }
           },
         ),
         actions: const [
@@ -95,61 +193,66 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           Card(
             color: Colors.white,
             margin: const EdgeInsets.symmetric(horizontal: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             child: SizedBox(
               height: 300,
-              child: PageView.builder(
-                controller: _thumbController,
-                itemCount: p.imageUrls.length,
-                onPageChanged: (i) => setState(() => _thumbIndex = i),
-                itemBuilder: (_, i) => GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PhotoGalleryPage(
-                        images: p.imageUrls,
-                        initialIndex: _thumbIndex,
+              child: (_images.isEmpty)
+                  ? const Center(
+                      child: Icon(Icons.image, size: 64, color: Colors.black26))
+                  : PageView.builder(
+                      controller: _thumbController,
+                      itemCount: _images.length,
+                      onPageChanged: (i) => setState(() => _thumbIndex = i),
+                      itemBuilder: (_, i) => GestureDetector(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PhotoGalleryPage(
+                              images: _images,
+                              initialIndex: _thumbIndex,
+                            ),
+                          ),
+                        ),
+                        child: Image.network(
+                          _images[i],
+                          fit: BoxFit.contain,
+                          loadingBuilder: (_, child, prog) => prog == null
+                              ? child
+                              : const Center(
+                                  child: CircularProgressIndicator()),
+                          errorBuilder: (_, __, ___) => const Center(
+                              child: Icon(Icons.broken_image, size: 48)),
+                        ),
                       ),
                     ),
-                  ),
-                  child: Image.network(
-                    p.imageUrls[i],
-                    fit: BoxFit.contain,
-                    loadingBuilder: (_, child, prog) => prog == null
-                        ? child
-                        : const Center(child: CircularProgressIndicator()),
-                    errorBuilder: (_, __, ___) =>
-                        const Center(child: Icon(Icons.broken_image, size: 48)),
-                  ),
-                ),
-              ),
             ),
           ),
 
-          // 페이지 인디케이터
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(
-              p.imageUrls.length,
-              (i) => Container(
-                margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _thumbIndex == i
-                      ? colors.primary
-                      : colors.onSurface.withAlpha(80),
+          // 페이지 인디케이터 (심플: 중앙 점들만)
+          if (_images.isNotEmpty)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                _images.length,
+                (i) => Container(
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _thumbIndex == i
+                        ? colors.primary
+                        : colors.onSurface.withAlpha(80),
+                  ),
                 ),
               ),
             ),
-          ),
 
           Divider(height: 24, color: Colors.grey[200]),
 
-          // 판매자 카드
+          // 판매자 카드 — ⬅️ 동그라미 바로 옆에 이름/상품위치가 뜬다!
           Card(
             color: Colors.white,
             margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -158,7 +261,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: _SellerCard(seller: p.seller, colors: colors),
+              child: _SellerCard(
+                seller: p.seller,
+                colors: colors,
+                fallbackName: _safe(p.seller.name, '판매자'),
+                productLocationLabel:
+                    (p.locationText?.trim().isNotEmpty ?? false)
+                        ? p.locationText!.trim()
+                        : (p.seller.locationName.trim().isNotEmpty
+                            ? p.seller.locationName.trim()
+                            : '위치 미정'),
+              ),
             ),
           ),
 
@@ -279,7 +392,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
           const SizedBox(width: 12),
 
-          // 🟢 채팅하기 버튼 (기존 동작 유지)
+          // 🟢 채팅하기 버튼
           Expanded(
             child: FilledButton(
               style: FilledButton.styleFrom(
@@ -316,7 +429,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
       if (!mounted) return;
       context.pushNamed(
-        R.RouteNames.chatRoomOverlay,               // ✅ 오버레이 라우트로!
+        R.RouteNames.chatRoomOverlay, // 오버레이 라우트
         pathParameters: {'roomId': roomId},
         extra: {
           'partnerName': p.seller.name,
@@ -324,8 +437,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           'securePaid': false,
         },
       );
-    } 
-    catch (e) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('채팅방 생성 실패: $e')));
@@ -402,18 +514,52 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
     throw '네이버 지도를 열 수 없습니다.';
   }
+
+  // ✅ /uploads/* 같은 상대 경로를 절대 URL로
+  String? _absUrl(String? p) {
+    if (p == null || p.isEmpty) return null;
+    if (p.startsWith('http')) return p;
+    if (p.startsWith('/uploads/')) return 'http://localhost:3000$p';
+    return p;
+  }
+
+  List<String> _absAll(List<String> xs) =>
+      xs.map((e) => _absUrl(e) ?? '').where((e) => e.isNotEmpty).toList();
 }
 
-/// 판매자 카드
+/// 판매자 카드 — 동그라미(아바타) 오른쪽에 이름 + 위치가 항상 보이도록 폴백 포함
 class _SellerCard extends StatelessWidget {
-  const _SellerCard({required this.seller, required this.colors});
+  const _SellerCard({
+    required this.seller,
+    required this.colors,
+    this.fallbackName,
+    this.productLocationLabel,
+  });
+
   final Seller seller;
   final ColorScheme colors;
+
+  /// 이름이 비어있을 때 쓸 폴백(예: '판매자')
+  final String? fallbackName;
+
+  /// 위치 라벨: 상품 위치(있으면) → 판매자 위치 → '위치 미정'
+  final String? productLocationLabel;
 
   @override
   Widget build(BuildContext context) {
     // 0~5 범위로 클램프
     final double trust = seller.rating.clamp(0, 5).toDouble();
+
+    // 안전 라벨 구성
+    final String safeName = (seller.name.trim().isNotEmpty
+        ? seller.name.trim()
+        : (fallbackName ?? '판매자'));
+    final String safeLocation = (() {
+      final fromProduct = (productLocationLabel ?? '').trim();
+      if (fromProduct.isNotEmpty) return fromProduct;
+      final fromSeller = seller.locationName.trim();
+      return fromSeller.isNotEmpty ? fromSeller : '위치 미정';
+    })();
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -425,13 +571,15 @@ class _SellerCard extends StatelessWidget {
         ),
         const SizedBox(width: 12),
 
-        // 가운데: 이름/지역
+        // 가운데: 이름/지역  ← ← ←  "동그라미 옆" 이 부분!
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                seller.name,
+                safeName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -440,7 +588,9 @@ class _SellerCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                seller.locationName,
+                safeLocation,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: colors.onSurface.withAlpha((0.7 * 255).round()),
                 ),
@@ -449,7 +599,7 @@ class _SellerCard extends StatelessWidget {
           ),
         ),
 
-        // 오른쪽: 별 + 신로 지수
+        // 오른쪽: 별 + 신뢰 지수
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
@@ -470,7 +620,7 @@ class _SellerCard extends StatelessWidget {
 
             // 라벨
             Text(
-              '신로 지수',
+              '신뢰 지수',
               style: TextStyle(
                 fontSize: 12,
                 color: colors.onSurface.withOpacity(0.6),
@@ -493,21 +643,7 @@ class _SellerCard extends StatelessWidget {
   }
 }
 
-/// 전체 화면 이미지 갤러리
-class PhotoGalleryPage extends StatefulWidget {
-  const PhotoGalleryPage({
-    super.key,
-    required this.images,
-    this.initialIndex = 0,
-  });
-
-  final List<String> images;
-  final int initialIndex;
-
-  @override
-  State<PhotoGalleryPage> createState() => _PhotoGalleryPageState();
-}
-
+/// 태그 칩
 class _TagChips extends StatelessWidget {
   const _TagChips({required this.tags});
   final List<String> tags;
@@ -536,6 +672,21 @@ class _TagChips extends StatelessWidget {
       }).toList(),
     );
   }
+}
+
+/// 전체 화면 이미지 갤러리
+class PhotoGalleryPage extends StatefulWidget {
+  const PhotoGalleryPage({
+    super.key,
+    required this.images,
+    this.initialIndex = 0,
+  });
+
+  final List<String> images;
+  final int initialIndex;
+
+  @override
+  State<PhotoGalleryPage> createState() => _PhotoGalleryPageState();
 }
 
 class _PhotoGalleryPageState extends State<PhotoGalleryPage> {
@@ -575,7 +726,8 @@ class _PhotoGalleryPageState extends State<PhotoGalleryPage> {
                 ? child
                 : const Center(child: CircularProgressIndicator()),
             errorBuilder: (_, __, ___) => const Center(
-                child: Icon(Icons.broken_image, color: Colors.white, size: 64)),
+              child: Icon(Icons.broken_image, color: Colors.white, size: 64),
+            ),
           ),
         ),
       ),

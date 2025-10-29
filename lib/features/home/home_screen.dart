@@ -1,9 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+// import 'package:shared_preferences/shared_preferences.dart'; // ❌ 미사용
 import 'package:kumeong_store/models/post.dart';
 import 'package:kumeong_store/core/ui/hero_tags.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
@@ -13,9 +12,12 @@ import '../home/alarm_screen.dart';
 import '../mypage/mypage_screen.dart';
 import 'package:kumeong_store/core/widgets/app_bottom_nav.dart';
 import '../../core/theme.dart';
-import '../../api_service.dart';
+
+// ✅ api_service는 패키지 경로 하나만 사용 + prefix
+import 'package:kumeong_store/api_service.dart' as api;
+
 import 'package:kumeong_store/state/favorites_store.dart';
-import 'dart:html' as html; // Web 전용 localStorage
+// import 'dart:html' as html; // ❌ 직접 접근 금지
 import 'package:http/http.dart' as http;
 
 const String _apiBase = 'http://localhost:3000/api/v1';
@@ -61,6 +63,31 @@ class _HomePageState extends State<HomePage>
     return p;
   }
 
+  // ✅ 서버 응답에서 이미지 URL들을 안전하게 추출 (List<String> | List<Map{url}> | String)
+  List<String> _extractImageUrls(dynamic raw) {
+    if (raw == null) return const <String>[];
+    final urls = <String>[];
+
+    if (raw is List) {
+      for (final e in raw) {
+        if (e == null) continue;
+        if (e is String) {
+          final u = _absUrl(e.trim());
+          if (u != null && u.isNotEmpty) urls.add(u);
+        } else if (e is Map) {
+          final u0 = e['url']?.toString();
+          final u = _absUrl(u0);
+          if (u != null && u.isNotEmpty) urls.add(u);
+        }
+      }
+    } else if (raw is String) {
+      final u = _absUrl(raw.trim());
+      if (u != null && u.isNotEmpty) urls.add(u);
+    }
+
+    return urls;
+  }
+
   String _formatWon(dynamic v) {
     final n = (v is num) ? v.toInt() : int.tryParse('$v') ?? 0;
     return '${n.toString()}원';
@@ -81,27 +108,32 @@ class _HomePageState extends State<HomePage>
   }
 
   Map<String, dynamic> _normalizeServerProduct(Map<String, dynamic> p) {
-    List<String> images = [];
-    final rawImages = p['images'] ?? p['imageUrls'] ?? [];
-    if (rawImages is List) {
-      images = rawImages.map((e) => _absUrl('$e')).whereType<String>().toList();
-    } else if (rawImages is String) {
-      final a = _absUrl(rawImages);
-      if (a != null) images = [a];
-    }
+    // ✅ images/imageUrls/thumbnailUrl 우선순위로 URL 목록 구성
+    final images = _extractImageUrls(p['imageUrls'] ?? p['images']);
     final thumb = _absUrl(p['thumbnailUrl']?.toString()) ??
         (images.isNotEmpty ? images.first : null);
 
-    final loc =
-        p['location'] ?? p['locationText'] ?? p['seller']?['locationName'];
-    final price = p['price'] ?? p['priceWon'] ?? 0;
+    // ✅ 위치: locationText → seller.locationName → 기본값
+    final locText = p['locationText']?.toString();
+    final sellerLoc = (p['seller'] is Map)
+        ? ((p['seller'] as Map)['locationName']?.toString())
+        : null;
+    final loc = (locText != null && locText.isNotEmpty)
+        ? locText
+        : ((sellerLoc != null && sellerLoc.isNotEmpty)
+            ? sellerLoc
+            : '위치 정보 없음');
+
+    // ✅ 가격: priceWon → price
+    final price = p['priceWon'] ?? p['price'] ?? 0;
 
     return {
       'id': p['id'] ?? p['_id'] ?? '',
       'title': p['title'] ?? '',
       'imageUrls': images,
       'thumbnailUrl': thumb,
-      'location': (loc is String && loc.isNotEmpty) ? loc : '위치 정보 없음',
+      'location': loc,
+      'locationText': locText,
       'time': _relativeTime(p['createdAt']?.toString()),
       'price': price,
       'likes': p['likes'] ?? 0,
@@ -133,12 +165,7 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _loadTokenAndProducts() async {
-    if (kIsWeb) {
-      token = html.window.localStorage['accessToken'];
-    } else {
-      final prefs = await SharedPreferences.getInstance();
-      token = prefs.getString('accessToken');
-    }
+    token = await api.getAccessToken(); // ✅ 단일 경로
 
     final products = <Map<String, dynamic>>[];
     bool added = false;
@@ -148,30 +175,47 @@ class _HomePageState extends State<HomePage>
 
     if (token != null) {
       try {
-        final productsFromApi = await fetchProducts(token!); // List<Product>
+        final productsFromApi =
+            await api.fetchProducts(token!); // List<Product>
         if (productsFromApi.isNotEmpty) {
           products.addAll(productsFromApi.map((p) {
             final m = p.toMapForHome();
-            final imgList = (m['imageUrls'] is List &&
-                    (m['imageUrls'] as List).isNotEmpty)
-                ? (m['imageUrls'] as List).map((e) => _absUrl('$e')).toList()
-                : (m['images'] is List && (m['images'] as List).isNotEmpty)
-                    ? (m['images'] as List).map((e) => _absUrl('$e')).toList()
-                    : (m['thumbnailUrl'] != null
-                            ? [_absUrl(m['thumbnailUrl'])]
-                            : <String?>[])
+
+            // ✅ imageUrls/thumbnailUrl를 절대경로로 정규화
+            final imgList =
+                (m['imageUrls'] is List && (m['imageUrls'] as List).isNotEmpty)
+                    ? (m['imageUrls'] as List)
+                        .map((e) => _absUrl('$e'))
                         .whereType<String>()
-                        .toList();
+                        .toList()
+                    : (m['images'] is List && (m['images'] as List).isNotEmpty)
+                        ? (m['images'] as List)
+                            .map((e) => _absUrl('$e'))
+                            .whereType<String>()
+                            .toList()
+                        : (m['thumbnailUrl'] != null
+                                ? [_absUrl(m['thumbnailUrl'])]
+                                : <String?>[])
+                            .whereType<String>()
+                            .toList();
+
             final thumb = m['thumbnailUrl'] != null
                 ? _absUrl('${m['thumbnailUrl']}')
                 : (imgList.isNotEmpty ? imgList.first : null);
+
+            // ✅ 위치: toMapForHome에서 이미 locationText 우선 처리
+            final location = (m['location']?.toString().isNotEmpty ?? false)
+                ? m['location'].toString()
+                : ((m['locationText']?.toString().isNotEmpty ?? false)
+                    ? m['locationText'].toString()
+                    : '위치 정보 없음');
 
             return {
               ...m,
               'imageUrls': imgList,
               'thumbnailUrl': thumb,
               'price': m['price'] ?? m['priceWon'] ?? 0,
-              'location': m['location'] ?? m['locationText'] ?? '위치 정보 없음',
+              'location': location,
               'time': m['time'] ?? _relativeTime(m['createdAt']?.toString()),
               'isFavorited': isFav(m['id']),
               'favoriteCount': favCnt(
@@ -216,7 +260,19 @@ class _HomePageState extends State<HomePage>
 
   Future<void> _toggleLikeById(String productId) async {
     if (productId.isEmpty) return;
-    // 연타 방지
+
+    // ✅ 1) 토큰 확보 (웹/모바일 공용)
+    final tk = await api.getAccessToken();
+    if (tk == null || tk.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('로그인이 필요합니다. 다시 로그인해주세요.')),
+      );
+      context.pushNamed(R.RouteNames.login);
+      return;
+    }
+
+    // ✅ 2) 연타 방지용 낙관적 업데이트
     final prevFav = favStore.favoriteIds.contains(productId);
     final prevCnt = favStore.counts[productId] ??
         _asInt(allProducts.firstWhere((p) => p['id'] == productId,
@@ -230,11 +286,12 @@ class _HomePageState extends State<HomePage>
     setState(() {}); // 리빌드
 
     try {
-      final res = await toggleFavoriteDetailed(productId); // 서버 최종값
+      // ✅ 3) 서버 최종값
+      final res = await api.toggleFavoriteDetailed(productId);
       favStore.applyServer(
         productId,
         isFavorited: res.isFavorited,
-        favoriteCount: res.favoriteCount, // 있으면 치환
+        favoriteCount: res.favoriteCount,
       );
       setState(() {});
     } catch (e) {
@@ -244,10 +301,17 @@ class _HomePageState extends State<HomePage>
         previousCount: prevCnt,
       );
       setState(() {});
-      final msg =
-          '$e' == 'Exception: 401' ? '로그인이 필요합니다. 다시 로그인해주세요.' : '찜 토글 실패: $e';
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      if ('$e' == 'Exception: 401') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로그인이 필요합니다. 다시 로그인해주세요.')),
+        );
+        context.pushNamed(R.RouteNames.login);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('찜 토글 실패: $e')),
+        );
+      }
     }
   }
 
@@ -380,6 +444,7 @@ class _HomePageState extends State<HomePage>
                         pathParameters: {
                           'productId': product['id'] ?? 'demo-product'
                         },
+                        extra: product, // ⬅️ 현재 목록 아이템을 상세에 초기값으로 전달
                       );
                     },
                     child: Container(
