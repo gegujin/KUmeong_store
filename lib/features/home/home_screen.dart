@@ -1,15 +1,14 @@
 // C:\KUmung_store\lib\features\home\home_screen.dart
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:kumeong_store/core/ui/hero_tags.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
 import 'package:kumeong_store/core/widgets/app_bottom_nav.dart'; // 쓰면 유지, 안 쓰면 제거해도 됨
 import '../../core/theme.dart';
 import '../../api_service.dart';
 import 'package:kumeong_store/state/favorites_store.dart';
-import 'dart:html' as html; // Web 전용 localStorage (웹만 빌드할 때 사용)
+import 'package:kumeong_store/utils/storage.dart'; // ★ 토큰 단일 소스
 import 'package:http/http.dart' as http;
 import 'package:kumeong_store/models/post.dart'; // Product + toMapForHome()
 import 'dart:convert'; // ← jsonDecode 사용
@@ -142,12 +141,8 @@ class _HomePageState extends State<HomePage>
 
   // ✅ 토큰 + 상품 로드
   Future<void> _loadTokenAndProducts() async {
-    if (kIsWeb) {
-      token = html.window.localStorage['accessToken'];
-    } else {
-      final prefs = await SharedPreferences.getInstance();
-      token = prefs.getString('accessToken');
-    }
+    // ★ 토큰은 항상 TokenStorage에서만 읽는다
+    token = await TokenStorage.getToken();
 
     final products = <Map<String, dynamic>>[];
     bool added = false;

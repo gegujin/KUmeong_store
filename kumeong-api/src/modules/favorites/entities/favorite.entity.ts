@@ -5,12 +5,14 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,            // ✅ 추가
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Product } from '../../products/entities/product.entity';
 
 // ✅ 실제 테이블명: favorites
 @Entity({ name: 'favorites' })
+@Index('uq_fav_owner_product', ['ownerUserId', 'productId'], { unique: true }) // ✅ 추가
 export class Favorite {
   @PrimaryColumn({ type: 'char', length: 36 })
   id!: string; // UUID

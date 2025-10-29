@@ -56,7 +56,7 @@ async function bootstrap() {
   app.use(methodOverride('X-HTTP-Method-Override'));
   app.use(methodOverride('_method'));
 
-  app.use('/uploads', express.static(join(__dirname, '..', 'public', 'uploads')));
+  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
   // ===== 전역 파이프/인터셉터/필터 (★ 핵심 변경 지점)
   app.useGlobalPipes(createGlobalValidationPipe());         // ← 기존 ValidationPipe 교체

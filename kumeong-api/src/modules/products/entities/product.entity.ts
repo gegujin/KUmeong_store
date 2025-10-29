@@ -22,42 +22,43 @@ export enum ProductStatus {
   SOLD = 'SOLD',
 }
 
-@Index('idx_products_category', ['category'])
-// ✅ 실제 테이블명: products
+// ✅ 실제 테이블명: products (DB 스키마와 컬럼 길이 정확히 일치)
 @Entity({ name: 'products' })
 @Index('ix_products_seller', ['sellerId'])
 @Index('ix_products_createdAt', ['createdAt'])
 @Index('ix_products_priceWon', ['priceWon'])
 @Index('ix_products_status', ['status'])
-@Index('ix_products_category', ['category'])
+@Index('ix_products_category', ['categoryPath']) // 실제 컬럼명은 아래 name:'category'로 매핑됨
 export class Product {
-  // PK: UUID/CHAR(36)
   @PrimaryColumn('char', { length: 36 })
   id!: string;
 
-  @Column('varchar', { length: 200 })
+  // DB: title VARCHAR(100)
+  @Column('varchar', { length: 100 })
   title!: string;
 
-  // 가격 필드: price -> priceWon (원화 정수)
+  // DB: priceWon INT
   @Column('int', { unsigned: true, name: 'priceWon' })
   priceWon!: number;
 
-  // 상태 ENUM
   @Column('enum', { enum: ProductStatus, default: ProductStatus.LISTED })
   status!: ProductStatus;
 
-  // 선택 필드들
   @Column({ type: 'text', nullable: true })
-  description?: string;
+  description?: string | null;
 
-  @Column({ length: 50, nullable: true })
-  category?: string;
+  // ✅ 코드에서는 categoryPath로 사용하지만, DB 컬럼명은 'category' (VARCHAR(50))
+  @Column('varchar', { length: 50, name: 'category', nullable: true })
+  categoryPath?: string | null;
 
-  // 위치 텍스트(거래 장소/등록 위치 표시용)
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  // DB: locationText VARCHAR(120) NULL
+  @Column('varchar', { length: 120, name: 'locationText', nullable: true })
   locationText?: string | null;
 
-  // 판매자 FK — UUID/CHAR(36)
+  // 참고: DB에 images TEXT가 있지만, 지금은 별도 엔티티(ProductImage) 사용
+  @OneToMany(() => ProductImage, (img) => img.product)
+  images?: ProductImage[];
+
   @Column('char', { length: 36, name: 'sellerId' })
   sellerId!: string;
 
@@ -78,10 +79,6 @@ export class Product {
 
   @DeleteDateColumn({ type: 'datetime', precision: 3, nullable: true })
   deletedAt?: Date | null;
-
-  // 이미지 관계 (별도 테이블)
-  @OneToMany(() => ProductImage, (img) => img.product)
-  images?: ProductImage[];
 
   @BeforeInsert()
   assignId() {

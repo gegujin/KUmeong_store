@@ -1,37 +1,45 @@
 // lib/utils/storage.dart
-// Web과 Mobile을 직접 분기 없이 구현한 간단한 버전
-// -> dart:html은 웹에서만 동작하므로 import는 파일 최상단에서 조건부로 쓰지 않음.
-//    여기서는 dart:html을 직접 사용하되, 모바일에서는 사용되지 않도록 kIsWeb으로 보호합니다.
-
-import 'dart:html' as html; // 웹 전용 API (kIsWeb로 보호)
-import 'package:flutter/foundation.dart' show kIsWeb;
-
 import 'package:shared_preferences/shared_preferences.dart';
 
 class TokenStorage {
-  static Future<void> saveToken(String token) async {
-    if (kIsWeb) {
-      html.window.localStorage['token'] = token;
-      return;
+  static const _kAccess = 'accessToken';
+  static const _kRefresh = 'refreshToken';
+
+  /// 액세스/리프레시 동시 저장 (refreshToken은 null 가능)
+  static Future<void> setTokens(String accessToken,
+      {String? refreshToken}) async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString(_kAccess, accessToken);
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      await sp.setString(_kRefresh, refreshToken);
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('token', token);
   }
+
+  /// 기존 호환: 액세스만 저장
+  static Future<void> setToken(String token) => setTokens(token);
 
   static Future<String?> getToken() async {
-    if (kIsWeb) {
-      return html.window.localStorage['token'];
-    }
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('token');
+    final sp = await SharedPreferences.getInstance();
+    return sp.getString(_kAccess);
   }
 
-  static Future<void> clearToken() async {
-    if (kIsWeb) {
-      html.window.localStorage.remove('token');
-      return;
-    }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token');
+  static Future<String?> getRefresh() async {
+    final sp = await SharedPreferences.getInstance();
+    return sp.getString(_kRefresh);
   }
+
+  static Future<void> removeToken() async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.remove(_kAccess);
+  }
+
+  static Future<void> clearAll() async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.remove(_kAccess);
+    await sp.remove(_kRefresh);
+  }
+
+  // ===== 호환용 별칭 (기존 코드 유지용)
+  static Future<void> saveToken(String token) => setTokens(token);
+  static Future<void> clearToken() => clearAll();
 }

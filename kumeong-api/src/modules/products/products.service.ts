@@ -1,21 +1,36 @@
-// C:\Users\82105\KU-meong Store\kumeong-api\src\modules\products\products.service.ts
+// kumeong-api/src/modules/products/products.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, Repository } from 'typeorm';
 import { Product, ProductStatus } from './entities/product.entity';
+import { ProductImage } from './entities/product-image.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
-// import { User } from '../users/entities/user.entity'; // ❌ 사용 안 함 → 제거
+
+// 업로드 파일 최소 타입(런타임 영향 없음)
+type MulterFile = {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+  destination?: string;
+  filename?: string;
+  path?: string;
+  buffer?: Buffer;
+};
 
 @Injectable()
 export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private readonly repo: Repository<Product>,
+    @InjectRepository(ProductImage)
+    private readonly imgRepo: Repository<ProductImage>,
   ) {}
 
-  /** 목록: 페이지네이션/정렬/검색/필터 (+ deletedAt 필터 기본 적용) */
+  /** 목록: 페이지네이션/정렬/검색/필터 (+ deletedAt IS NULL 기본) */
   async findAll(
     q: QueryProductDto,
   ): Promise<{ items: Product[]; page: number; limit: number; total: number; pages: number }> {
@@ -30,31 +45,46 @@ export class ProductsService {
     const orderDir: 'ASC' | 'DESC' =
       ((q?.order ?? 'DESC').toString().toUpperCase() === 'ASC' ? 'ASC' : 'DESC');
 
-    const qb = this.repo.createQueryBuilder('p').where('p.deletedAt IS NULL');
+    const qb = this.repo
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.images', 'img')
+      .where('p.deletedAt IS NULL');
 
-    // 기본 상태(미지정 시 LISTED)
+    // 상태(미지정 시 LISTED)
     const status = (q?.status as ProductStatus) ?? ProductStatus.LISTED;
     qb.andWhere('p.status = :status', { status });
 
-    // 키워드 검색(제목/설명/카테고리)
+    // 키워드 검색(제목/설명/카테고리경로/위치텍스트)
     if (q?.q) {
-      qb.andWhere('(p.title LIKE :kw OR p.description LIKE :kw OR p.category LIKE :kw)', {
-        kw: `%${q.q}%`,
-      });
+      qb.andWhere(
+        '(p.title LIKE :kw OR p.description LIKE :kw OR p.categoryPath LIKE :kw OR p.locationText LIKE :kw)',
+        { kw: `%${q.q}%` },
+      );
     }
 
-    // --- 카테고리 필터 ---
-    // 정확 일치가 오면 우선 적용
-    const catExact = q?.category?.trim();
-    const catPrefixRaw = !catExact ? q?.categoryPrefix?.trim() : undefined;
+    // --- 카테고리 필터 (신/구 파라미터 호환) ---
+    // 신: categoryPath / categoryPathPrefix
+    // 구: category / categoryPrefix
+    const catExactRaw =
+      (q as any)?.categoryPath ??
+      (q as any)?.category ??
+      undefined;
+    const catExact = typeof catExactRaw === 'string' ? catExactRaw.trim() : undefined;
+
+    const catPrefixRaw =
+      (q as any)?.categoryPathPrefix ??
+      (q as any)?.categoryPrefix ??
+      undefined;
+    const catPrefix =
+      catExact ? undefined : (typeof catPrefixRaw === 'string' ? catPrefixRaw.trim() : undefined);
 
     if (catExact) {
-      qb.andWhere('p.category = :category', { category: catExact });
-    } else if (catPrefixRaw) {
+      qb.andWhere('p.categoryPath = :categoryPath', { categoryPath: catExact });
+    } else if (catPrefix) {
       // %, _, \ 이스케이프 → 접두사 매칭
-      const esc = catPrefixRaw.replace(/([%_\\])/g, '\\$1');
+      const esc = catPrefix.replace(/([%_\\])/g, '\\$1');
       const pref = `${esc}%`;
-      qb.andWhere('p.category LIKE :pref ESCAPE "\\\\"', { pref });
+      qb.andWhere("p.categoryPath LIKE :pref ESCAPE '\\\\'", { pref });
     }
 
     // 가격 범위
@@ -63,6 +93,7 @@ export class ProductsService {
 
     qb.orderBy(`p.${orderField}`, orderDir)
       .addOrderBy('p.id', 'DESC')
+      .addOrderBy('img.ord', 'ASC')
       .skip((page - 1) * limit)
       .take(limit);
 
@@ -71,26 +102,69 @@ export class ProductsService {
     return { items, page, limit, total, pages };
   }
 
-
   /** 단건 조회: 소프트 삭제된 레코드는 404 */
   async findOne(id: string): Promise<Product> {
-    const row = await this.repo.findOne({ where: { id } });
-    if (!row || row.deletedAt) throw new NotFoundException('Product not found');
+    const row = await this.repo
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.images', 'img')
+      .where('p.id = :id', { id })
+      .andWhere('p.deletedAt IS NULL')
+      .orderBy('img.ord', 'ASC')
+      .getOne();
+
+    if (!row) throw new NotFoundException('Product not found');
     return row;
   }
 
-  /** 생성: sellerId는 인증 사용자(me.id)로 주입 */
-  async create(sellerId: string, dto: CreateProductDto): Promise<Product> {
+  /**
+   * 생성: sellerId는 인증 사용자(me.id)로 주입
+   * images는 선택(컨트롤러에서 FileFieldsInterceptor로 수신)
+   */
+  async create(
+    sellerId: string,
+    dto: CreateProductDto,
+    images: MulterFile[] = [],
+  ): Promise<Product> {
     const entity = this.repo.create({
       title: dto.title,
       priceWon: dto.priceWon,
-      category: dto.category,
+      categoryPath: dto.categoryPath,
+      locationText: dto.locationText,
       description: dto.description,
-      status: ProductStatus.LISTED,  // ✅ 기본값 보장
-      sellerId,                      // ✅ 서버에서 자동 주입
+      status: ProductStatus.LISTED,
+      sellerId,
     } as DeepPartial<Product>);
 
-    return this.repo.save(entity);
+    const saved = await this.repo.save(entity);
+
+    // 업로드 이미지 저장
+    if (images && images.length > 0) {
+      const rows = images.map((f, idx) =>
+        this.imgRepo.create({
+          productId: saved.id,
+          // 기본: /uploads/<파일명>
+          url: f?.filename
+            ? `/uploads/${f.filename}`
+            : (f?.path && f.path.includes('/uploads/'))
+              ? f.path.slice(f.path.indexOf('/uploads/'))
+              : '',
+          ord: idx,
+        }),
+      );
+      await this.imgRepo.save(rows);
+
+      // 이미지 포함 재조회(정렬 포함)
+      const withImgs = await this.repo
+        .createQueryBuilder('p')
+        .leftJoinAndSelect('p.images', 'img')
+        .where('p.id = :id', { id: saved.id })
+        .orderBy('img.ord', 'ASC')
+        .getOne();
+
+      return withImgs ?? saved;
+    }
+
+    return saved;
   }
 
   /** 수정: 소프트 삭제된 레코드는 수정 불가 */
@@ -99,11 +173,12 @@ export class ProductsService {
     if (!exists || exists.deletedAt) throw new NotFoundException('Product not found');
 
     const merged = this.repo.merge(exists, {
-      title: dto.title,
-      priceWon: dto.priceWon,
-      category: dto.category,
-      description: dto.description,
-      status: dto.status,
+      title: dto.title ?? exists.title,
+      priceWon: dto.priceWon ?? exists.priceWon,
+      categoryPath: (dto as any).categoryPath ?? (exists as any).categoryPath,
+      locationText: (dto as any).locationText ?? (exists as any).locationText,
+      description: dto.description ?? exists.description,
+      status: dto.status ?? exists.status,
     } as DeepPartial<Product>);
 
     return this.repo.save(merged);
@@ -114,7 +189,7 @@ export class ProductsService {
     const exists = await this.repo.findOne({ where: { id } });
     if (!exists || exists.deletedAt) throw new NotFoundException('Product not found');
 
-    await this.repo.update(id, { deletedAt: () => 'CURRENT_TIMESTAMP' });
+    await this.repo.update(id, { deletedAt: () => 'CURRENT_TIMESTAMP' } as any);
     return { deleted: true, id };
   }
 }

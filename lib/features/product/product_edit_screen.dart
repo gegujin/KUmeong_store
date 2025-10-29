@@ -74,6 +74,22 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     }
   }
 
+  String? _categoryPathFromTags() {
+    if (_tags.isEmpty) return null;
+    final raw = _tags.last; // 마지막으로 선택한 태그 하나를 경로로 사용
+    return raw.replaceAll('\n', '').replaceAll(RegExp(r'\s*>\s*'), '>').trim();
+  }
+
+  int _parsePriceWon(String s) {
+    final n = int.tryParse(s.replaceAll(RegExp(r'[,\s]'), '')) ?? 0;
+    return n < 0 ? 0 : n;
+  }
+
+  String? _locationText() {
+    final t = _locationCtrl.text.trim();
+    return t.isEmpty ? null : t;
+  }
+
   /// Web/Mobile 공용: 로그인 토큰에서 userId 추출
   Future<void> _loadUserId() async {
     final sp = await SharedPreferences.getInstance();
@@ -100,7 +116,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     if (token != null && token.isNotEmpty) {
       try {
         final payload = Jwt.parseJwt(token);
-        _userId = (payload['id'] ?? payload['sub'] ?? payload['userId'])?.toString();
+        _userId =
+            (payload['id'] ?? payload['sub'] ?? payload['userId'])?.toString();
         debugPrint('💬 Loaded userId from JWT: $_userId');
       } catch (e) {
         debugPrint('❌ JWT decode 실패: $e');
@@ -123,13 +140,14 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     // 1) 필드(문자열만 허용) 정규화
     final fields = <String, String>{
       'title': (data['title'] ?? '').toString(),
-      'price': (data['price'] ?? 0).toString(),
-      if (data['description'] != null) 'description': data['description'].toString(),
-      if (data['category'] != null) 'category': data['category'].toString(),
-      if (data['location'] != null)
-        'location':
-            data['location'] is String ? data['location'] as String : jsonEncode(data['location']),
-      if (data['sellerId'] != null) 'sellerId': data['sellerId'].toString(),
+      'priceWon': (data['priceWon'] ?? 0).toString(),
+      if (data['description'] != null)
+        'description': data['description'].toString(),
+      if (data['categoryPath'] != null)
+        'categoryPath': data['categoryPath'].toString(),
+      if (data['locationText'] != null)
+        'locationText': data['locationText'].toString(),
+      // sellerId는 서버가 JWT에서 주입하므로 보내지 않음
     };
 
     // 2) 파일 배열 구성 (XFile / File 지원)
@@ -185,16 +203,13 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
 
     final productData = {
       'title': _titleCtrl.text.trim(),
-      'price': int.tryParse(_priceCtrl.text.trim()) ?? 0,
-      'description': _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
-      'category': _tags.isEmpty ? null : _tags.join(','),
-      'location': jsonEncode({'name': _locationCtrl.text.trim()}), // 문자열 필드화
-      // ⚠️ 보통 서버가 토큰으로 seller를 식별하므로 sellerId 전송이 불필요할 수 있음
-      // 필요하면 아래를 유지:
-      // 'sellerId': _userId,
+      'priceWon': _parsePriceWon(_priceCtrl.text).toString(),
+      'description':
+          _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
+      'categoryPath': _categoryPathFromTags(),
+      'locationText': _locationText(),
     };
 
-    // 파일 배열 구성
     final files = <http.MultipartFile>[];
     for (final img in _images) {
       try {
@@ -212,16 +227,12 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
             img.path,
             contentType: MediaType('image', _imgSubtype(img.path)),
           ));
-        } else if (img is String) {
-          // 서버가 기존 URL을 그대로 유지하도록 하고 싶다면, images 대신 별도 필드 사용 필요
-          // 여기서는 무시하거나, server 스펙에 맞춰 'existingImageUrls' 등으로 전송
         }
       } catch (e) {
         debugPrint('이미지 준비 실패: $e');
       }
     }
 
-    // HttpX.multipart 사용 (토큰은 SharedPrefs에서 자동 주입되므로 withAuth: true)
     final resp = await HttpX.multipart(
       '/products',
       method: 'POST',
@@ -230,7 +241,6 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
       files: files.isEmpty ? null : files,
     );
 
-    // ✅ resp에서 data를 추출해서 Product로 매핑
     final data = (resp['data'] ?? resp) as Map<String, dynamic>;
     final newProduct = Product.fromJson(data);
 
@@ -248,10 +258,11 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
 
     final productData = {
       'title': _titleCtrl.text.trim(),
-      'price': int.tryParse(_priceCtrl.text.trim()) ?? 0,
-      'description': _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
-      'category': _tags.isEmpty ? null : _tags.join(','),
-      'location': jsonEncode({'name': _locationCtrl.text.trim()}), // 문자열 필드화
+      'priceWon': _parsePriceWon(_priceCtrl.text).toString(),
+      'description':
+          _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
+      'categoryPath': _categoryPathFromTags(),
+      'locationText': _locationText(),
     };
 
     final files = <http.MultipartFile>[];
@@ -279,13 +290,12 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
 
     final resp = await HttpX.multipart(
       '/products/${widget.productId}',
-      method: 'PUT',
+      method: 'PATCH', // ✅ 컨트롤러 @Patch와 일치
       withAuth: true,
       fields: productData.map((k, v) => MapEntry(k, v?.toString() ?? '')),
       files: files.isEmpty ? null : files,
     );
 
-    // ⛳ 여기가 중요: resp 루트가 아니라 resp['data']가 실제 Product인 경우가 대부분
     final data = (resp['data'] ?? resp) as Map<String, dynamic>;
     final updatedProduct = Product.fromJson(data);
 
@@ -300,7 +310,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
   /// _submit() 수정: sellerId 자동 포함 + 로그인/라우팅 안전 처리
   Future<void> _submit() async {
     if (_titleCtrl.text.isEmpty || _priceCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('제목과 가격을 입력해주세요.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('제목과 가격을 입력해주세요.')));
       return;
     }
 
@@ -325,7 +336,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
 
       // 🔹 로그인 상태 체크
       if (token == null || token.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('로그인이 필요합니다.')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('로그인이 필요합니다.')));
         context.go('/'); // 로그인 화면 이동
         return;
       }
@@ -345,7 +357,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     } catch (e) {
       debugPrint('❌ 상품 등록/수정 예외: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('오류 발생: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('오류 발생: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -371,7 +384,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
       backgroundColor: cs.background,
       appBar: AppBar(
         backgroundColor: cs.primary,
-        title: Text(isEditing ? '상품 수정' : '상품 등록', style: TextStyle(color: cs.onPrimary)),
+        title: Text(isEditing ? '상품 수정' : '상품 등록',
+            style: TextStyle(color: cs.onPrimary)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () {
@@ -394,7 +408,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                 const SizedBox(height: 16),
                 _buildLabel(context, '가격'),
                 const SizedBox(height: 4),
-                _buildTextField(_priceCtrl, '원', cs, ext, keyboardType: TextInputType.number),
+                _buildTextField(_priceCtrl, '원', cs, ext,
+                    keyboardType: TextInputType.number),
                 const SizedBox(height: 16),
                 _buildLabel(context, '상세설명'),
                 const SizedBox(height: 4),
@@ -424,7 +439,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
             backgroundColor: cs.primary,
             foregroundColor: cs.onPrimary,
             minimumSize: const Size.fromHeight(48),
-            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+            shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.all(Radius.circular(8))),
           ),
           onPressed: _submit,
           child: Text(isEditing ? '수정하기' : '등록하기',
@@ -460,15 +476,20 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                               ? FutureBuilder<Uint8List>(
                                   future: img.readAsBytes(),
                                   builder: (context, snapshot) {
-                                    if (snapshot.connectionState == ConnectionState.done) {
-                                      if (snapshot.hasError) return const Icon(Icons.error);
-                                      return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.done) {
+                                      if (snapshot.hasError)
+                                        return const Icon(Icons.error);
+                                      return Image.memory(snapshot.data!,
+                                          fit: BoxFit.cover);
                                     }
                                     return const Center(
-                                        child: CircularProgressIndicator(strokeWidth: 2));
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2));
                                   },
                                 )
-                              : Image.network(img.toString(), fit: BoxFit.cover))
+                              : Image.network(img.toString(),
+                                  fit: BoxFit.cover))
                           : Image.file(img as File, fit: BoxFit.cover),
                     ),
                   ),
@@ -482,7 +503,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                           color: Colors.black54,
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.close, size: 20, color: Colors.white),
+                        child: const Icon(Icons.close,
+                            size: 20, color: Colors.white),
                       ),
                     ),
                   ),
@@ -507,18 +529,20 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
           ],
         ),
         const SizedBox(height: 4),
-        Text('${_images.length}/$_maxImages', style: TextStyle(fontSize: 12, color: cs.onSurface)),
+        Text('${_images.length}/$_maxImages',
+            style: TextStyle(fontSize: 12, color: cs.onSurface)),
       ],
     );
   }
 
   Widget _buildLabel(BuildContext context, String text) {
     final cs = Theme.of(context).colorScheme;
-    return Text(text, style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface));
+    return Text(text,
+        style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface));
   }
 
-  Widget _buildTextField(
-      TextEditingController controller, String hintText, ColorScheme cs, KuColors ext,
+  Widget _buildTextField(TextEditingController controller, String hintText,
+      ColorScheme cs, KuColors ext,
       {int maxLines = 1, TextInputType? keyboardType}) {
     return TextField(
       controller: controller,
@@ -570,8 +594,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                   context: context, builder: (_) => const CategoryDialog());
               if (tag == null || _tags.contains(tag)) {
                 if (_tags.contains(tag)) {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('이미 선택한 태그예요.')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('이미 선택한 태그예요.')));
                 }
                 return;
               }
@@ -587,7 +611,8 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                 label: Text(t, style: TextStyle(color: cs.onSurface)),
                 backgroundColor: ext.accentSoft.withAlpha(50),
                 shape: StadiumBorder(side: BorderSide(color: ext.accentSoft)),
-                deleteIcon: Icon(Icons.close, size: 18, color: cs.onSurfaceVariant),
+                deleteIcon:
+                    Icon(Icons.close, size: 18, color: cs.onSurfaceVariant),
                 onDeleted: () => setState(() => _tags.remove(t)),
               ),
             ),
@@ -628,11 +653,16 @@ class CategoryDialog extends StatelessWidget {
               context: context,
               builder: (_) => SimpleDialog(
                 backgroundColor: cs.surface,
-                title: Text('$mainCat - 소분류 선택', style: TextStyle(color: cs.onSurface)),
+                title: Text('$mainCat - 소분류 선택',
+                    style: TextStyle(color: cs.onSurface)),
                 children: categories[mainCat]!
                     .map((subCat) => SimpleDialogOption(
-                          child: Text(subCat, style: TextStyle(color: cs.onSurface)),
-                          onPressed: () => Navigator.pop(context, '$mainCat > $subCat'),
+                          child: Text(subCat,
+                              style: TextStyle(color: cs.onSurface)),
+                          onPressed: () => Navigator.pop(
+                              context,
+                              '$mainCat > $subCat'
+                                  .replaceAll(RegExp(r'\s*>\s*'), '>')),
                         ))
                     .toList(),
               ),
