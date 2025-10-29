@@ -52,8 +52,10 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
 
   Future<String> _getRoomIdByPeer(String peerUuid) async {
     if (_roomIdByPeer.containsKey(peerUuid)) return _roomIdByPeer[peerUuid]!;
-    // ✅ 서버에서 방 보장 후 roomId 획득
+
+    // ✅ 서버에서 방 보장 + roomId 획득 (정의된 인자명 사용)
     final roomId = await chatsApi.ensureFriendRoom(peerUuid);
+
     _roomIdByPeer[peerUuid] = roomId;
     return roomId;
   }
@@ -159,7 +161,8 @@ class FriendScreenState extends ConsumerState<FriendScreen> {
         if (peerUuid.isEmpty) continue;
 
         try {
-          final roomId = await _getRoomIdByPeer(peerUuid);
+          //final roomId = await _getRoomIdByPeer(peerUuid);
+          final roomId = await chatsApi.ensureFriendRoom(peerUuid);
           final msgs = await chat.fetchMessagesSinceSeq(roomId: roomId, sinceSeq: 0, limit: 50);
 
           int count = 0;

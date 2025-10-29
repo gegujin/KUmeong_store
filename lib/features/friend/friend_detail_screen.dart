@@ -18,8 +18,13 @@ class FriendDetailPage extends StatelessWidget {
   });
 
   // ───────── UUID/숫자 정규화 ─────────
+  // static final RegExp _uuidRe = RegExp(
+  //   r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+  //   caseSensitive: false,
+  // );
+
   static final RegExp _uuidRe = RegExp(
-    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
     caseSensitive: false,
   );
 
@@ -148,21 +153,23 @@ class FriendDetailPage extends StatelessWidget {
                   }
 
                   try {
-                    // ✅ 친구방 확보
-                    final roomId = await chatsApi.ensureFriendRoom(peer);
+                    // ✅ ChatApi 로컬 생성 (HttpX는 static 메서드이므로 주입 불필요)
+                    final api = ChatApi(meUserId: meUserId);
 
-                    // ✅ 채팅 화면으로 이동하고 결과 기다림
+                    // ✅ 친구방 확보 (백엔드: GET /chat/friend-room)
+                    final roomId = await chatsApi.ensureFriendRoom(peerUserId);
+
+                    // ✅ 채팅 화면으로 이동
                     final chatClosed = await Navigator.of(context).push<bool>(
                       MaterialPageRoute(
                         builder: (_) => FriendChatPage(
                           friendName: friendName,
                           meUserId: meUserId,
-                          roomId: roomId,
+                          roomId: roomId, // 이미 소문자 정규화됨
                         ),
                       ),
                     );
 
-                    // ✅ 채팅 화면에서 '읽음 갱신 신호(true)'로 돌아온 경우에만 리스트로 true 전달
                     if (chatClosed == true && context.mounted) {
                       Navigator.of(context).pop(true);
                     }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:kumeong_store/features/home/home_screen.dart';
+import 'package:kumeong_store/features/chat/data/chats_api.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -53,8 +53,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     // TODO(연동): productId로 API 호출하여 상세 로딩
   }
 
-  String _formatPrice(int p) =>
-      '${NumberFormat.decimalPattern('ko_KR').format(p)}원';
+  String _formatPrice(int p) => '${NumberFormat.decimalPattern('ko_KR').format(p)}원';
   String _timeAgo(DateTime dt) => timeago.format(dt, locale: 'ko');
 
   @override
@@ -117,9 +116,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   child: Image.network(
                     p.imageUrls[i],
                     fit: BoxFit.contain,
-                    loadingBuilder: (_, child, prog) => prog == null
-                        ? child
-                        : const Center(child: CircularProgressIndicator()),
+                    loadingBuilder: (_, child, prog) =>
+                        prog == null ? child : const Center(child: CircularProgressIndicator()),
                     errorBuilder: (_, __, ___) =>
                         const Center(child: Icon(Icons.broken_image, size: 48)),
                   ),
@@ -139,9 +137,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 height: 8,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: _thumbIndex == i
-                      ? colors.primary
-                      : colors.onSurface.withAlpha(80),
+                  color: _thumbIndex == i ? colors.primary : colors.onSurface.withAlpha(80),
                 ),
               ),
             ),
@@ -305,18 +301,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  // ✅ 채팅방 생성 → 채팅방으로 이동
   Future<void> _onStartChatPressed() async {
     final p = _product!;
     try {
       setState(() => _creating = true);
 
-      // TODO: 실제 API 연동
-      final roomId = 'room-demo';
+      // meUserId는 ensureTradeRoom에 직접 쓰지 않지만, 생성자 요구로 아무 값이나 넣어도 무방
+      final api = ChatApi(meUserId: 'me');
+      final roomId = await api.ensureTradeRoom(p.id); // ← 서버 호출
 
       if (!mounted) return;
       context.pushNamed(
-        R.RouteNames.chatRoomOverlay,               // ✅ 오버레이 라우트로!
+        R.RouteNames.chatRoomOverlay,
         pathParameters: {'roomId': roomId},
         extra: {
           'partnerName': p.seller.name,
@@ -324,11 +320,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           'securePaid': false,
         },
       );
-    } 
-    catch (e) {
+    } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('채팅방 생성 실패: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('채팅방 생성 실패: $e')));
     } finally {
       if (mounted) setState(() => _creating = false);
     }
@@ -349,8 +343,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -366,8 +359,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         throw '위치 권한이 거부되었습니다.';
       }
     }
-    return Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
+    return Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
   }
 
   Future<void> _openNaverMap(
@@ -571,11 +563,10 @@ class _PhotoGalleryPageState extends State<PhotoGalleryPage> {
           child: Image.network(
             widget.images[i],
             fit: BoxFit.contain,
-            loadingBuilder: (_, child, prog) => prog == null
-                ? child
-                : const Center(child: CircularProgressIndicator()),
-            errorBuilder: (_, __, ___) => const Center(
-                child: Icon(Icons.broken_image, color: Colors.white, size: 64)),
+            loadingBuilder: (_, child, prog) =>
+                prog == null ? child : const Center(child: CircularProgressIndicator()),
+            errorBuilder: (_, __, ___) =>
+                const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 64)),
           ),
         ),
       ),

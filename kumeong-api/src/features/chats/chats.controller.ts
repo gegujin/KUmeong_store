@@ -13,10 +13,15 @@ import {
   Query,
   Req,
   UnauthorizedException,
+  UsePipes,
+  ValidationPipe,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../modules/auth/jwt-auth.guard';
 import { ChatsService } from './chats.service';
+import { EnsureTradeRoomDto } from './dto/ensure-trade-room.dto';
+import { CreateMessageDto } from './dto/create-message.dto';
+
 
 // ─────────────────────────────────────────────────────────────
 // 로컬 ID 유틸 (외부 모듈 제거)
@@ -130,6 +135,25 @@ export class ChatsController {
   }
 
   /**
+   * POST /api/v1/chat/rooms/trade/ensure
+   * body: { productId: UUID }
+   *
+   * - SQL의 UNIQUE( type, pairMinId, pairMaxId, productIdNorm ) 과 정합
+   * - 서비스 ensureTradeRoom이 pairMin/pairMax 정렬 및 차단, 자기자신 금지를 처리
+   */
+  @Post('rooms/trade/ensure')
+  async ensureTrade(@Req() req: any, @Body() dto: EnsureTradeRoomDto) {
+    const me: string | undefined = req.user?.sub || req.user?.id;
+    if (!me) throw new HttpException('UNAUTHENTICATED', HttpStatus.UNAUTHORIZED);
+
+    const productId = normalizeId(dto?.productId ?? '');
+    assertUuidLike(productId, 'productId');
+
+    const room = await this.chats.ensureTradeRoom(String(me), productId);
+    return { ok: true, data: room };
+  }
+
+  /**
    * GET /api/v1/chat/rooms/:roomId/messages?sinceSeq=0&limit=50
    */
   @Get('rooms/:roomId/messages')
@@ -164,7 +188,12 @@ export class ChatsController {
    * POST /api/v1/chat/rooms/:roomId/messages
    */
   @Post('rooms/:roomId/messages')
-  async post(@Req() req: any, @Param('roomId') roomIdParam: string, @Body() body: any) {
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async post(
+    @Req() req: any,
+    @Param('roomId') roomIdParam: string,
+    @Body() dto: CreateMessageDto,
+  ) {
     const meUserId: string | undefined = req.user?.sub || req.user?.id;
     if (!meUserId) throw new HttpException('UNAUTHENTICATED', HttpStatus.UNAUTHORIZED);
 
@@ -174,13 +203,13 @@ export class ChatsController {
     const exists = await this.chats.ensureRoomExists(roomId);
     if (!exists) throw new HttpException('room not found', HttpStatus.NOT_FOUND);
 
-    const text = (body?.text ?? '').toString().trim();
+    const text = (dto.text ?? '').toString().trim();
     if (!text) throw new BadRequestException('text required');
 
-    const saved = await this.chats.appendText({
-      roomId,
-      senderId: String(meUserId),
+    // ✅ 멱등성 clientMessageId를 서비스로 위임
+    const saved = await this.chats.sendMessage(roomId, String(meUserId), {
       text,
+      clientMessageId: dto.clientMessageId, // optional
     });
 
     (global as any).broadcastChatToRoom?.(roomId, saved);

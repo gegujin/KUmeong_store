@@ -16,9 +16,7 @@ String _leftPadZeros(String s, int total) {
   final need = total - s.length;
   if (need <= 0) return s;
   final b = StringBuffer();
-  for (var i = 0; i < need; i++) {
-    b.writeCharCode(48); // '0'
-  }
+  for (var i = 0; i < need; i++) b.writeCharCode(48); // '0'
   b.write(s);
   return b.toString();
 }
@@ -62,9 +60,9 @@ Future<void> openFriendChat({
   }
 
   try {
-    // 0) id 정규화
-    final peer = _normalizeId(peerId);
-    if (peer.isEmpty) {
+    // 0) peerId 정규화 (UUID 또는 숫자 → UUID 포맷)
+    final peerIdNorm = _normalizeId(peerId);
+    if (peerIdNorm.isEmpty) {
       _closeLoading();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -74,20 +72,24 @@ Future<void> openFriendChat({
       return;
     }
 
-    // 1) 세션에서 meUserId 꺼내기
-    String? meUserId;
+    // 1) 세션에서 meUserId 꺼내기 (non-null 보장)
+    String meUserId = '';
     try {
       final sp = await SharedPreferences.getInstance();
       final raw = sp.getString('session.v1');
       if (raw != null && raw.isNotEmpty) {
         final j = jsonDecode(raw);
-        if (j is Map && j['user'] is Map) {
-          meUserId = _normalizeId((j['user'] as Map)['id']);
+        if (j is Map) {
+          // 우선순위: me.id -> user.id
+          if (j['me'] is Map && (j['me'] as Map)['id'] != null) {
+            meUserId = _normalizeId((j['me'] as Map)['id']);
+          } else if (j['user'] is Map && (j['user'] as Map)['id'] != null) {
+            meUserId = _normalizeId((j['user'] as Map)['id']);
+          }
         }
       }
     } catch (_) {}
-    meUserId ??= '';
-    if (meUserId!.isEmpty) {
+    if (meUserId.isEmpty) {
       _closeLoading();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -97,8 +99,8 @@ Future<void> openFriendChat({
       return;
     }
 
-    // 2) 서버에서 친구방 확보
-    final roomId = await chatsApi.ensureFriendRoom(peer);
+    // 2) 서버에서 친구방 확보  ✅ 정규화된 peerIdNorm 사용
+    final roomId = await chatsApi.ensureFriendRoom(peerIdNorm);
 
     // 3) 로딩 닫고, 친구 채팅 화면으로 이동
     _closeLoading();
@@ -107,8 +109,8 @@ Future<void> openFriendChat({
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => FriendChatPage(
-          friendName: partnerName ?? '친구',
-          meUserId: meUserId!,
+          friendName: partnerName?.isNotEmpty == true ? partnerName! : '친구',
+          meUserId: meUserId, // ✅ non-null
           roomId: roomId,
         ),
       ),

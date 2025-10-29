@@ -1,14 +1,13 @@
 // lib/features/chat/chat_room_screen.dart
-// (두 번째 버전 정리본 — 구조 최대한 유지, 의존성 제거 동일)
 import 'dart:async';
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:kumeong_store/features/chat/data/chats_api.dart';
+// NOTE: KuColors/DeliveryStatusArgs/message_queue 의존성 제거
 
 enum PayMethod { none, escrow, direct }
 
@@ -65,6 +64,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   Timer? _pollTimer;
   Duration _pollInterval = const Duration(milliseconds: 2500);
   int _pollErrorCount = 0;
+
+  String _normalizeText(String s) => s.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
 
   Future<String?> _loadMeId() async {
     try {
@@ -212,6 +213,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     if (_serverMode) {
       try {
         await _api.sendMessage(roomId: widget.roomId!, text: txt);
+        // 전송 후 즉시 재로딩(큐 의존 제거)
         await _reload();
         _scrollToBottom();
       } catch (e) {
@@ -330,6 +332,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   }
 
   void _goToDeliveryStatus() {
+    // 타입 의존 없이 Map extra로 전달
     final args = {
       'orderId': widget.roomId ?? 'room-demo',
       'categoryName': '의류',
@@ -340,6 +343,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
       'endName': '베스트마트',
       'etaMinutes': 17,
       'moveTypeText': '도보로 이동중',
+      // 좌표/경로는 필요 시 내부에서 파싱
     };
     context.push('/delivery/status', extra: args);
   }
@@ -386,6 +390,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
       final price = p?['priceWon'];
       final priceText = (price is num) ? '${price.toInt()}원' : '${price ?? 0}원';
       final productId = (p?['id'] ?? '').toString();
+
+      final cs = Theme.of(context).colorScheme;
 
       return Card(
         margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -445,6 +451,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
       return Scaffold(body: Center(child: Text('채팅을 불러오지 못했습니다: $_error')));
     }
 
+    // 서버 메시지만 사용(큐 의존 제거)
     final List<_ChatMessage> items = _serverMode
         ? _serverMessages
             .map((m) => _ChatMessage(
@@ -483,7 +490,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
           Expanded(
             child: ListView.builder(
               controller: _scrollCtrl,
-              padding: const EdgeInsets.all(12), // <-- if this line errors, replace with EdgeInsets
+              padding: const EdgeInsets.all(12),
               itemCount: items.length,
               itemBuilder: (context, i) => _MessageBubble(message: items[i]),
             ),
@@ -589,12 +596,7 @@ class _ProgressPanel extends StatelessWidget {
 }
 
 class _InputBar extends StatelessWidget {
-  const _InputBar({
-    required this.controller,
-    required this.onSend,
-    required this.onAttach,
-  });
-
+  const _InputBar({required this.controller, required this.onSend, required this.onAttach});
   final TextEditingController controller;
   final VoidCallback onSend;
   final VoidCallback onAttach;

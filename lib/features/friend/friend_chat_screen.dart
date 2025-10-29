@@ -2,46 +2,64 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../chat/data/chats_api.dart'; // ChatApi, ChatMessage
-import '../friend/friend_screen.dart';
+import 'package:go_router/go_router.dart';
+import 'package:kumeong_store/core/router/route_names.dart' as R;
+import 'package:uuid/uuid.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// roomId 기반 채팅 화면
-class FriendChatPage extends StatefulWidget {
+class FriendChatPage extends ConsumerStatefulWidget {
   final String friendName;
 
   /// 숫자/UUID 모두 가능 → 서버 헤더 X-User-Id 용
   final String meUserId;
 
-  /// REST/WS 모두 roomId 사용
+  /// REST만 사용, roomId
   final String roomId;
+
+  /// ✅ TRADE 화면 분기 및 부가 데이터 전달용(선택)
+  /// 예: { 'isTrade': true, 'productMini': { id,title,priceWon,thumb } }
+  final Map<String, dynamic>? extra;
 
   const FriendChatPage({
     super.key,
     required this.friendName,
     required this.meUserId,
     required this.roomId,
+    this.extra,
   });
 
   @override
-  State<FriendChatPage> createState() => _FriendChatPageState();
+  ConsumerState<FriendChatPage> createState() => _FriendChatPageState();
 }
 
 enum _MenuAction { reload, leave }
 
-class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObserver {
+class _FriendChatPageState extends ConsumerState<FriendChatPage> with WidgetsBindingObserver {
   final _controller = TextEditingController();
   final _scroll = ScrollController();
 
   late final ChatApi _api;
-  List<ChatMessage> _messages = [];
+  final List<ChatMessage> _messages = [];
+  final Map<String, int> _pendingIndexByClientId = {}; // clientMessageId -> index
   final Set<String> _messageIds = <String>{};
+
   bool _loading = true;
   String? _error;
-
   bool _fetching = false;
   DateTime? _lastFetchAt;
 
   // ---- 읽음 디바운스 ----
   Timer? _readDebounce;
+
+  // ---- 마지막 전송 텍스트 (중복 전송 방지) ----
+  String _lastSentNorm = '';
+
+  // ---- 폴링(REST) ----
+  Timer? _pollTimer;
+  Duration _pollInterval = const Duration(milliseconds: 2500);
+  int _pollErrorCount = 0;
+  AppLifecycleState _lastLifecycle = AppLifecycleState.resumed;
 
   // ── UUID 정규화(서버 규칙과 동일) ──
   static final RegExp _uuidRe = RegExp(
@@ -78,6 +96,8 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
     return '00000000-0000-0000-0000-$padded';
   }
 
+  String _normalizeText(String s) => s.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+
   late final String _meUuid;
 
   @override
@@ -85,7 +105,6 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // ChatApi는 userId 필요
     _meUuid = _normalizeId(widget.meUserId);
     if (_meUuid.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -97,7 +116,7 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
       return;
     }
 
-    // ChatApi 생성 (프로젝트 시그니처에 맞게)
+    // ✅ chats_api.dart 가정: ChatApi({required String meUserId})
     _api = ChatApi(meUserId: _meUuid);
 
     // 스크롤이 바닥 닿으면 디바운스 읽음 처리
@@ -106,29 +125,75 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
     });
 
     _loadInitial();
+    _startPolling(); // ✅ 폴링 시작
   }
 
   @override
   void dispose() {
     // ✅ 안전망: 화면 dispose 직전에도 한 번 시도 (fire-and-forget)
+    // ignore: discarded_futures
     _markReadLatest();
     _readDebounce?.cancel();
     _controller.dispose();
     _scroll.dispose();
+    _stopPolling(); // ✅ 폴링 정지
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
-
-    // ✅ 친구목록 갱신 트리거(필요 시)
-    try {
-      // context.findAncestorStateOfType<FriendScreenState>()?.refreshUnreadAll();
-    } catch (_) {}
   }
 
   // 앱 비활성/백그라운드 전환 직전
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+    _lastLifecycle = state;
+    if (state == AppLifecycleState.resumed) {
+      _startPolling();
       _scheduleMarkRead();
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _stopPolling();
+      _scheduleMarkRead();
+    }
+  }
+
+  // ---- 폴링 유틸 ----
+  void _startPolling() {
+    _stopPolling();
+    _pollTimer = Timer.periodic(_pollInterval, (_) async {
+      // 바닥일 때만 증분 로드 → 위로 스크롤해 과거 대화 읽는 중이면 방해하지 않음
+      if (!_isAtBottom()) return;
+      await _safeReloadWithBackoff();
+    });
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  Future<void> _safeReloadWithBackoff() async {
+    try {
+      await _reload();
+      // 성공했으면 백오프 리셋 + 기본 주기(2.5s)로 복귀
+      if (_pollErrorCount > 0) {
+        _pollErrorCount = 0;
+        if (_pollInterval > const Duration(milliseconds: 2500)) {
+          _pollInterval = const Duration(milliseconds: 2500);
+          _startPolling(); // 주기 반영하려면 재시작
+        }
+      }
+    } catch (_) {
+      // 에러 누적에 따라 2.5s → 5s → 10s → 최대 20s로 점진적 증가
+      _pollErrorCount++;
+      final nextMs = switch (_pollErrorCount) {
+        1 => 5000,
+        2 => 10000,
+        _ => 20000,
+      };
+      if (_pollInterval.inMilliseconds != nextMs) {
+        _pollInterval = Duration(milliseconds: nextMs);
+        _startPolling();
+      }
     }
   }
 
@@ -161,7 +226,9 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
       if (!mounted) return;
 
       setState(() {
-        _messages = fetched;
+        _messages
+          ..clear()
+          ..addAll(fetched);
         _messageIds
           ..clear()
           ..addAll(fetched.map((e) => e.id));
@@ -218,45 +285,103 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
       }
     } catch (e) {
       if (mounted) setState(() => _error = '새 메시지 불러오기 실패: $e');
+      rethrow; // 백오프 판단용
     } finally {
       _fetching = false;
     }
   }
 
-  // ---- 전송 ----
+  // ---- 전송 (펜딩/매칭/중복 방지) ----
   Future<void> _send() async {
-    final text = _controller.text.trim();
+    final raw = _controller.text;
+    final text = raw.trim();
     if (text.isEmpty) return;
+
+    final nowNorm = _normalizeText(text);
+    // ✅ 마지막 전송 텍스트와 동일하면 스킵 (탭 연타 방지)
+    if (_lastSentNorm == nowNorm) {
+      return;
+    }
+
+    // 입력창 즉시 비우기
     _controller.clear();
 
+    // ✅ 1) 로컬 펜딩 추가
+    final clientId = const Uuid().v4();
+    final pending = ChatMessage(
+      id: 'pending:$clientId', // 펜딩 표시용
+      roomId: widget.roomId,
+      senderId: _meUuid,
+      text: text,
+      timestamp: DateTime.now(),
+      seq: (_messages.isNotEmpty ? _messages.last.seq + 1 : 1), // 임시 seq
+      readByMe: true,
+      clientMessageId: clientId,
+    );
+
+    setState(() {
+      _messages.add(pending);
+      _messageIds.add(pending.id);
+      _pendingIndexByClientId[clientId] = _messages.length - 1;
+      _lastSentNorm = nowNorm;
+    });
+    _scrollToBottom();
+
     try {
+      // ✅ 2) 서버 전송 (clientMessageId 포함)
       final saved = await _api.sendMessage(
         roomId: widget.roomId,
         text: text,
+        clientMessageId: clientId,
       );
+
+      // ✅ 3) 응답 매칭(펜딩→확정 치환)
+      final idx = _pendingIndexByClientId.remove(clientId);
       if (!mounted) return;
 
-      setState(() {
-        _messages.add(saved);
-        _messageIds.add(saved.id);
-      });
-
-      await Future.delayed(const Duration(milliseconds: 20));
-      if (_scroll.hasClients) {
-        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      if (idx != null && idx >= 0 && idx < _messages.length) {
+        setState(() {
+          _messages[idx] = saved; // 서버가 준 id/seq/createdAt 반영
+          _messageIds.add(saved.id);
+        });
+      } else {
+        // 펜딩 인덱스 못찾으면 그냥 뒤에 붙임(이중표시는 아님)
+        setState(() {
+          _messages.add(saved);
+          _messageIds.add(saved.id);
+        });
       }
 
-      // 보낸 뒤에도 내 읽음 커서를 마지막으로(디바운스 → 과호출 방지)
-      _scheduleMarkRead();
+      _scrollToBottom();
 
       // 서버 시퀀스/다른 기기 메세지 동기화
       await _reload();
     } catch (e) {
+      // 실패 시: 펜딩 취소/에러 상태 표시
+      final idx = _pendingIndexByClientId.remove(clientId);
       if (!mounted) return;
+      if (idx != null && idx >= 0 && idx < _messages.length) {
+        setState(() {
+          _messageIds.remove(_messages[idx].id);
+          _messages.removeAt(idx);
+        });
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('메시지 전송 실패: $e')),
       );
     }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent + 80,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   // ---- 읽음 처리 유틸 ----
@@ -345,9 +470,12 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
   }
 
   // ---- UI ----
+  bool _isPending(ChatMessage m) => m.id.startsWith('pending:');
+
   Widget _buildBubble(ChatMessage m) {
     final mainColor = Theme.of(context).colorScheme.primary;
     final isMine = _normalizeId(m.senderId) == _meUuid;
+    final pending = _isPending(m);
 
     final bubble = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -355,13 +483,29 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
       decoration: BoxDecoration(
         color: isMine ? mainColor : Colors.grey[200],
         borderRadius: BorderRadius.circular(12),
+        border: pending ? Border.all(width: 1.2, color: Colors.white) : null,
       ),
-      child: Text(
-        m.text,
-        style: TextStyle(
-          color: isMine ? Colors.white : Colors.black87,
-          fontSize: 16,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              m.text,
+              style: TextStyle(
+                color: isMine ? Colors.white : Colors.black87,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          if (pending) ...[
+            const SizedBox(width: 6),
+            const SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ],
+        ],
       ),
     );
 
@@ -372,6 +516,53 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
         child: bubble,
       ),
     );
+  }
+
+  Widget _buildHeader() {
+    if (widget.extra?['isTrade'] == true) {
+      final raw = widget.extra?['productMini'];
+      final Map<String, dynamic>? p = (raw is Map) ? Map<String, dynamic>.from(raw as Map) : null;
+
+      final thumb = (p?['thumb'] ?? '').toString();
+      final title = (p?['title'] ?? '상품').toString();
+      final price = p?['priceWon'];
+      final priceText = (price is num) ? '${price.toInt()}원' : '${price ?? 0}원';
+      final productId = (p?['id'] ?? '').toString();
+
+      return Card(
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        child: ListTile(
+          leading: thumb.isNotEmpty
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.network(
+                    thumb,
+                    width: 44,
+                    height: 44,
+                    fit: BoxFit.cover,
+                  ),
+                )
+              : const Icon(Icons.shopping_bag),
+          title: Text(title),
+          subtitle: Text(priceText),
+          trailing: FilledButton(
+            onPressed: productId.isEmpty
+                ? null
+                : () {
+                    context.pushNamed(
+                      R.RouteNames.tradeConfirm,
+                      queryParameters: {
+                        'productId': productId,
+                        'roomId': widget.roomId,
+                      },
+                    );
+                  },
+            child: const Text('거래 진행'),
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   @override
@@ -428,6 +619,7 @@ class _FriendChatPageState extends State<FriendChatPage> with WidgetsBindingObse
         },
         child: Column(
           children: [
+            _buildHeader(),
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
