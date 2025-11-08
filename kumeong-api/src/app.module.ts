@@ -1,10 +1,9 @@
+// src/app.module.ts
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MailerModule } from '@nestjs-modules/mailer';
-import { DataSourceOptions } from 'typeorm';
 
-import dataSource from './database/data-source'; // ✅ 파일 경로 통일 (원래 './typeorm.config'였다면 교체)
 import { envValidationSchema } from './core/config/env.validation';
 import { mailConfigFactory } from './core/config/mail.config';
 
@@ -36,16 +35,31 @@ import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware
       ],
     }),
 
-    // ===== TypeORM =====
-    TypeOrmModule.forRoot({
-      ...(dataSource.options as DataSourceOptions),
+    // ===== TypeORM (ConfigService 기반) =====
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (cfg: ConfigService) => {
+        const pw =
+          (cfg.get<string>('DB_PASSWORD') ??
+            cfg.get<string>('DB_PASS') ??
+            '')!.trim();
 
-      // ⛔️ 아래 옵션들은 data-source.ts와 충돌하니 절대 다시 켜지 않게 고정
-      synchronize: false,     // ⬅️ 강제 OFF
-      migrationsRun: true,    // ⬅️ 마이그레이션만 사용
-      // namingStrategy: undefined, // SnakeNamingStrategy 쓰지 않음 (엔티티에서 name 매핑으로 처리)
-      autoLoadEntities: true, // 엔티티 자동 로드(선호도에 따라 유지)
-      dropSchema: false,
+        return {
+          type: 'mysql' as const,
+          host: cfg.get<string>('DB_HOST', '127.0.0.1'),
+          port: Number(cfg.get<string>('DB_PORT', '3306')),
+          username:
+            cfg.get<string>('DB_USERNAME') ?? cfg.get<string>('DB_USER', 'root'),
+          password: pw, // 공백/누락 방지
+          database:
+            cfg.get<string>('DB_DATABASE') ?? cfg.get<string>('DB_NAME', 'kumeong_store'),
+          charset: 'utf8mb4',
+          autoLoadEntities: true,
+          synchronize: false,
+          // migrationsRun: true, // 필요 시 활성화
+          // logging: true,       // 디버깅 시 활성화
+        };
+      },
     }),
 
     // ===== Mailer =====

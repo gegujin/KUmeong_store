@@ -26,10 +26,8 @@ T? _get<T>(Object? obj, String key) {
 Map<String, dynamic> _parseJsonResponse(http.Response resp) {
   final ct = resp.headers['content-type'] ?? '';
   if (!ct.contains('application/json')) {
-    final head =
-        resp.body.length > 200 ? resp.body.substring(0, 200) : resp.body;
-    throw FormatException(
-        'Non-JSON response (${resp.statusCode} $ct) :: $head');
+    final head = resp.body.length > 200 ? resp.body.substring(0, 200) : resp.body;
+    throw FormatException('Non-JSON response (${resp.statusCode} $ct) :: $head');
   }
   final decoded = jsonDecode(resp.body);
   if (decoded is Map<String, dynamic>) return decoded;
@@ -37,8 +35,7 @@ Map<String, dynamic> _parseJsonResponse(http.Response resp) {
 }
 
 Future<String?> _getToken() => TokenStorage.getToken();
-Map<String, String> _authHeaders(String token) =>
-    {'Authorization': 'Bearer $token'};
+Map<String, String> _authHeaders(String token) => {'Authorization': 'Bearer $token'};
 
 List _asList(dynamic v) => v is List ? v : const [];
 List _pickFirstList(Map obj, List<String> keys) {
@@ -58,16 +55,13 @@ Future<bool> _refreshAccessToken() async {
     {
       final url = apiUrl('/auth/refresh');
       final h = <String, String>{..._jsonHeaders};
-      if (refresh != null && refresh.isNotEmpty)
-        h['Authorization'] = 'Bearer $refresh';
+      if (refresh != null && refresh.isNotEmpty) h['Authorization'] = 'Bearer $refresh';
       final resp = await http.post(url, headers: h);
       if (resp.statusCode == 200) {
         final body = _parseJsonResponse(resp);
         final data = _get<Map>(body, 'data') ?? body;
-        final access = _get<String>(data, 'accessToken') ??
-            _get<String>(body, 'accessToken');
-        final newRefresh = _get<String>(data, 'refreshToken') ??
-            _get<String>(body, 'refreshToken');
+        final access = _get<String>(data, 'accessToken') ?? _get<String>(body, 'accessToken');
+        final newRefresh = _get<String>(data, 'refreshToken') ?? _get<String>(body, 'refreshToken');
         if (access != null && access.isNotEmpty) {
           await TokenStorage.setTokens(access, refreshToken: newRefresh);
           if (kDebugMode) debugPrint('[API] 🔄 refresh ok (Authorization)');
@@ -84,10 +78,8 @@ Future<bool> _refreshAccessToken() async {
       if (resp.statusCode == 200) {
         final body = _parseJsonResponse(resp);
         final data = _get<Map>(body, 'data') ?? body;
-        final access = _get<String>(data, 'accessToken') ??
-            _get<String>(body, 'accessToken');
-        final newRefresh = _get<String>(data, 'refreshToken') ??
-            _get<String>(body, 'refreshToken');
+        final access = _get<String>(data, 'accessToken') ?? _get<String>(body, 'accessToken');
+        final newRefresh = _get<String>(data, 'refreshToken') ?? _get<String>(body, 'refreshToken');
         if (access != null && access.isNotEmpty) {
           await TokenStorage.setTokens(access, refreshToken: newRefresh);
           if (kDebugMode) debugPrint('[API] 🔄 refresh ok (x-refresh-token)');
@@ -103,10 +95,8 @@ Future<bool> _refreshAccessToken() async {
       if (resp.statusCode == 200) {
         final body = _parseJsonResponse(resp);
         final data = _get<Map>(body, 'data') ?? body;
-        final access = _get<String>(data, 'accessToken') ??
-            _get<String>(body, 'accessToken');
-        final newRefresh = _get<String>(data, 'refreshToken') ??
-            _get<String>(body, 'refreshToken');
+        final access = _get<String>(data, 'accessToken') ?? _get<String>(body, 'accessToken');
+        final newRefresh = _get<String>(data, 'refreshToken') ?? _get<String>(body, 'refreshToken');
         if (access != null && access.isNotEmpty) {
           await TokenStorage.setTokens(access, refreshToken: newRefresh);
           if (kDebugMode) debugPrint('[API] 🔄 refresh ok (cookie)');
@@ -172,10 +162,8 @@ Future<String?> login(String email, String password) async {
     final data = _get<Map>(body, 'data') ?? body;
 
     if (resp.statusCode == 200) {
-      final access = _get<String>(data, 'accessToken') ??
-          _get<String>(body, 'accessToken');
-      final refresh = _get<String>(data, 'refreshToken') ??
-          _get<String>(body, 'refreshToken');
+      final access = _get<String>(data, 'accessToken') ?? _get<String>(body, 'accessToken');
+      final refresh = _get<String>(data, 'refreshToken') ?? _get<String>(body, 'refreshToken');
       if (access != null && access.isNotEmpty) {
         await TokenStorage.setTokens(access, refreshToken: refresh);
       }
@@ -189,8 +177,7 @@ Future<String?> login(String email, String password) async {
   }
 }
 
-Future<String?> register(String email, String password, String name,
-    {String? univToken}) async {
+Future<String?> register(String email, String password, String name, {String? univToken}) async {
   final url = apiUrl('/auth/register');
   try {
     final payload = {
@@ -199,16 +186,13 @@ Future<String?> register(String email, String password, String name,
       'name': name.trim(),
       if (univToken != null && univToken.isNotEmpty) 'univToken': univToken,
     };
-    final resp =
-        await http.post(url, headers: _jsonHeaders, body: jsonEncode(payload));
+    final resp = await http.post(url, headers: _jsonHeaders, body: jsonEncode(payload));
     final body = _parseJsonResponse(resp);
     final data = _get<Map>(body, 'data') ?? body;
 
     if (resp.statusCode == 200 || resp.statusCode == 201) {
-      final access = _get<String>(data, 'accessToken') ??
-          _get<String>(body, 'accessToken');
-      final refresh = _get<String>(data, 'refreshToken') ??
-          _get<String>(body, 'refreshToken');
+      final access = _get<String>(data, 'accessToken') ?? _get<String>(body, 'accessToken');
+      final refresh = _get<String>(data, 'refreshToken') ?? _get<String>(body, 'refreshToken');
       if (access != null && access.isNotEmpty) {
         await TokenStorage.setTokens(access, refreshToken: refresh);
       }
@@ -240,9 +224,7 @@ String _imgSubtype(String pathOrName) {
 
 // -------------------- 상품 등록/수정 --------------------
 Future<Map<String, dynamic>?> createProductWithImages(
-    Map<String, dynamic> productData,
-    List<dynamic> images,
-    String token) async {
+    Map<String, dynamic> productData, List<dynamic> images, String token) async {
   final uri = apiUrl('/products');
   final req = http.MultipartRequest('POST', uri);
   req.headers['Authorization'] = 'Bearer $token';
@@ -252,10 +234,11 @@ Future<Map<String, dynamic>?> createProductWithImages(
       if (img is XFile) {
         if (kIsWeb) {
           final bytes = await img.readAsBytes();
+          final safeName = (img.name.trim().isNotEmpty) ? img.name : 'image.jpg';
           req.files.add(http.MultipartFile.fromBytes(
             'images',
             bytes,
-            filename: img.name,
+            filename: safeName,
             contentType: MediaType('image', _imgSubtype(img.name)),
           ));
         } else {
@@ -280,24 +263,26 @@ Future<Map<String, dynamic>?> createProductWithImages(
   final title = productData['title']?.toString().trim();
   if (title != null && title.isNotEmpty) req.fields['title'] = title;
 
-  final rawPrice =
-      (productData['priceWon'] ?? productData['price'])?.toString();
-  final priceNum = rawPrice == null
-      ? 0
-      : int.tryParse(rawPrice.replaceAll(RegExp(r'[, ]'), '')) ?? 0;
+  final rawPrice = (productData['priceWon'] ?? productData['price'])?.toString();
+  final priceNum =
+      rawPrice == null ? 0 : int.tryParse(rawPrice.replaceAll(RegExp(r'[, ]'), '')) ?? 0;
   req.fields['priceWon'] = priceNum.toString();
 
   final desc = productData['description']?.toString().trim();
   if (desc?.isNotEmpty == true) req.fields['description'] = desc!;
-  final category = productData['category']?.toString().trim();
-  if (category?.isNotEmpty == true) req.fields['category'] = category!;
+  final categoryPath = (productData['categoryPath'] ?? productData['category'])
+      ?.toString()
+      .trim();
+  if (categoryPath?.isNotEmpty == true) {
+    // 백엔드는 DTO가 categoryPath를 받음(컬럼명은 DB에서 'category'로 매핑됨)
+    req.fields['categoryPath'] = categoryPath!;
+  }
 
   final locationText = (productData['locationText'] ??
           (productData['location'] is String ? productData['location'] : null))
       ?.toString()
       .trim();
-  if (locationText != null && locationText.isNotEmpty)
-    req.fields['locationText'] = locationText;
+  if (locationText != null && locationText.isNotEmpty) req.fields['locationText'] = locationText;
 
   final status = productData['status']?.toString().trim();
   if (status?.isNotEmpty == true) req.fields['status'] = status!;
@@ -325,10 +310,7 @@ Future<Map<String, dynamic>?> createProductWithImages(
 }
 
 Future<Map<String, dynamic>?> updateProductWithImages(
-    String productId,
-    Map<String, dynamic> productData,
-    List<dynamic> images,
-    String token) async {
+    String productId, Map<String, dynamic> productData, List<dynamic> images, String token) async {
   final uri = apiUrl('/products/$productId');
   final req = http.MultipartRequest('PATCH', uri);
   req.headers['Authorization'] = 'Bearer $token';
@@ -366,15 +348,22 @@ Future<Map<String, dynamic>?> updateProductWithImages(
   final title = productData['title']?.toString().trim();
   if (title?.isNotEmpty == true) req.fields['title'] = title!;
 
-  final rawPrice =
-      (productData['priceWon'] ?? productData['price'])?.toString();
+  final rawPrice = (productData['priceWon'] ?? productData['price'])?.toString();
   if (rawPrice != null) {
-    final priceNum =
-        int.tryParse(rawPrice.replaceAll(RegExp(r'[, ]'), '')) ?? 0;
+    final priceNum = int.tryParse(rawPrice.replaceAll(RegExp(r'[, ]'), '')) ?? 0;
     req.fields['priceWon'] = priceNum.toString();
   }
 
   final desc = productData['description']?.toString().trim();
+  if (desc?.isNotEmpty == true) req.fields['description'] = desc!;
+  final categoryPath = (productData['categoryPath'] ?? productData['category'])
+      ?.toString()
+      .trim();
+  if (categoryPath?.isNotEmpty == true) {
+    // 백엔드는 DTO가 categoryPath를 받음(컬럼명은 DB에서 'category'로 매핑됨)
+    req.fields['categoryPath'] = categoryPath!;
+  }
+
   if (desc?.isNotEmpty == true) req.fields['description'] = desc!;
   final category = productData['category']?.toString().trim();
   if (category?.isNotEmpty == true) req.fields['category'] = category!;
@@ -383,8 +372,7 @@ Future<Map<String, dynamic>?> updateProductWithImages(
           (productData['location'] is String ? productData['location'] : null))
       ?.toString()
       .trim();
-  if (locationText != null && locationText.isNotEmpty)
-    req.fields['locationText'] = locationText;
+  if (locationText != null && locationText.isNotEmpty) req.fields['locationText'] = locationText;
 
   final status = productData['status']?.toString().trim();
   if (status?.isNotEmpty == true) req.fields['status'] = status!;
@@ -427,29 +415,24 @@ Future<List<Product>> fetchProducts(
 
   const allowedSort = {'createdAt', 'price', 'title'};
   const allowedOrder = {'ASC', 'DESC'};
-  if (sortField != null && allowedSort.contains(sortField))
-    params['sort'] = sortField;
+  if (sortField != null && allowedSort.contains(sortField)) params['sort'] = sortField;
   if (order != null && allowedOrder.contains(order)) params['order'] = order;
 
   final base = apiUrl('/products');
   final url = base.replace(queryParameters: params);
 
   try {
-    final resp =
-        await http.get(url, headers: {'Authorization': 'Bearer $token'});
+    final resp = await http.get(url, headers: {'Authorization': 'Bearer $token'});
     if (resp.statusCode != 200) {
       final body = resp.body;
-      final isSortError = resp.statusCode == 400 &&
-          body.contains('"sort"') &&
-          body.contains('must be one of');
-      if (isSortError &&
-          (params.containsKey('sort') || params.containsKey('order'))) {
+      final isSortError =
+          resp.statusCode == 400 && body.contains('"sort"') && body.contains('must be one of');
+      if (isSortError && (params.containsKey('sort') || params.containsKey('order'))) {
         final retryParams = Map<String, String>.from(params)
           ..remove('sort')
           ..remove('order');
         final retryUrl = base.replace(queryParameters: retryParams);
-        final retry = await http
-            .get(retryUrl, headers: {'Authorization': 'Bearer $token'});
+        final retry = await http.get(retryUrl, headers: {'Authorization': 'Bearer $token'});
         if (retry.statusCode == 200) {
           final decoded = _parseJsonResponse(retry);
           final raw = decoded['data'];
@@ -464,10 +447,7 @@ Future<List<Product>> fetchProducts(
     final decoded = _parseJsonResponse(resp);
     final raw = decoded['data'];
     final items = _normalizeItems(raw);
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map((e) => Product.fromJson(e))
-        .toList();
+    return items.whereType<Map<String, dynamic>>().map((e) => Product.fromJson(e)).toList();
   } catch (e, st) {
     debugPrint('[API] 상품 조회 예외: $e\n$st');
     return [];
@@ -486,8 +466,7 @@ List<dynamic> _normalizeItems(dynamic raw) {
 }
 
 // -------------------- Favorites --------------------
-({bool? isFavorited, int? favoriteCount}) _readFavoritePayload(
-    Map<String, dynamic> root) {
+({bool? isFavorited, int? favoriteCount}) _readFavoritePayload(Map<String, dynamic> root) {
   final data = _get<Map>(root, 'data') ?? root;
   bool? fav = _get<bool>(data, 'isFavorited');
   int? cnt;
@@ -545,10 +524,8 @@ Future<bool?> toggleFavoriteById(String productId) async {
   }
 }
 
-Future<Map<String, dynamic>?> fetchMyFavorites(
-    {int page = 1, int limit = 50}) async {
-  final url = apiUrl('/favorites')
-      .replace(queryParameters: {'page': '$page', 'limit': '$limit'});
+Future<Map<String, dynamic>?> fetchMyFavorites({int page = 1, int limit = 50}) async {
+  final url = apiUrl('/favorites/me');
   try {
     final resp = await _authed(method: 'GET', url: url);
     if (resp.statusCode != 200) {
@@ -574,15 +551,11 @@ Future<Map<String, dynamic>?> fetchMyFavorites(
   }
 }
 
-Future<List<Product>> fetchMyFavoriteItems(
-    {int page = 1, int limit = 50}) async {
+Future<List<Product>> fetchMyFavoriteItems({int page = 1, int limit = 50}) async {
   final m = await fetchMyFavorites(page: page, limit: limit);
   if (m == null) return const [];
   final items = (m['items'] as List?) ?? const [];
-  return items
-      .whereType<Map<String, dynamic>>()
-      .map((e) => Product.fromJson(e))
-      .toList();
+  return items.whereType<Map<String, dynamic>>().map((e) => Product.fromJson(e)).toList();
 }
 
 // -------------------- 단건 조회 --------------------

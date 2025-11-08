@@ -4,6 +4,9 @@ import '../../core/theme.dart';
 import '../delivery/delivery_status_screen.dart';
 import '../../models/latlng.dart' as model;
 
+// ✅ chat api (네가 가진 구현 파일 경로에 맞춰 수정)
+import 'package:kumeong_store/features/chat/data/chats_api.dart';
+
 enum PayMethod { none, escrow, direct }
 
 class ChatScreen extends StatefulWidget {
@@ -36,14 +39,18 @@ class _ChatScreenState extends State<ChatScreen> {
   bool get _showConfirmButton => _payMethod == PayMethod.escrow && _securePaid;
   bool get _showPayButton => !_tradeStarted; // 핵심: 한 번 선택되면 다시 안 보임
 
-  final _messages = <_ChatMessage>[
-    _ChatMessage(text: '안녕하세요! 아직 구매 가능할까요?', isMe: true),
-    _ChatMessage(text: '네 가능해요 🙌', isMe: false),
-  ];
+  // ── 채팅 API & 상태 ─────────────────────────────────────────────
+  late final ChatApi _api;
+  late final String _myUserId;
+  List<_ChatMessage> _messages = [];
+  int _maxSeq = 0;
+  bool _loading = true;
+  bool _sending = false;
 
   @override
   void initState() {
     super.initState();
+
     // 복귀 시 extra로 넘어온 flag 기반 초기화
     _securePaid = widget.securePaid;
 
@@ -54,15 +61,181 @@ class _ChatScreenState extends State<ChatScreen> {
     } else {
       _payMethod = PayMethod.none; // 아직 미선택
     }
-
     _tradeStarted = _payMethod != PayMethod.none || _securePaid;
+
+    // 내 사용자 ID 식별 (세션에서 가져오되, 실패해도 앱이 죽지 않게 처리)
+    _myUserId = _resolveMyUserId();
+    _api = ChatApi(meUserId: _myUserId);
+
+    // roomId 없으면 안전 복귀
+    if (widget.roomId == null || widget.roomId!.trim().isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _toast('유효하지 않은 채팅방입니다.');
+        context.pop();
+      });
+      return;
+    }
+
+    _initialLoad();
   }
 
   @override
   void dispose() {
     _textCtrl.dispose();
     _scrollCtrl.dispose();
+    // 가장 단순: 최신으로 읽음 커서 이동
+    final rid = widget.roomId;
+    if (rid != null && rid.trim().isNotEmpty) {
+      _api.markRead(roomId: rid).catchError((_) {});
+    }
     super.dispose();
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────
+  String _resolveMyUserId() {
+    // TODO: 프로젝트의 세션/프로바이더에서 me.id 가져오기
+    // 예: context.read(sessionProvider).me!.id 등
+    // 여기서는 런타임 오류 방지를 위해 try-catch + fallback 처리
+    try {
+      // ignore: dead_code
+      // return session.me!.id; // 네 프로젝트 전역 세션이 있다면 이렇게
+      return ''; // fallback
+    } catch (_) {
+      return '';
+    }
+  }
+
+  bool _isMe(String senderId) => senderId.isNotEmpty && senderId == _myUserId;
+
+  void _scrollToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollCtrl.hasClients) return;
+      _scrollCtrl.animateTo(
+        _scrollCtrl.position.maxScrollExtent + 80,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  // ── 데이터 로드/전송 ────────────────────────────────────────────
+  Future<void> _initialLoad() async {
+    setState(() => _loading = true);
+    try {
+      final rid = widget.roomId!;
+      final msgs = await _api.fetchMessagesSinceSeq(
+        roomId: rid,
+        sinceSeq: 0,
+        limit: 50,
+      );
+      final vm = msgs
+          .map((m) => _ChatMessage(
+                text: m.text,
+                isMe: _isMe(m.senderId),
+                ts: m.timestamp,
+                seq: m.seq,
+              ))
+          .toList();
+
+      setState(() {
+        _messages = vm;
+        _maxSeq = msgs.isEmpty ? 0 : msgs.map((m) => m.seq).reduce((a, b) => a > b ? a : b);
+      });
+
+      _scrollToEnd();
+    } catch (e) {
+      _toast('메시지를 불러오지 못했습니다.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _send() async {
+    final txt = _textCtrl.text.trim();
+    if (txt.isEmpty || _sending) return;
+
+    final rid = widget.roomId!;
+    setState(() => _sending = true);
+    try {
+      final m = await _api.sendMessage(roomId: rid, text: txt);
+      setState(() {
+        _messages.add(_ChatMessage(
+          text: m.text,
+          isMe: _isMe(m.senderId),
+          ts: m.timestamp,
+          seq: m.seq,
+        ));
+        _maxSeq = m.seq > _maxSeq ? m.seq : _maxSeq;
+      });
+      _textCtrl.clear();
+      _scrollToEnd();
+    } catch (e) {
+      _toast('메시지 전송에 실패했습니다.');
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // ── 기존 기능(배달/거래) ────────────────────────────────────────
+  void _openAttachSheet() {
+    final kux = Theme.of(context).extension<KuColors>()!;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        Widget item(IconData icon, String label, VoidCallback onTap) {
+          return InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              onTap();
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: kux.accentSoft.withOpacity(.3),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(icon, color: Theme.of(context).colorScheme.primary),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(label, style: const TextStyle(fontSize: 16)),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                item(Icons.photo_library_outlined, '앨범', () => _toast('앨범 열기')),
+                item(Icons.photo_camera_outlined, '카메라', () => _toast('카메라 열기')),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _goToDeliveryStatus() {
@@ -98,88 +271,6 @@ class _ChatScreenState extends State<ChatScreen> {
     // 돌아올 때 채팅방 상태는 라우트에서 새로 주입되는 constructor 파라미터로 반영됨
   }
 
-  void _send() {
-    final txt = _textCtrl.text.trim();
-    if (txt.isEmpty) return;
-    setState(() {
-      _messages.add(_ChatMessage(text: txt, isMe: true, ts: DateTime.now()));
-    });
-    _textCtrl.clear();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(
-          _scrollCtrl.position.maxScrollExtent + 80,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  void _toast(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
-
-  void _openAttachSheet() {
-    final kux = Theme.of(context).extension<KuColors>()!;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        Widget item(IconData icon, String label, VoidCallback onTap) {
-          return InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () {
-              Navigator.of(ctx).pop();
-              onTap();
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: kux.accentSoft.withOpacity(.3),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(icon,
-                        color: Theme.of(context).colorScheme.primary),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(label, style: const TextStyle(fontSize: 16)),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                item(Icons.photo_library_outlined, '앨범', () => _toast('앨범 열기')),
-                item(
-                    Icons.photo_camera_outlined, '카메라', () => _toast('카메라 열기')),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // 구매 확정 → 배달 패널 숨기고, 버튼은 계속 숨김 유지
   void _onConfirmPurchase() {
     setState(() {
       _payMethod = PayMethod.none;
@@ -189,6 +280,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _toast('구매 확정되었습니다.');
   }
 
+  // ── UI ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -200,20 +292,21 @@ class _ChatScreenState extends State<ChatScreen> {
         title: Text(widget.partnerName),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => context.pop(),
+          onPressed: () => context.pop(true), // <- 뒤로가기 시 true 반환(배지 낙관 갱신용)
           tooltip: '홈으로',
         ),
       ),
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              controller: _scrollCtrl,
-              padding: const EdgeInsets.all(12),
-              itemCount: _messages.length,
-              itemBuilder: (context, i) =>
-                  _MessageBubble(message: _messages[i]),
-            ),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : ListView.builder(
+                    controller: _scrollCtrl,
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, i) => _MessageBubble(message: _messages[i]),
+                  ),
           ),
           if (_showDeliveryPanel) ...[
             Padding(
@@ -235,9 +328,10 @@ class _ChatScreenState extends State<ChatScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _InputBar(
-                  controller: _textCtrl,
-                  onSend: _send,
-                  onAttach: _openAttachSheet),
+                controller: _textCtrl,
+                onSend: _send,
+                onAttach: _openAttachSheet,
+              ),
               const SizedBox(height: 10),
               if (_showPayButton)
                 SizedBox(
@@ -281,8 +375,10 @@ class _ProgressPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('거래가 진행 중입니다.\n구매 확정을 하시면 버튼을 눌러주세요.\n(구매 확정은 3일 뒤 자동 확정됩니다.)',
-              style: TextStyle(color: cs.onBackground)),
+          Text(
+            '거래가 진행 중입니다.\n구매 확정을 하시면 버튼을 눌러주세요.\n(구매 확정은 3일 뒤 자동 확정됩니다.)',
+            style: TextStyle(color: cs.onBackground),
+          ),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -293,8 +389,7 @@ class _ProgressPanel extends StatelessWidget {
                     backgroundColor: kux.mintSoft,
                     side: BorderSide(color: kux.accentSoft),
                   ),
-                  child:
-                      Text('배달 현황', style: TextStyle(color: cs.onBackground)),
+                  child: Text('배달 현황', style: TextStyle(color: cs.onBackground)),
                 ),
               ),
               const SizedBox(width: 12),
@@ -306,8 +401,7 @@ class _ProgressPanel extends StatelessWidget {
                       backgroundColor: kux.greenSoft,
                       side: BorderSide(color: kux.accentSoft),
                     ),
-                    child:
-                        Text('구매 확정', style: TextStyle(color: cs.onBackground)),
+                    child: Text('구매 확정', style: TextStyle(color: cs.onBackground)),
                   ),
                 ),
             ],
@@ -319,8 +413,12 @@ class _ProgressPanel extends StatelessWidget {
 }
 
 class _InputBar extends StatelessWidget {
-  const _InputBar(
-      {required this.controller, required this.onSend, required this.onAttach});
+  const _InputBar({
+    required this.controller,
+    required this.onSend,
+    required this.onAttach,
+  });
+
   final TextEditingController controller;
   final VoidCallback onSend;
   final VoidCallback onAttach;
@@ -349,6 +447,7 @@ class _InputBar extends StatelessWidget {
                 isDense: true,
                 border: InputBorder.none,
               ),
+              onSubmitted: (_) => onSend(),
             ),
           ),
           const SizedBox(width: 4),
@@ -371,8 +470,7 @@ class _MessageBubble extends StatelessWidget {
 
     final bubble = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      margin:
-          EdgeInsets.only(left: isMe ? 48 : 8, right: isMe ? 8 : 48, bottom: 8),
+      margin: EdgeInsets.only(left: isMe ? 48 : 8, right: isMe ? 8 : 48, bottom: 8),
       decoration: BoxDecoration(
         color: isMe ? kux.accentSoft.withOpacity(0.6) : cs.surface,
         borderRadius: BorderRadius.circular(12),
@@ -397,8 +495,15 @@ class _MessageBubble extends StatelessWidget {
 }
 
 class _ChatMessage {
-  _ChatMessage({required this.text, required this.isMe, this.ts});
+  _ChatMessage({
+    required this.text,
+    required this.isMe,
+    this.ts,
+    this.seq,
+  });
+
   final String text;
   final bool isMe;
   final DateTime? ts;
+  final int? seq;
 }

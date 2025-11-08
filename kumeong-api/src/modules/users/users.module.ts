@@ -3,28 +3,39 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
+import { UserRepository } from './repositories/user.repository'; // ✅ 추가
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User])],
+  imports: [
+    // ✅ TypeORM 레포지토리 주입을 위해 반드시 필요
+    TypeOrmModule.forFeature([User]),
+  ],
   controllers: [UsersController],
-  providers: [UsersService],
-  exports: [UsersService],
+  providers: [
+    UsersService,
+    UserRepository,        // ✅ 추가 (여기가 없으면 Nest가 DataSource를 못 씀)
+  ],
+  exports: [
+    UsersService,
+    UserRepository,        // ✅ 다른 모듈에서 사용할 수 있게 export
+  ],
 })
 export class UsersModule {}
 
+
 // src/app.module.ts (또는 src/database/typeorm.config.ts)
-TypeOrmModule.forRoot({
-  type: 'mysql',
-  host: 'localhost',
-  port: 3306,
-  username: 'root',
-  password: '...',
-  database: 'kumeong_store',
+// TypeOrmModule.forRoot({
+//   type: 'mysql',
+//   host: 'localhost',
+//   port: 3306,
+//   username: 'root',
+//   password: '...',
+//   database: 'kumeong_store',
 
-  // ✅ 지금은 실제 물리 테이블(소문자)에 "맞춰서" 붙는 게 목적
-  synchronize: true,                 // 개발 중만 켜두기
-  // namingStrategy: new SnakeNamingStrategy(),  // ❌ 임시로 주석. 자동 이름 변환이 테이블명/컬럼명 충돌 유발
+//   // ✅ 지금은 실제 물리 테이블(소문자)에 "맞춰서" 붙는 게 목적
+//   synchronize: true,                 // 개발 중만 켜두기
+//   // namingStrategy: new SnakeNamingStrategy(),  // ❌ 임시로 주석. 자동 이름 변환이 테이블명/컬럼명 충돌 유발
 
-  autoLoadEntities: true,
-  logging: ['error', 'warn'],        // 필요 시 'schema' 추가해서 DDL 로그 확인 가능
-});
+//   autoLoadEntities: true,
+//   logging: ['error', 'warn'],        // 필요 시 'schema' 추가해서 DDL 로그 확인 가능
+// });

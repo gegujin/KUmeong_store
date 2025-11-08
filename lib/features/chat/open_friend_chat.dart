@@ -80,7 +80,7 @@ Future<void> openFriendChat({
 
   try {
     // 1) 서버에서 친구방 확보
-    final roomId = await chatsApi.ensureFriendRoom(peer);
+    final roomId = await chatsApi.ensureTrade(peer);
 
     // 2) 친구 채팅 화면으로 이동 (✅ FriendChatPage)
     if (context.mounted) {

@@ -1,4 +1,4 @@
-// src/features/chats/chats.controller.ts  (수정본)
+// src/features/chats/chats.controller.ts
 import {
   BadRequestException,
   Body,
@@ -21,8 +21,9 @@ import { ChatsService } from './chats.service';
 // ─────────────────────────────────────────────────────────────
 // 로컬 ID 유틸 (외부 모듈 제거)
 // ─────────────────────────────────────────────────────────────
+// v1/v4/variant 강제 X: 하이픈 포함 8-4-4-4-12 형식만 확인
 const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function assertUuidLike(val: string | null | undefined, name = 'id') {
   if (!val || typeof val !== 'string' || !UUID_RE.test(val)) {
@@ -67,7 +68,6 @@ export class ChatsController {
     if (lastMessageId) {
       assertUuidLike(lastMessageId, 'lastMessageId');
     } else {
-      // markReadTo 미구현 & updateReadCursor만 있는 경우엔 최신 ID를 찾아서 강제 필요
       if (typeof svc.markReadTo !== 'function' && typeof svc.updateReadCursor === 'function') {
         if (typeof svc.getLatestMessageId === 'function') {
           const latest = await svc.getLatestMessageId(roomId);
@@ -107,6 +107,28 @@ export class ChatsController {
   // ─────────────────────────────────────────────────────────────
   // Endpoints
   // ─────────────────────────────────────────────────────────────
+
+  /**
+   * ✅ POST /api/v1/chat/rooms/ensure-trade
+   * Body: { productId: UUID }
+   * Return: { ok, roomId, data:{ id, roomId } }
+   */
+  @Post('rooms/ensure-trade')
+  async ensureTrade(@Req() req: any, @Body('productId') productId?: string) {
+    const meUserId: string | undefined = req.user?.sub || req.user?.id;
+    if (!meUserId) throw new HttpException('UNAUTHENTICATED', HttpStatus.UNAUTHORIZED);
+
+    const pid = normalizeId(String(productId ?? ''));
+    assertUuidLike(pid, 'productId');
+
+    const room = await this.chats.ensureTradeRoom({
+      productId: pid,
+      meUserId: String(meUserId),
+    });
+
+    const roomId = room.id;
+    return { ok: true, roomId, data: { id: roomId, roomId } };
+  }
 
   /**
    * GET /api/v1/chat/friend-room?peerId=<UUID>

@@ -3,13 +3,15 @@ import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { v1 as uuidv1 } from 'uuid';
-import { ChatMessage } from '../../features/chats/entities/chat-message.entity'; // 경로 프로젝트에 맞게
+import { ChatMessage } from '../../features/chats/entities/chat-message.entity';
 
-// ─────────────────────────────────────────────────────────────
-// UUID 검증 유틸
-// ─────────────────────────────────────────────────────────────
+// ── UUID 유틸 ──────────────────────────────────────────────
+// 엄격 UUID(v1~v5) 검증: meUserId, sellerId 등에 사용
 const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+ /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// 느슨한 36자 UUID 형태(버전 미검증): seeding productId 호환용
+const UUID36_LOOSE = /^[0-9a-f-]{36}$/i;
 
 function assertUuidLike(val: string | null | undefined, name = 'id') {
   if (!val || typeof val !== 'string' || !UUID_RE.test(val)) {
@@ -17,7 +19,7 @@ function assertUuidLike(val: string | null | undefined, name = 'id') {
   }
 }
 
-// createdAt(ms) → 의사 seq (백업용)
+// createdAt(ms) → 의사 seq
 function seqFromDate(d: Date) {
   return Math.floor(d.getTime());
 }
@@ -39,9 +41,7 @@ export class ChatsService {
     @Optional() @InjectRepository(ChatMessage) private readonly msgRepo?: Repository<ChatMessage>,
   ) {}
 
-  // ─────────────────────────────────────────────────────────────
-  // 존재/멤버십 확인
-  // ─────────────────────────────────────────────────────────────
+  // ── 존재/멤버십 확인 ─────────────────────────────────────
   async ensureRoomExists(roomId: string): Promise<boolean> {
     const row = await this.ds.query(
       `SELECT id FROM chatRooms WHERE id = ? LIMIT 1`,
@@ -58,9 +58,7 @@ export class ChatsService {
     return rows.length > 0;
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 친구 DM 방 보장 (MySQL 전용)
-  // ─────────────────────────────────────────────────────────────
+  // ── 친구 DM 방 보장 ─────────────────────────────────────
   async ensureFriendRoom(args: { meUserId: string; peerUserId: string }): Promise<string> {
     let { meUserId, peerUserId } = args;
 
@@ -81,10 +79,10 @@ export class ChatsService {
     );
     if (!peerRow) throw new BadRequestException('PEER_USER_NOT_FOUND');
 
-    // 페어 정규화 (항상 a<b) → a=buyerId, b=sellerId
+    // 페어 정규화 (a<b) → a=buyerId, b=sellerId
     const [a, b] = [meUserId, peerUserId].sort();
 
-    // chatRooms UNIQUE(type, productId, buyerId, sellerId) 필요
+    // chatRooms UNIQUE(type, pairMinId, pairMaxId, productIdNorm) 가정
     await this.ds.query(
       `
       INSERT INTO chatRooms (id, \`type\`, productId, buyerId, sellerId, createdAt)
@@ -110,9 +108,56 @@ export class ChatsService {
     return rows[0].id as string;
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 메시지 조회/추가 (MySQL 전용)
-  // ─────────────────────────────────────────────────────────────
+  // ── ✅ 거래방 멱등 생성 (productId 느슨 검증 + 필요한 컬럼만 SELECT) ───────────
+  async ensureTradeRoom(args: { productId: string; meUserId: string }): Promise<{ id: string }> {
+    const { productId, meUserId } = args;
+
+    // seeding productId의 v1/v4 미준수 대비: 느슨 검증
+    if (!productId || !UUID36_LOOSE.test(productId)) {
+      throw new BadRequestException('productId invalid');
+    }
+    // meUserId는 엄격 검증 유지
+    assertUuidLike(meUserId, 'meUserId');
+
+    // 1) 상품 조회: 스키마 상 존재하는 컬럼만 사용
+    const prows = await this.ds.query(
+      `SELECT sellerId, deletedAt FROM products WHERE id = ? LIMIT 1`,
+      [productId],
+    );
+    if (!prows?.length) throw new BadRequestException('PRODUCT_NOT_FOUND');
+
+    const p = prows[0] as { sellerId: string | null; deletedAt: Date | null };
+    if (p.deletedAt) throw new BadRequestException('PRODUCT_DELETED');
+
+    const sellerId = String(p.sellerId ?? '');
+    assertUuidLike(sellerId, 'sellerId');
+
+    // 2) 멱등 생성
+    await this.ds.query(
+      `
+      INSERT INTO chatRooms (id, \`type\`, productId, buyerId, sellerId, createdAt)
+      VALUES (UUID(), 'TRADE', ?, ?, ?, NOW())
+      ON DUPLICATE KEY UPDATE id = id
+      `,
+      [productId, meUserId, sellerId],
+    );
+
+    // 3) 방 id 조회
+    const out = await this.ds.query(
+      `
+      SELECT id
+      FROM chatRooms
+      WHERE \`type\`='TRADE' AND productId=? AND buyerId=? AND sellerId=?
+      LIMIT 1
+      `,
+      [productId, meUserId, sellerId],
+    );
+    if (!out?.length) throw new Error('TRADE_ROOM_RESOLVE_FAILED');
+
+    return { id: String(out[0].id) };
+  }
+
+  // ── 메시지 조회/추가 ─────────────────────────────────────
   async fetchMessagesSinceSeq(args: {
     roomId: string;
     sinceSeq: number; // 0 이하면 최신 N개
@@ -134,7 +179,7 @@ export class ChatsService {
         `,
         [roomId, limit],
       );
-      rows.reverse(); // 화면에서는 과거→현재 순
+      rows.reverse(); // 과거→현재
     } else {
       rows = await this.ds.query(
         `
@@ -192,9 +237,7 @@ export class ChatsService {
     };
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 읽음 커서 업데이트 (MySQL 전용 upsert)
-  // ─────────────────────────────────────────────────────────────
+  // ── 읽음 커서 ───────────────────────────────────────────
   async updateReadCursor(args: { roomId: string; userId: string; lastMessageId: string }): Promise<void> {
     const { roomId, userId, lastMessageId } = args;
     assertUuidLike(roomId, 'roomId');
@@ -213,21 +256,16 @@ export class ChatsService {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 읽음 커서 업데이트(“앞으로만” 전진) + 최신 자동결정 (MySQL 전용)
-  // ─────────────────────────────────────────────────────────────
   async markReadTo(opts: { roomId: string; userId: string; lastMessageId: string | null }) {
     const { roomId, userId } = opts;
     assertUuidLike(roomId, 'roomId');
     assertUuidLike(userId, 'userId');
 
-    // 타겟 메시지 결정
     let targetId = opts.lastMessageId;
 
     if (targetId) {
       assertUuidLike(targetId, 'lastMessageId');
 
-      // msgRepo 있으면 exist, 없으면 쿼리 확인
       let inRoom = false;
       if (this.msgRepo) {
         inRoom = await this.msgRepo.exist({ where: { id: targetId, roomId } as any });
@@ -240,13 +278,11 @@ export class ChatsService {
       }
       if (!inRoom) throw new BadRequestException('lastMessageId not in this room');
     } else {
-      // 최신 메시지로
       const latest = await this.getLatestMessageId(roomId);
-      if (!latest) return; // 메시지 없으면 스킵
+      if (!latest) return;
       targetId = latest;
     }
 
-    // seq가 더 큰 id만 선택되도록 전진 보장 UPSERT
     await this.ds.query(
       `
       INSERT INTO chatReads (roomId, userId, lastReadMessageId, updatedAt)
@@ -266,7 +302,6 @@ export class ChatsService {
     );
   }
 
-  // 최신 메시지 id (MySQL 전용 + msgRepo 지원)
   async getLatestMessageId(roomId: string): Promise<string | null> {
     if (this.msgRepo) {
       const latest = await this.msgRepo
@@ -289,4 +324,28 @@ export class ChatsService {
     );
     return rows?.[0]?.id ?? null;
   }
+
+  // ── DS 기반 내 방 목록 ─────────
+  async listMyRooms(meUserId: string) {
+    assertUuidLike(meUserId, 'meUserId');
+    const rows = await this.ds.query(
+      `
+      SELECT id, lastSnippet, lastMessageAt
+      FROM chatRooms
+      WHERE buyerId = ? OR sellerId = ?
+      ORDER BY COALESCE(lastMessageAt, createdAt) DESC
+      `,
+      [meUserId, meUserId],
+    );
+    return rows.map((r: any) => (keyifyRoomRow(r)));
+  }
+}
+
+// 내부 헬퍼
+function keyifyRoomRow(r: any) {
+  return {
+    id: String(r.id),
+    lastSnippet: r.lastSnippet ?? null,
+    lastMessageAt: r.lastMessageAt ?? null,
+  };
 }

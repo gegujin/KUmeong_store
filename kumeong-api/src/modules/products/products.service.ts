@@ -139,18 +139,22 @@ export class ProductsService {
 
     // 업로드 이미지 저장
     if (images && images.length > 0) {
-      const rows = images.map((f, idx) =>
-        this.imgRepo.create({
-          productId: saved.id,
-          // 기본: /uploads/<파일명>
-          url: f?.filename
-            ? `/uploads/${f.filename}`
-            : (f?.path && f.path.includes('/uploads/'))
-              ? f.path.slice(f.path.indexOf('/uploads/'))
-              : '',
-          ord: idx,
-        }),
-      );
+      const rows = images
+        .map((f, idx) => {
+          const url =
+            f?.filename
+              ? `/uploads/${f.filename}`
+              : (f?.path && f.path.includes('/uploads/'))
+                ? f.path.slice(f.path.indexOf('/uploads/'))
+                : '';
+          if (!url) return null; // 빈 URL은 저장 스킵
+          return this.imgRepo.create({
+            productId: saved.id,
+            url,
+            ord: idx,
+          });
+        })
+        .filter((v): v is ProductImage => !!v);
       await this.imgRepo.save(rows);
 
       // 이미지 포함 재조회(정렬 포함)

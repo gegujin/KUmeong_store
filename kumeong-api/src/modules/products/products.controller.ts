@@ -21,8 +21,7 @@ import {
   ApiConsumes,
 } from '@nestjs/swagger';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { join } from 'path';
+import { productImageStorage } from './upload.util';
 
 import { ProductsService } from './products.service';
 import { ConfigService } from '@nestjs/config';
@@ -107,10 +106,7 @@ export class ProductsController {
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileFieldsInterceptor([{ name: 'images', maxCount: 10 }], {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => cb(null, join(process.cwd(), 'uploads')),
-        filename: (_req, file, cb) => cb(null, sanitizeFilename(file.originalname)),
-      }),
+      storage: productImageStorage,
       fileFilter: (_req, file, cb) => {
         if (/^image\//i.test(file.mimetype)) cb(null, true);
         else cb(null, false);

@@ -1,5 +1,5 @@
 // src/modules/auth/auth.types.ts
-import { UserRole } from '../../../features/users/entities/user.entity'; // 경로는 프로젝트 구조에 맞게 조정
+import { UserRole } from '../../users/entities/user.entity'; // 경로는 프로젝트 구조에 맞게 조정
 
 // JWT에 넣어 서명/복호화할 페이로드 타입
 export interface JwtPayload {

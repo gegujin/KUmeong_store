@@ -20,13 +20,12 @@ class HttpX {
   HttpX._();
   static const Duration _timeout = Duration(seconds: 20);
 
-  // ── NEW: 모든 쿼리 값을 String으로 안전 변환 ─────────────────────
+  // ── 모든 쿼리 값을 String으로 변환 ─────────────────────────────
   static Map<String, String> _stringifyQuery(Map<String, dynamic>? query) {
     if (query == null || query.isEmpty) return const {};
     final out = <String, String>{};
     query.forEach((k, v) {
-      if (k == null) return;
-      if (v == null) return;
+      if (k == null || v == null) return;
       out[k.toString()] = v.toString();
     });
     return out;
@@ -68,7 +67,7 @@ class HttpX {
         map[HttpHeaders.authorizationHeader] = 'Bearer $token';
       }
     }
-    // ✅ 웹에서는 no-cache 헤더를 넣지 말 것 (CORS preflight 유발)
+    // 웹에서는 no-cache 헤더로 preflight 늘리지 않기
     if (noCache && !kIsWeb) {
       map['Cache-Control'] = 'no-cache, no-store, must-revalidate';
       map['Pragma'] = 'no-cache';
@@ -125,7 +124,7 @@ class HttpX {
     Map<String, dynamic>? query,
     Map<String, String>? headers,
     bool withAuth = true,
-    bool noCache = true, // 기본적으로 캐시 방지
+    bool noCache = true,
   }) async {
     try {
       final q = Map<String, dynamic>.from(query ?? const {});
@@ -138,7 +137,6 @@ class HttpX {
       _ensureOk(res);
       return _parseJson(res);
     } catch (e) {
-      // UI에서 바로 보이도록 래핑
       throw ApiException('GET $path 실패: $e');
     }
   }
