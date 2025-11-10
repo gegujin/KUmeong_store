@@ -35,6 +35,7 @@ class Seller {
 
   /// 여러 스키마에 대응하는 유연 파서
   factory Seller.fromJson(Map<String, dynamic> json) {
+    // ── 1) 이름 픽커 (기존 로직 유지) ─────────────────────────────────
     String _pickNameFlat(Map<String, dynamic> m) {
       for (final k in [
         'name',
@@ -44,7 +45,7 @@ class Seller {
         'display_name',
         'userName',
         'username',
-        'nickname'
+        'nickname',
       ]) {
         final v = m[k];
         if (v is String && v.trim().isNotEmpty) return v.trim();
@@ -65,7 +66,7 @@ class Seller {
         'creator',
         'createdBy',
         'registrant',
-        'member'
+        'member',
       ]) {
         final v = m[parent];
         if (v is Map<String, dynamic>) {
@@ -91,6 +92,7 @@ class Seller {
       return '';
     }
 
+    // ── 2) 문자열 키 깊이 탐색 (아바타/위치용: 기존 로직 유지) ─────────
     String _pickStringDeep(Map<String, dynamic> m, List<String> keys) {
       for (final k in keys) {
         final v = m[k];
@@ -108,14 +110,71 @@ class Seller {
       return '';
     }
 
+    // ── 3) ★ ID 픽커 추가 (얕은/깊은 경로 모두 탐색) ──────────────────
+    String _pickIdFlat(Map<String, dynamic> m) {
+      for (final k in [
+        'id',
+        '_id',
+        'userId',
+        'sellerId',
+        'ownerId',
+        'authorId',
+        'createdById',
+        'uuid',
+      ]) {
+        final v = m[k];
+        if (v is String && v.trim().isNotEmpty) return v.trim();
+      }
+      return '';
+    }
+
+    String _pickIdDeep(Map<String, dynamic> m) {
+      final flat = _pickIdFlat(m);
+      if (flat.isNotEmpty) return flat;
+
+      for (final parent in [
+        'profile',
+        'account',
+        'user',
+        'owner',
+        'author',
+        'creator',
+        'createdBy',
+        'registrant',
+        'member',
+      ]) {
+        final v = m[parent];
+        if (v is Map<String, dynamic>) {
+          final hit = _pickIdFlat(v);
+          if (hit.isNotEmpty) return hit;
+        }
+      }
+
+      // 깊이 2 일반 스캔
+      for (final e in m.entries) {
+        final v = e.value;
+        if (v is Map<String, dynamic>) {
+          final hit = _pickIdFlat(v);
+          if (hit.isNotEmpty) return hit;
+          for (final e2 in v.entries) {
+            if (e2.value is Map<String, dynamic>) {
+              final hit2 = _pickIdFlat(e2.value as Map<String, dynamic>);
+              if (hit2.isNotEmpty) return hit2;
+            }
+          }
+        }
+      }
+      return '';
+    }
+
+    // ── 4) 실제 파싱 수행 ─────────────────────────────────────────────
+    final pickedId = _pickIdDeep(json);
     final pickedName = _pickNameDeep(json);
-    final avatar =
-        _pickStringDeep(json, ['avatarUrl', 'profileImageUrl', 'imageUrl']);
-    final locName =
-        _pickStringDeep(json, ['locationName', 'regionName', 'addressText']);
+    final avatar = _pickStringDeep(json, ['avatarUrl', 'profileImageUrl', 'imageUrl']);
+    final locName = _pickStringDeep(json, ['locationName', 'regionName', 'addressText']);
 
     return Seller(
-      id: (json['id'] ?? json['_id'] ?? '').toString(),
+      id: pickedId, // ← 기존 (json['id'] ?? json['_id']) 대신 깊이 탐색 결과 사용
       name: pickedName,
       avatarUrl: avatar,
       locationName: locName,
@@ -237,7 +296,7 @@ class Product {
   }
 
   factory Product.fromJson(Map<String, dynamic> json) {
-    // 이미지 정규화
+    // --- 이미지/시간/좌표 파서 (네 코드 그대로) ---
     final imageUrls = (json['imageUrls'] as List?)
             ?.where((e) => e != null)
             .map((e) => e.toString())
@@ -254,9 +313,7 @@ class Product {
                 })
                 .where((s) => s.isNotEmpty)
                 .toList(growable: false)
-            : (json['thumbnail'] != null
-                ? [json['thumbnail'].toString()]
-                : const <String>[]));
+            : (json['thumbnail'] != null ? [json['thumbnail'].toString()] : const <String>[]));
 
     DateTime _parseCreatedAt(dynamic v) {
       if (v is int) {
@@ -276,36 +333,96 @@ class Product {
         final lng = (v['lng'] is num) ? (v['lng'] as num).toDouble() : 0.0;
         return LatLng(lat: lat, lng: lng);
       } else if (v is String && v.isNotEmpty) {
-        // 문자열 좌표가 올 경우 임시 폴백
+        // 문자열 좌표 폴백
         return const LatLng(lat: 37.5665, lng: 126.9780);
       }
       return const LatLng(lat: 0, lng: 0);
     }
 
-    // 판매자
-    final sellerMap =
-        (json['seller'] as Map?)?.cast<String, dynamic>() ?? const {};
+    // --- 판매자: flat 필드 병합 → Seller.fromJson ---
+    final baseSeller = (json['seller'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
 
-    // 위치 텍스트: locationText → location → seller.locationName
-    final sellerLocName = (sellerMap['locationName'] ?? '').toString();
-    final locText = (json['locationText'] ??
-            json['location'] ??
-            (sellerLocName.isNotEmpty ? sellerLocName : null))
-        ?.toString();
+    String? _pickFirstStr(List<dynamic> xs) {
+      for (final v in xs) {
+        final s = (v ?? '').toString().trim();
+        if (s.isNotEmpty) return s;
+      }
+      return null;
+    }
 
-    // 가격: price / priceWon 안전 파싱
+    final mergedSeller = <String, dynamic>{
+      ...baseSeller,
+
+      // id 후보
+      'id': _pickFirstStr([
+            baseSeller['id'],
+            baseSeller['_id'],
+            json['sellerId'],
+            json['userId'],
+            json['ownerId'],
+            json['authorId'],
+            json['createdById'],
+            json['uuid'],
+          ]) ??
+          (baseSeller['id'] ?? ''),
+
+      // name 후보
+      'name': _pickFirstStr([
+            baseSeller['name'],
+            baseSeller['fullName'],
+            baseSeller['displayName'],
+            json['sellerName'],
+            json['userName'],
+            json['ownerName'],
+            json['authorName'],
+          ]) ??
+          (baseSeller['name'] ?? ''),
+
+      // avatar 후보
+      'avatarUrl': _pickFirstStr([
+            baseSeller['avatarUrl'],
+            baseSeller['profileImageUrl'],
+            json['sellerAvatar'],
+            json['avatarUrl'],
+          ]) ??
+          (baseSeller['avatarUrl'] ?? baseSeller['profileImageUrl'] ?? ''),
+
+      // location 후보
+      'locationName': _pickFirstStr([
+            baseSeller['locationName'],
+            json['locationName'],
+            json['addressText'],
+          ]) ??
+          (baseSeller['locationName'] ?? ''),
+
+      // rating 후보
+      'rating': baseSeller['rating'] ?? json['trustScore'] ?? baseSeller['reliability'] ?? 0,
+    };
+
+    // ✅ 여기서 실제 Seller 객체를 만든 뒤
+    final sellerObj = Seller.fromJson(mergedSeller);
+
+    // ✅ 위치 텍스트: locationText → (json['location']가 String이면 그것) → seller.locationName
+    String? _asStringOrNull(dynamic v) {
+      if (v == null) return null;
+      final s = v.toString().trim();
+      return s.isEmpty ? null : s;
+    }
+
+    final locText = _asStringOrNull(json['locationText']) ??
+        _asStringOrNull(json['location']) ??
+        (sellerObj.locationName.isNotEmpty ? sellerObj.locationName : null);
+
+    // --- 가격/카운트 파싱 (네 코드 그대로) ---
     final priceAny = json['price'] ?? json['priceWon'] ?? 0;
     final priceInt = (priceAny is num)
         ? priceAny.toInt()
-        : int.tryParse(priceAny.toString().replaceAll(RegExp(r'[, ]'), '')) ??
-            0;
+        : int.tryParse(priceAny.toString().replaceAll(RegExp(r'[, ]'), '')) ?? 0;
 
     final priceWonAny = json['priceWon'];
-    final priceWonInt = (priceWonAny is num)
-        ? priceWonAny.toInt()
-        : int.tryParse('${priceWonAny ?? ''}');
+    final priceWonInt =
+        (priceWonAny is num) ? priceWonAny.toInt() : int.tryParse('${priceWonAny ?? ''}');
 
-    // 찜/조회수/좋아요
     int _asInt(dynamic v) {
       if (v is num) return v.toInt();
       if (v is String && v.isNotEmpty) {
@@ -321,12 +438,9 @@ class Product {
       return parsed < 0 ? 0 : parsed;
     })();
 
+    // --- 최종 객체 생성 ---
     return Product(
-      id: (json['id'] ??
-              json['productId'] ??
-              json['uuid'] ??
-              json['postId'] ??
-              'unknown')
+      id: (json['id'] ?? json['productId'] ?? json['uuid'] ?? json['postId'] ?? 'unknown')
           .toString(),
       title: (json['title'] ?? json['name'] ?? '').toString(),
       price: priceInt,
@@ -334,7 +448,7 @@ class Product {
       description: (json['description'] ?? '').toString(),
       imageUrls: imageUrls,
       createdAt: _parseCreatedAt(json['createdAt']),
-      seller: Seller.fromJson(sellerMap),
+      seller: sellerObj, // ← 이미 위에서 만든 Seller 사용
       location: _parseLatLng(json['location']),
       category: (json['category'] != null) ? json['category'].toString() : null,
       images: json['images'] != null ? List<dynamic>.from(json['images']) : [],
@@ -371,9 +485,8 @@ class Product {
 /// 홈 화면 카드용 Map 변환
 extension ProductMap on Product {
   Map<String, dynamic> toMapForHome() {
-    final imageUrl = (imageUrls.isNotEmpty)
-        ? imageUrls.first
-        : 'https://via.placeholder.com/150?text=No+Image';
+    final imageUrl =
+        (imageUrls.isNotEmpty) ? imageUrls.first : 'https://via.placeholder.com/150?text=No+Image';
 
     // 위치 우선순위: locationText → seller.locationName → 기본값
     final locationName = (locationText != null && locationText!.isNotEmpty)
@@ -415,8 +528,7 @@ final demoProduct = Product(
   title: 'Willson 농구공 팝니다!',
   price: 25000,
   priceWon: 25000,
-  description:
-      '모델명: NCAA Replica Game Ball\n크기: Size 7\n소재: 합성가죽\n신제품가: 4만원 초반',
+  description: '모델명: NCAA Replica Game Ball\n크기: Size 7\n소재: 합성가죽\n신제품가: 4만원 초반',
   imageUrls: const [
     'https://cdn.pixabay.com/photo/2017/09/07/09/58/basketball-2724391_1280.png',
   ],

@@ -1,28 +1,10 @@
 // lib/features/chat/chat_list_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
-import 'package:kumeong_store/core/widgets/app_bottom_nav.dart'; // 하단바
-import '../../core/theme.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
-
-class ChatSummary {
-  final String id; // 채팅방 ID
-  final String partnerName; // 거래자 이름
-  final String lastMessage; // 마지막 메시지
-  final DateTime updatedAt; // 마지막 갱신 시간
-  final int unreadCount; // 안읽은 개수
-  final String? avatarUrl; // 프로필 이미지(옵션)
-
-  const ChatSummary({
-    required this.id,
-    required this.partnerName,
-    required this.lastMessage,
-    required this.updatedAt,
-    this.unreadCount = 0,
-    this.avatarUrl,
-  });
-}
+import 'package:kumeong_store/api_service.dart'; // fetchMyChatRooms, ChatRoomSummaryDto
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -32,58 +14,76 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
-  // TODO: 이후 Firebase/서버 연동으로 교체
-  List<ChatSummary> _items = [
-    ChatSummary(
-      id: 'room-1',
-      partnerName: '거래자',
-      lastMessage: '1:1 채팅 내용 ( 채팅 거래, 가격 협의 )',
-      updatedAt: DateTime.now(),
-    ),
-  ];
+  final df = DateFormat('HH:mm');
+
+  List<ChatRoomSummaryDto> _items = [];
+  bool _loading = true;
+  String? _error;
+  Timer? _poller;
 
   @override
   void initState() {
     super.initState();
-    // 데모 데이터 조금 늘리기 (시간/읽지않음 수 랜덤)
-    final now = DateTime.now();
-    _items = List.generate(4, (i) {
-      return ChatSummary(
-        id: 'room-${i + 1}',
-        partnerName: '거래자${i == 0 ? '' : i + 0}', // 첫 줄만 '거래자'
-        lastMessage: i == 0
-            ? '1:1 채팅 내용 ( 채팅 거래, 가격 협의 )'
-            : '최근 메시지 미리보기입니다. 길면 … 으로 잘려요.',
-        updatedAt: now.subtract(Duration(minutes: (i + 1) * 7)),
-        unreadCount: i == 0 ? 0 : (i % 3 == 0 ? 2 : (i % 2)),
-        avatarUrl: null,
-      );
-    });
-  }
-
-  Future<void> _refresh() async {
-    // TODO: 실제 데이터 새로고침으로 교체
-    await Future.delayed(const Duration(milliseconds: 600));
-    setState(() {});
+    _load();
+    // 10초 폴링(선택)
+    _poller = Timer.periodic(const Duration(seconds: 10), (_) => _load(silent: true));
   }
 
   @override
+  void dispose() {
+    _poller?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      final list = await fetchMyChatRooms(limit: 50);
+      list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt)); // 최신순
+      if (!mounted) return;
+      setState(() {
+        _items = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = '채팅 목록을 불러오지 못했습니다: $e';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _refresh() => _load();
+
+  @override
   Widget build(BuildContext context) {
-    final df = DateFormat('HH:mm'); // 하단 시간 표기
+    if (_loading) {
+      return Scaffold(
+        appBar: _AppBarTitle(onRefresh: () => _load(silent: false)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_error != null) {
+      return Scaffold(
+        appBar: _AppBarTitle(onRefresh: () => _load(silent: false)),
+        body: Center(child: Text(_error!)),
+      );
+    }
+    if (_items.isEmpty) {
+      return Scaffold(
+        appBar: _AppBarTitle(onRefresh: () => _load(silent: false)),
+        body: const Center(child: Text('채팅방이 없습니다.')),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: const Text('채팅'),
-        actions: [
-          IconButton(
-            tooltip: '알림',
-            onPressed: () {
-              // TODO: 알림 화면 라우팅
-            },
-            icon: const Icon(Icons.notifications_none_rounded),
-          ),
-        ],
-      ),
+      appBar: _AppBarTitle(onRefresh: () => _load(silent: false)),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView.separated(
@@ -93,24 +93,29 @@ class _ChatListScreenState extends State<ChatListScreen> {
           itemBuilder: (context, index) {
             final chat = _items[index];
             return ListTile(
-              onTap: () {
-                context.pushNamed(
-                R.RouteNames.chatRoomOverlay,             // ✅ 루트 레벨 오버레이
-                pathParameters: {'roomId': chat.id},
-                extra: { 'partnerName': chat.partnerName, 'isKuDelivery': false, 'securePaid': false },
-              );
-            },
+              onTap: () async {
+                await context.pushNamed(
+                  R.RouteNames.chatRoomOverlay,
+                  pathParameters: {'roomId': chat.id},
+                  extra: {
+                    'partnerName': chat.partnerName,
+                    'isKuDelivery': false,
+                    'securePaid': false,
+                  },
+                );
+                if (!mounted) return;
+                _load(silent: true); // 복귀 후 갱신(읽음/최근 메시지 반영)
+              },
               leading: _Avatar(url: chat.avatarUrl),
               title: Text(
                 chat.partnerName,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 overflow: TextOverflow.ellipsis,
               ),
               subtitle: Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Text(
-                  chat.lastMessage,
+                  chat.lastMessage.isEmpty ? '(메시지가 없습니다)' : chat.lastMessage,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -121,19 +126,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 children: [
                   Text(
                     df.format(chat.updatedAt),
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelSmall
-                        ?.copyWith(color: Colors.grey),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.grey),
                   ),
                   const SizedBox(height: 6),
                   if (chat.unreadCount > 0)
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
-                        // 테마 색으로 바꾸고 싶으면 Theme.of(context).colorScheme.primary 사용
                         color: Theme.of(context).colorScheme.primary,
                       ),
                       child: Text(
@@ -147,15 +147,34 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     ),
                 ],
               ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             );
           },
         ),
       ),
-      // bottomNavigationBar: const AppBottomNav(currentIndex: 1),
     );
   }
+}
+
+class _AppBarTitle extends StatelessWidget implements PreferredSizeWidget {
+  final VoidCallback onRefresh;
+  const _AppBarTitle({required this.onRefresh, super.key});
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+
+  @override
+  Widget build(BuildContext context) => AppBar(
+        centerTitle: true,
+        title: const Text('채팅'),
+        actions: [
+          IconButton(
+            tooltip: '새로고침',
+            onPressed: onRefresh,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      );
 }
 
 class _Avatar extends StatelessWidget {
@@ -164,12 +183,9 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = 26.0;
+    const radius = 26.0;
     if (url == null || url!.isEmpty) {
-      return CircleAvatar(
-        radius: radius,
-        child: const Icon(Icons.person),
-      );
+      return const CircleAvatar(radius: radius, child: Icon(Icons.person));
     }
     return CircleAvatar(
       radius: radius,

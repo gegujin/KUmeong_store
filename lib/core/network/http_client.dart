@@ -103,16 +103,72 @@ class HttpX {
     );
   }
 
+  static Future<bool> _refreshAccessToken() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      // session.v1 or legacy 저장소에서 refresh 읽기
+      String? refresh;
+      final raw = sp.getString('session.v1');
+      if (raw != null && raw.isNotEmpty) {
+        final j = jsonDecode(raw);
+        if (j is Map) refresh = (j['refreshToken'] ?? j['refresh']) as String?;
+      }
+      refresh ??= sp.getString('refreshToken');
+
+      Future<bool> _handle(http.Response resp) async {
+        if (resp.statusCode != 200) return false;
+        final body = _parseJson(resp);
+        final data = (body['data'] is Map) ? body['data'] as Map : body;
+        final access = (data['accessToken'] ?? body['accessToken']) as String?;
+        final newRefresh = (data['refreshToken'] ?? body['refreshToken']) as String?;
+        if (access == null || access.isEmpty) return false;
+        // session.v1 갱신 (legacy 키도 병행)
+        final session = {
+          'accessToken': access,
+          if (newRefresh != null && newRefresh.isNotEmpty) 'refreshToken': newRefresh,
+        };
+        await sp.setString('session.v1', jsonEncode(session));
+        await sp.setString('accessToken', access);
+        if (newRefresh != null && newRefresh.isNotEmpty) {
+          await sp.setString('refreshToken', newRefresh);
+        }
+        return true;
+      }
+
+      final url = apiUrl('/auth/refresh');
+      // 1) Authorization: Bearer <refresh>
+      if (refresh != null && refresh.isNotEmpty) {
+        final h = {
+          HttpHeaders.acceptHeader: 'application/json',
+          HttpHeaders.contentTypeHeader: 'application/json',
+          HttpHeaders.authorizationHeader: 'Bearer $refresh',
+        };
+        final r1 = await http.post(url, headers: h).timeout(_timeout);
+        if (await _handle(r1)) return true;
+      }
+      // 2) x-refresh-token
+      if (refresh != null && refresh.isNotEmpty) {
+        final h = {
+          HttpHeaders.acceptHeader: 'application/json',
+          HttpHeaders.contentTypeHeader: 'application/json',
+          'x-refresh-token': refresh,
+        };
+        final r2 = await http.post(url, headers: h).timeout(_timeout);
+        if (await _handle(r2)) return true;
+      }
+      // 3) 쿠키 기반 (옵션)
+      final r3 = await http.post(url, headers: {
+        HttpHeaders.acceptHeader: 'application/json',
+        HttpHeaders.contentTypeHeader: 'application/json',
+      }).timeout(_timeout);
+      if (await _handle(r3)) return true;
+    } catch (_) {}
+    return false;
+  }
+
   static void _ensureOk(http.Response r) {
-    if (r.statusCode == 401 || r.statusCode == 419) {
-      try {
-        _onUnauthorized?.call();
-      } catch (_) {}
-    }
-    if (r.statusCode < 200 || r.statusCode >= 300) {
-      final head = r.body.length > 400 ? r.body.substring(0, 400) : r.body;
-      throw ApiException('HTTP ${r.statusCode}', status: r.statusCode, bodyPreview: head);
-    }
+    if (r.statusCode >= 200 && r.statusCode < 300) return;
+    // 여기서는 던지지 않음 — 각 메서드에서 재시도 후 최종 throw
   }
 
   // ──────────────────────────────────────────────────────
@@ -130,11 +186,26 @@ class HttpX {
       final q = Map<String, dynamic>.from(query ?? const {});
       if (noCache) q['__ts'] = DateTime.now().millisecondsSinceEpoch.toString();
       final uri = apiUrl(path, _stringifyQuery(q));
-      final h = await _headers(extra: headers, withAuth: withAuth, noCache: noCache);
-
-      final res = await http.get(uri, headers: h).timeout(_timeout);
+      Map<String, String> h = await _headers(extra: headers, withAuth: withAuth, noCache: noCache);
+      http.Response res = await http.get(uri, headers: h).timeout(_timeout);
       _log('GET', uri, res);
-      _ensureOk(res);
+      if (res.statusCode == 401 || res.statusCode == 419) {
+        final refreshed = await _refreshAccessToken();
+        if (refreshed) {
+          h = await _headers(extra: headers, withAuth: withAuth, noCache: noCache);
+          res = await http.get(uri, headers: h).timeout(_timeout);
+          _log('GET(retry)', uri, res);
+        }
+      }
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        final head = res.body.length > 400 ? res.body.substring(0, 400) : res.body;
+        if (res.statusCode == 401 || res.statusCode == 419) {
+          try {
+            _onUnauthorized?.call();
+          } catch (_) {}
+        }
+        throw ApiException('HTTP ${res.statusCode}', status: res.statusCode, bodyPreview: head);
+      }
       return _parseJson(res);
     } catch (e) {
       throw ApiException('GET $path 실패: $e');

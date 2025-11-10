@@ -10,17 +10,25 @@ import 'package:kumeong_store/core/network/http_client.dart'; // HttpX + ApiExce
 class ChatsApi {
   const ChatsApi();
 
+  // UUID 형식 대충 검증(하이픈 포함 36자) — 필요없으면 제거해도 됨
+  static final RegExp _uuidLike = RegExp(r'^[0-9a-fA-F-]{16,}$');
+
   /// 거래방 멱등 생성 (상품 상세 → 채팅하기에서 사용)
   Future<String> ensureTrade(String productId) async {
+    final pid = (productId).toString().trim();
+    if (pid.isEmpty) {
+      throw ApiException('productId가 비었습니다.');
+    }
+
+    // ✅ 서버가 product.sellerId로 판매자를 판단하므로 sellerId는 보내지 않음
     final res = await HttpX.postJson(
-      '/chat/rooms/ensure-trade', // ✅ HttpX가 /api/v1 붙여줌
-      {'productId': productId},
+      '/chat/rooms/ensure-trade', // HttpX가 /api/v1 접두사 붙여줌
+      {'productId': pid},
     );
 
-    // 응답 { roomId } 또는 { data:{ roomId } } 또는 { id } 모두 대응
     final rid = _pickRoomId(res);
     if (rid.isEmpty) {
-      throw ApiException('roomId를 얻지 못했습니다', bodyPreview: res.toString());
+      throw ApiException('roomId를 얻지 못했습니다', bodyPreview: '$res');
     }
     return rid;
   }
@@ -48,15 +56,31 @@ class ChatsApi {
 
   // 공통 파서: {roomId} 또는 {data:{roomId}} 또는 {id}
   String _pickRoomId(dynamic res) {
-    if (res is Map) {
-      final data = res['data'];
-      if (data is Map) {
-        final rid = (data['roomId'] as String?) ?? (data['id'] as String?) ?? '';
-        if (rid.isNotEmpty) return rid;
-      }
-      final rid = (res['roomId'] as String?) ?? (res['id'] as String?) ?? '';
-      if (rid.isNotEmpty) return rid;
+    String _asStr(dynamic v) => (v ?? '').toString().trim();
+
+    if (res is String) {
+      return res.isNotEmpty ? res : '';
     }
+
+    if (res is Map) {
+      // 최상위 우선
+      for (final k in ['roomId', 'id']) {
+        final v = _asStr(res[k]);
+        if (v.isNotEmpty) return v;
+      }
+
+      // 래핑된 객체(data, result, room ...)
+      for (final wrapper in ['data', 'result', 'room']) {
+        final w = res[wrapper];
+        if (w is Map) {
+          for (final k in ['roomId', 'id']) {
+            final v = _asStr(w[k]);
+            if (v.isNotEmpty) return v;
+          }
+        }
+      }
+    }
+
     return '';
   }
 }
