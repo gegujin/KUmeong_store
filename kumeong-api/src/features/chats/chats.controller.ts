@@ -52,14 +52,8 @@ export class ChatsController {
     assertUuidLike(roomId, 'roomId');
 
     // 방 존재/멤버십 검증
-    const svc: any = this.chats as any;
-    if (typeof svc.ensureRoomMember === 'function') {
-      const isMember = await svc.ensureRoomMember(roomId, String(meUserId));
-      if (!isMember) throw new ForbiddenException('room not found or not a participant');
-    } else if (typeof svc.ensureRoomExists === 'function') {
-      const exists = await svc.ensureRoomExists(roomId);
-      if (!exists) throw new HttpException('room not found', HttpStatus.NOT_FOUND);
-    }
+    const isMember = await this.chats.ensureRoomMember(roomId, String(meUserId));
+    if (!isMember) throw new ForbiddenException('room not found or not a participant');
 
     // lastMessageId 처리
     let lastMessageId: string | null =
@@ -68,31 +62,30 @@ export class ChatsController {
     if (lastMessageId) {
       assertUuidLike(lastMessageId, 'lastMessageId');
     } else {
-      if (typeof svc.markReadTo !== 'function' && typeof svc.updateReadCursor === 'function') {
-        if (typeof svc.getLatestMessageId === 'function') {
-          const latest = await svc.getLatestMessageId(roomId);
-          if (latest) lastMessageId = String(latest);
-        } else if (typeof svc.fetchMessagesSinceSeq === 'function') {
-          const result = await svc.fetchMessagesSinceSeq({
-            roomId,
-            sinceSeq: 0,
-            limit: 1,
-            meUserId: String(meUserId),
-          });
-          const last = Array.isArray(result)
-            ? result[result.length - 1]
-            : (result as any)?.items?.at?.(-1);
-          if (last?.id) lastMessageId = String(last.id);
-        }
-        if (!lastMessageId) throw new BadRequestException('lastMessageId required');
+      // 최신 메시지 기준으로 읽음 처리
+      if (typeof this.chats.getLatestMessageId === 'function') {
+        const latest = await this.chats.getLatestMessageId(roomId);
+        if (latest) lastMessageId = String(latest);
+      } else if (typeof this.chats.fetchMessagesSinceSeq === 'function') {
+        const result = await this.chats.fetchMessagesSinceSeq({
+          roomId,
+          sinceSeq: 0,
+          limit: 1,
+          meUserId: String(meUserId),
+        });
+        const last = Array.isArray(result)
+          ? result[result.length - 1]
+          : (result as any)?.items?.at?.(-1);
+        if (last?.id) lastMessageId = String(last.id);
       }
+      if (!lastMessageId) throw new BadRequestException('lastMessageId required');
     }
 
     // 실제 업데이트
-    if (typeof svc.markReadTo === 'function') {
-      await svc.markReadTo({ roomId, userId: String(meUserId), lastMessageId });
-    } else if (typeof svc.updateReadCursor === 'function') {
-      await svc.updateReadCursor({
+    if (typeof this.chats.markReadTo === 'function') {
+      await this.chats.markReadTo({ roomId, userId: String(meUserId), lastMessageId });
+    } else if (typeof this.chats.updateReadCursor === 'function') {
+      await this.chats.updateReadCursor({
         roomId,
         userId: String(meUserId),
         lastMessageId: String(lastMessageId),
@@ -107,28 +100,6 @@ export class ChatsController {
   // ─────────────────────────────────────────────────────────────
   // Endpoints
   // ─────────────────────────────────────────────────────────────
-
-  /**
-   * ✅ POST /api/v1/chat/rooms/ensure-trade
-   * Body: { productId: UUID }
-   * Return: { ok, roomId, data:{ id, roomId } }
-   */
-  @Post('rooms/ensure-trade')
-  async ensureTrade(@Req() req: any, @Body('productId') productId?: string) {
-    const meUserId: string | undefined = req.user?.sub || req.user?.id;
-    if (!meUserId) throw new HttpException('UNAUTHENTICATED', HttpStatus.UNAUTHORIZED);
-
-    const pid = normalizeId(String(productId ?? ''));
-    assertUuidLike(pid, 'productId');
-
-    const room = await this.chats.ensureTradeRoom({
-      productId: pid,
-      meUserId: String(meUserId),
-    });
-
-    const roomId = room.id;
-    return { ok: true, roomId, data: { id: roomId, roomId } };
-  }
 
   /**
    * GET /api/v1/chat/friend-room?peerId=<UUID>
@@ -167,8 +138,9 @@ export class ChatsController {
     const roomId = normalizeId(roomIdParam);
     assertUuidLike(roomId, 'roomId');
 
-    const exists = await this.chats.ensureRoomExists(roomId);
-    if (!exists) throw new HttpException('room not found', HttpStatus.NOT_FOUND);
+    // ✅ 멤버십 확인 (존재+참여자)
+    const isMember = await this.chats.ensureRoomMember(roomId, String(meUserId));
+    if (!isMember) throw new ForbiddenException('not a participant');
 
     const sinceSeq = Math.max(0, parseInt(sinceSeqRaw ?? '0', 10) || 0);
     const limit = Math.min(200, Math.max(1, parseInt(limitRaw ?? '50', 10) || 50));
@@ -193,8 +165,9 @@ export class ChatsController {
     const roomId = normalizeId(roomIdParam);
     assertUuidLike(roomId, 'roomId');
 
-    const exists = await this.chats.ensureRoomExists(roomId);
-    if (!exists) throw new HttpException('room not found', HttpStatus.NOT_FOUND);
+    // ✅ 멤버십 확인 (존재+참여자)
+    const isMember = await this.chats.ensureRoomMember(roomId, String(meUserId));
+    if (!isMember) throw new ForbiddenException('not a participant');
 
     const text = (body?.text ?? '').toString().trim();
     if (!text) throw new BadRequestException('text required');

@@ -131,6 +131,9 @@ export class ChatsService {
 
     const sellerId = String(p.sellerId ?? '');
     assertUuidLike(sellerId, 'sellerId');
+    if (sellerId === meUserId) {
+      throw new BadRequestException('SELF_NOT_ALLOWED');
+    }
 
     // 2) 멱등 생성
     await this.ds.query(

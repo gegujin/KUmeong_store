@@ -1,4 +1,6 @@
+// lib/features/chat/product_detail_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';                // ✅ 추가
 import 'package:intl/intl.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:geolocator/geolocator.dart';
@@ -8,7 +10,8 @@ import 'package:kumeong_store/models/post.dart';
 import 'package:kumeong_store/core/theme.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
-import 'package:kumeong_store/features/chat/data/chats_api.dart'; // ✅ ChatsApi 사용
+import 'package:kumeong_store/features/chat/data/chats_api.dart';         // ✅ ChatsApi 사용
+import 'package:kumeong_store/features/chat/state/chat_rooms_provider.dart'; // ✅ 목록 갱신용 추가
 
 // 서버 요청
 import 'dart:convert';
@@ -17,7 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const String baseUrl = 'http://localhost:3000/api/v1';
 
-class ProductDetailScreen extends StatefulWidget {
+class ProductDetailScreen extends ConsumerStatefulWidget {               // ✅ 변경
   const ProductDetailScreen({
     super.key,
     required this.productId,
@@ -28,10 +31,10 @@ class ProductDetailScreen extends StatefulWidget {
   final Product? initialProduct;
 
   @override
-  State<ProductDetailScreen> createState() => _ProductDetailScreenState();
+  ConsumerState<ProductDetailScreen> createState() => _ProductDetailScreenState(); // ✅ 변경
 }
 
-class _ProductDetailScreenState extends State<ProductDetailScreen> {
+class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {      // ✅ 변경
   late final PageController _thumbController;
   int _thumbIndex = 0;
 
@@ -533,7 +536,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
           const SizedBox(width: 12),
 
-          // 🟢 채팅하기 버튼 — ChatsApi 사용
+          // 🟢 채팅하기 버튼 — ChatsApi 사용 + 목록 즉시 갱신
           Expanded(
             child: FilledButton(
               style: FilledButton.styleFrom(
@@ -553,30 +556,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         final productId = widget.productId; // UUID 사용
                         final roomId = await chatsApi.ensureTrade(productId); // ✅ ChatsApi 호출
 
-                        if (!mounted) return;
-                        // 판매자 정보
-                        String peerId = '';
-                        String peerName = '';
-                        try {
-                          peerId = _product!.seller.id;
-                        } catch (_) {}
-                        try {
-                          peerName = _product!.seller.name;
-                        } catch (_) {}
-                        if (peerName.trim().isEmpty) {
-                          peerName = _sellerName(_product!);
-                        }
+                        // ✅ 채팅목록 즉시 갱신
+                        await ref.read(chatRoomsProvider.notifier).refresh();
 
+                        if (!mounted) return;
                         context.pushNamed(
                           R.RouteNames.chatRoom,
                           pathParameters: {'roomId': roomId},
                           extra: {
                             'peerId': _product!.seller.id,
-                            'peerName': _product!.seller.name,
+                            'peerName': _sellerName(_product!),
                             'isTrade': true,
                           },
                         );
                       } catch (e) {
+                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('채팅방 생성 실패: $e')),
                         );
@@ -766,8 +760,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 }
 
 // ======================= Sub Widgets =======================
-
-class _SellerCard extends StatelessWidget {
+// (아래 SubWidget 들은 변경 없음 — 그대로 사용)
+class _SellerCard extends StatelessWidget { /* ... 그대로 ... */ 
   const _SellerCard({
     required this.name,
     required this.location,
@@ -775,17 +769,10 @@ class _SellerCard extends StatelessWidget {
     required this.avatarUrl,
     required this.colors,
   });
-
-  final String name; // '' 가능
-  final String location; // '' 가능
-  final double rating;
-  final String? avatarUrl; // null 가능
-  final ColorScheme colors;
-
+  final String name; final String location; final double rating; final String? avatarUrl; final ColorScheme colors;
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) { /* 원문 그대로 */ 
     final double safeRating = rating.clamp(0.0, 5.0).toDouble();
-
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -889,17 +876,14 @@ class _SellerCard extends StatelessWidget {
   }
 }
 
-class _TagChips extends StatelessWidget {
+class _TagChips extends StatelessWidget { /* ... 그대로 ... */ 
   const _TagChips({required this.tags});
   final List<String> tags;
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) { /* 원문 그대로 */ 
     final cs = Theme.of(context).colorScheme;
     final kux = Theme.of(context).extension<KuColors>()!;
-
     if (tags.isEmpty) return const SizedBox.shrink();
-
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -919,31 +903,27 @@ class _TagChips extends StatelessWidget {
   }
 }
 
-class PhotoGalleryPage extends StatefulWidget {
+class PhotoGalleryPage extends StatefulWidget { /* ... 그대로 ... */ 
   const PhotoGalleryPage({
     super.key,
     required this.images,
     this.initialIndex = 0,
   });
-
   final List<String> images;
   final int initialIndex;
-
   @override
   State<PhotoGalleryPage> createState() => _PhotoGalleryPageState();
 }
 
-class _PhotoGalleryPageState extends State<PhotoGalleryPage> {
+class _PhotoGalleryPageState extends State<PhotoGalleryPage> { /* ... 그대로 ... */ 
   late final PageController _controller;
   late int _current;
-
   @override
   void initState() {
     super.initState();
     _current = widget.initialIndex;
     _controller = PageController(initialPage: _current);
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(

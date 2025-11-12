@@ -2,17 +2,21 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-import 'package:kumeong_store/core/widgets/app_bottom_nav.dart'; // 하단바 (미사용이어도 유지)
-import '../mypage/mypage_screen.dart'; // (미사용이어도 유지)
+// (유지) 하단바/마이페이지/홈
+import 'package:kumeong_store/core/widgets/app_bottom_nav.dart';
+import '../mypage/mypage_screen.dart';
 import '../home/home_screen.dart';
 
+// ✅ 추가: 공통 baseUrl 유틸과 라우팅
+import 'package:kumeong_store/core/base_url.dart';            // apiUrl()
+import 'package:kumeong_store/core/router/route_names.dart' as R;
+import 'package:go_router/go_router.dart';
+
 // ───────────────────────────────────────────────────────────
-// 공통: API 베이스 URL 빌더 (프로젝트 규칙에 맞춰 있으면 교체)
+// 공통: API 베이스 URL 빌더 (프로젝트 규칙의 apiUrl 사용)
 // ───────────────────────────────────────────────────────────
 String _apiUrl(String path) {
-  // core/base_url.dart의 apiUrl()을 쓰고 있다면 아래로 교체:
-  // return apiUrl(path);
-  return 'http://localhost:3000/api/v1$path';
+  return apiUrl(path); // ← core/base_url.dart의 apiUrl 사용
 }
 
 // ───────────────────────────────────────────────────────────
@@ -20,7 +24,7 @@ String _apiUrl(String path) {
 // ───────────────────────────────────────────────────────────
 class ProductPage extends StatefulWidget {
   final String mainCategory; // 상위 카테고리
-  final String subCategory; // 하위 카테고리
+  final String subCategory;  // 하위 카테고리
 
   const ProductPage({
     super.key,
@@ -51,7 +55,7 @@ class _ProductPageState extends State<ProductPage> {
     int page = 1,
     int limit = 20,
   }) {
-    // ⚠️ 백엔드 쿼리키가 mainCategory/subCategory 라면 여기를 바꿔줘.
+    // ⚠️ 백엔드 쿼리 키가 다르면 여기 변경
     final params = {
       'categoryMain': main,
       'categorySub': sub,
@@ -74,6 +78,7 @@ class _ProductPageState extends State<ProductPage> {
       );
       final resp = await http.get(uri, headers: {
         'Content-Type': 'application/json',
+        // 필요 시 토큰 주입:
         // 'Authorization': 'Bearer ${await TokenStorage.getAccessToken()}',
       });
 
@@ -89,7 +94,6 @@ class _ProductPageState extends State<ProductPage> {
 
       final normalized = list.map<Map<String, dynamic>>((raw) {
         final m = (raw as Map);
-        // 필드명은 실제 응답 키에 맞춰 필요한 부분만 조정
         final imageUrls =
             (m['imageUrls'] is List) ? (m['imageUrls'] as List) : const [];
         final thumb =
@@ -149,6 +153,7 @@ class _ProductPageState extends State<ProductPage> {
                       itemCount: _items.length,
                       itemBuilder: (_, index) {
                         final p = _items[index];
+                        final id = (p['id'] ?? '').toString();
                         final thumb = (p['thumbnailUrl'] ?? '').toString();
                         final title = (p['title'] ?? '').toString();
                         final price = p['priceWon'] ?? p['price'] ?? 0;
@@ -162,8 +167,12 @@ class _ProductPageState extends State<ProductPage> {
 
                         return InkWell(
                           onTap: () {
-                            // TODO: 상세 라우팅 연결 (예: context.pushNamed(R.productDetail, params: {'id': p['id']}) );
-                            debugPrint('$title 클릭됨 (${p['id']})');
+                            if (id.isEmpty) return;
+                            // ✅ 상세 페이지로 네임드 라우팅
+                            context.pushNamed(
+                              R.RouteNames.productDetail,
+                              pathParameters: {'productId': id},
+                            );
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -369,6 +378,8 @@ class _CategoryPageState extends State<CategoryPage> {
           ),
         ],
       ),
+      // (선택) 하단 네비 유지 시:
+      // bottomNavigationBar: const AppBottomNav(currentIndex: 0),
     );
   }
 }
