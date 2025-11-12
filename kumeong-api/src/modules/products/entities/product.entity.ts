@@ -84,4 +84,7 @@ export class Product {
   assignId() {
     if (!this.id) this.id = randomUUID();
   }
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  views!: number;
 }

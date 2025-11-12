@@ -145,4 +145,12 @@ export class ProductsController {
     const result = await this.productsService.remove(id);
     return { ok: true, data: result };
   }
+
+  @Post(':id/views')
+  // @Public() // (선택) 프로젝트에 Public 데코레이터가 있으면 열어두는 걸 추천
+  @ApiOperation({ summary: '상품 조회수 +1 및 최신 조회수 반환' })
+  async addView(@Param('id') id: string) {
+    const views = await this.productsService.incrementViews(id);
+    return { ok: true, data: { id, views } };
+  }
 }

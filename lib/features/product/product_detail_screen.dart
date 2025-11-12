@@ -1,3 +1,4 @@
+// lib/features/product/product_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -9,6 +10,9 @@ import 'package:kumeong_store/core/theme.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
 import 'package:kumeong_store/features/chat/data/chats_api.dart'; // ✅ ChatsApi 사용
+
+// 🔼 추가: 조회수 적립 API 사용
+import 'package:kumeong_store/api_service.dart' show incrementProductView;
 
 // 서버 요청
 import 'dart:convert';
@@ -49,11 +53,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool _liked = true; // 찜 토글 상태
   bool _liking = false; // 찜 토글 요청 중
 
+  // 🔼 추가: 상세 입장 시 1회 조회수 적립 → 홈으로 전달
+  bool _viewRecorded = false;
+  int? _latestViews; // 서버가 응답한 최신 조회수
+
   // ---------- 인증/요청 유틸 ----------
   Future<Map<String, String>> _authHeaders() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
-    final h = <String, String>{'Content-Type': 'application/json; charset=utf-8'};
+    final h = <String, String>{
+      'Content-Type': 'application/json; charset=utf-8'
+    };
     if (token != null && token.isNotEmpty) h['Authorization'] = 'Bearer $token';
     return h;
   }
@@ -86,6 +96,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
 
     _loadIfNeeded();
+    _ensureViewRecorded(); // 🔼 상세 진입 시 조회수 적립 1회
   }
 
   @override
@@ -116,6 +127,39 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  // 🔼 추가: 조회수 적립(1회) + 로컬 최신값 보관
+  Future<void> _ensureViewRecorded() async {
+    if (_viewRecorded) return;
+    _viewRecorded = true;
+
+    try {
+      final res = await incrementProductView(widget.productId);
+      if (!mounted) return;
+      if (res != null) {
+        setState(() {
+          _latestViews = res.views;
+          // 제품 객체에 views 필드가 있다면 화면에서도 즉시 반영 (optional)
+          try {
+            final dyn = _product as dynamic;
+            if (dyn != null && dyn.copyWith != null) {
+              _product = _product?.copyWith(views: _latestViews);
+            }
+          } catch (_) {}
+        });
+      }
+    } catch (_) {
+      // 실패해도 화면은 이어간다 (홈에서 기존 값 유지)
+    }
+  }
+
+  // 🔼 추가: 뒤로 갈 때 홈으로 최신 조회수 전달
+  void _popWithViewsIfAny() {
+    context.pop({
+      'productId': widget.productId,
+      if (_latestViews != null) 'views': _latestViews,
+    });
   }
 
   // ========================= 헬퍼들 =========================
@@ -216,8 +260,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             o['dong'] ?? o['town'] ?? o['neighborhood'],
             o['detail'] ?? o['roadAddress'] ?? o['street'],
           ];
-          final parts =
-              partsRaw.whereType<String>().map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+          final parts = partsRaw
+              .whereType<String>()
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .toList();
           if (parts.isNotEmpty) return parts.join(' ');
         }
       }
@@ -258,7 +305,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       ]);
       if (direct.isNotEmpty) return direct;
 
-      for (final o in [dyn.seller, dyn.user, dyn.owner, dyn.author, dyn.profile, dyn.account]) {
+      for (final o in [
+        dyn.seller,
+        dyn.user,
+        dyn.owner,
+        dyn.author,
+        dyn.profile,
+        dyn.account
+      ]) {
         if (o is Map) {
           final a = _firstNonEmptyString([
             o['avatarUrl'],
@@ -283,7 +337,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
-  String _formatPrice(int p) => '${NumberFormat.decimalPattern('ko_KR').format(p)}원';
+  String _formatPrice(int p) =>
+      '${NumberFormat.decimalPattern('ko_KR').format(p)}원';
   String _timeAgo(DateTime dt) => timeago.format(dt, locale: 'ko');
 
   @override
@@ -309,7 +364,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       } catch (_) {}
       return _sellerName(p);
     })();
-    final String displaySellerName = _isUnknownText(sellerName) ? '' : sellerName;
+    final String displaySellerName =
+        _isUnknownText(sellerName) ? '' : sellerName;
 
     final String productAddress = (() {
       try {
@@ -336,183 +392,194 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return const <String>[];
     })();
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: colors.primary,
-        title: const Text('상품 상세페이지'),
-        automaticallyImplyLeading: false,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            context.go('/home');
-          },
+    // 🔼 PopScope로 “뒤로가기 제스처/버튼” 모두에서 결과를 전달
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        _popWithViewsIfAny();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: colors.primary,
+          title: const Text('상품 상세페이지'),
+          automaticallyImplyLeading: false,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: _popWithViewsIfAny, // 🔼 홈으로 최신 조회수 전달
+          ),
+          actions: const [
+            Icon(Icons.share_outlined, color: Colors.white),
+            SizedBox(width: 8),
+            Icon(Icons.more_vert, color: Colors.white),
+            SizedBox(width: 8),
+          ],
         ),
-        actions: const [
-          Icon(Icons.share_outlined, color: Colors.white),
-          SizedBox(width: 8),
-          Icon(Icons.more_vert, color: Colors.white),
-          SizedBox(width: 8),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        children: [
-          // 썸네일
-          Card(
-            color: Colors.white,
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: SizedBox(
-              height: 300,
-              child: images.isEmpty
-                  ? const Center(child: Icon(Icons.image_not_supported, size: 64))
-                  : PageView.builder(
-                      controller: _thumbController,
-                      itemCount: images.length,
-                      onPageChanged: (i) => setState(() => _thumbIndex = i),
-                      itemBuilder: (_, i) => GestureDetector(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PhotoGalleryPage(
-                              images: images,
-                              initialIndex: _thumbIndex,
+        body: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          children: [
+            // 썸네일
+            Card(
+              color: Colors.white,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SizedBox(
+                height: 300,
+                child: images.isEmpty
+                    ? const Center(
+                        child: Icon(Icons.image_not_supported, size: 64))
+                    : PageView.builder(
+                        controller: _thumbController,
+                        itemCount: images.length,
+                        onPageChanged: (i) => setState(() => _thumbIndex = i),
+                        itemBuilder: (_, i) => GestureDetector(
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PhotoGalleryPage(
+                                images: images,
+                                initialIndex: _thumbIndex,
+                              ),
                             ),
                           ),
-                        ),
-                        child: Image.network(
-                          images[i],
-                          fit: BoxFit.contain,
-                          loadingBuilder: (_, child, prog) => prog == null
-                              ? child
-                              : const Center(child: CircularProgressIndicator()),
-                          errorBuilder: (_, __, ___) =>
-                              const Center(child: Icon(Icons.broken_image, size: 48)),
+                          child: Image.network(
+                            images[i],
+                            fit: BoxFit.contain,
+                            loadingBuilder: (_, child, prog) => prog == null
+                                ? child
+                                : const Center(
+                                    child: CircularProgressIndicator()),
+                            errorBuilder: (_, __, ___) => const Center(
+                                child: Icon(Icons.broken_image, size: 48)),
+                          ),
                         ),
                       ),
-                    ),
+              ),
             ),
-          ),
 
-          if (images.isNotEmpty)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                images.length,
-                (i) => Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _thumbIndex == i ? colors.primary : colors.onSurface.withAlpha(80),
+            if (images.isNotEmpty)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  images.length,
+                  (i) => Container(
+                    margin:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _thumbIndex == i
+                          ? colors.primary
+                          : colors.onSurface.withAlpha(80),
+                    ),
                   ),
+                ),
+              ),
+
+            Divider(height: 24, color: Colors.grey[200]),
+
+            // 판매자 카드
+            Card(
+              color: Colors.white,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: _SellerCard(
+                  name: displaySellerName,
+                  location: productAddress,
+                  rating: _sellerRating(p),
+                  avatarUrl: _sellerAvatar(p),
+                  colors: colors,
                 ),
               ),
             ),
 
-          Divider(height: 24, color: Colors.grey[200]),
+            Divider(height: 24, color: Colors.grey[200]),
 
-          // 판매자 카드
-          Card(
-            color: Colors.white,
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: _SellerCard(
-                name: displaySellerName,
-                location: productAddress,
-                rating: _sellerRating(p),
-                avatarUrl: _sellerAvatar(p),
-                colors: colors,
+            // 제목·가격·등록시간
+            Card(
+              color: Colors.white,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
               ),
-            ),
-          ),
-
-          Divider(height: 24, color: Colors.grey[200]),
-
-          // 제목·가격·등록시간
-          Card(
-            color: Colors.white,
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          p.title,
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: colors.primary,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p.title,
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: colors.primary,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _formatPrice(_getPrice(p)),
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black,
+                          const SizedBox(height: 6),
+                          Text(
+                            _formatPrice(_getPrice(p)),
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  Text(
-                    _timeAgo(p.createdAt),
-                    style: TextStyle(color: colors.onSurface.withAlpha(150)),
-                  ),
-                ],
+                    Text(
+                      _timeAgo(p.createdAt),
+                      style: TextStyle(color: colors.onSurface.withAlpha(150)),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
 
-          Divider(height: 24, color: Colors.grey[200]),
+            Divider(height: 24, color: Colors.grey[200]),
 
-          // 설명
-          Card(
-            color: Colors.white,
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                p.description,
-                style: TextStyle(fontSize: 16, color: colors.onSurface),
+            // 설명
+            Card(
+              color: Colors.white,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  p.description,
+                  style: TextStyle(fontSize: 16, color: colors.onSurface),
+                ),
               ),
             ),
-          ),
 
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
 
-          // 태그 칩 (임시)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _TagChips(tags: const ['운동용품']),
-          ),
+            // 태그 칩 (임시)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _TagChips(tags: const ['운동용품']),
+            ),
 
-          const SizedBox(height: 16),
-        ],
+            const SizedBox(height: 16),
+          ],
+        ),
+
+        // 하단 채팅하기 + 찜 버튼
+        bottomNavigationBar: _buildBottomBar(colors),
       ),
-
-      // 하단 채팅하기 + 찜 버튼
-      bottomNavigationBar: _buildBottomBar(colors),
     );
   }
 
@@ -551,7 +618,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       setState(() => _creating = true);
                       try {
                         final productId = widget.productId; // UUID 사용
-                        final roomId = await chatsApi.ensureTrade(productId); // ✅ ChatsApi 호출
+                        final roomId = await chatsApi
+                            .ensureTrade(productId); // ✅ ChatsApi 호출
 
                         if (!mounted) return;
                         // 판매자 정보
@@ -681,7 +749,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -697,7 +766,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         throw '위치 권한이 거부되었습니다.';
       }
     }
-    return Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    return Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high);
   }
 
   Future<void> _openNaverMap(
@@ -791,13 +861,15 @@ class _SellerCard extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: 28,
-          backgroundImage:
-              (avatarUrl != null && avatarUrl!.isNotEmpty) ? NetworkImage(avatarUrl!) : null,
+          backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
+              ? NetworkImage(avatarUrl!)
+              : null,
           child: (avatarUrl == null || avatarUrl!.isEmpty)
               ? (name.isNotEmpty
                   ? Text(
                       name[0].toUpperCase(),
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w700),
                     )
                   : null)
               : null,
@@ -824,7 +896,8 @@ class _SellerCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: Colors.green.shade50,
                         borderRadius: BorderRadius.circular(12),
@@ -860,7 +933,8 @@ class _SellerCard extends StatelessWidget {
               itemCount: 5,
               itemSize: 20.0,
               unratedColor: Colors.grey.shade300,
-              itemBuilder: (context, index) => const Icon(Icons.star, color: Colors.orange),
+              itemBuilder: (context, index) =>
+                  const Icon(Icons.star, color: Colors.orange),
               direction: Axis.horizontal,
             ),
             const SizedBox(height: 4),
@@ -878,7 +952,8 @@ class _SellerCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   '${safeRating.toStringAsFixed(1)}/5',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -966,10 +1041,11 @@ class _PhotoGalleryPageState extends State<PhotoGalleryPage> {
           child: Image.network(
             widget.images[i],
             fit: BoxFit.contain,
-            loadingBuilder: (_, child, prog) =>
-                prog == null ? child : const Center(child: CircularProgressIndicator()),
-            errorBuilder: (_, __, ___) =>
-                const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 64)),
+            loadingBuilder: (_, child, prog) => prog == null
+                ? child
+                : const Center(child: CircularProgressIndicator()),
+            errorBuilder: (_, __, ___) => const Center(
+                child: Icon(Icons.broken_image, color: Colors.white, size: 64)),
           ),
         ),
       ),

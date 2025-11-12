@@ -6,6 +6,10 @@ import 'package:kumeong_store/core/widgets/app_bottom_nav.dart'; // 하단바 (�
 import '../mypage/mypage_screen.dart'; // (미사용이어도 유지)
 import '../home/home_screen.dart';
 
+import 'package:kumeong_store/features/product/product_detail_screen.dart';
+import 'package:kumeong_store/core/router/route_names.dart' as R;
+import 'package:go_router/go_router.dart';
+
 // ───────────────────────────────────────────────────────────
 // 공통: API 베이스 URL 빌더 (프로젝트 규칙에 맞춰 있으면 교체)
 // ───────────────────────────────────────────────────────────
@@ -51,19 +55,25 @@ class _ProductPageState extends State<ProductPage> {
     int page = 1,
     int limit = 20,
   }) {
-    // ⚠️ 백엔드 쿼리키가 mainCategory/subCategory 라면 여기를 바꿔줘.
-    final params = {
-      'categoryMain': main,
-      'categorySub': sub,
+    // DB에는 "메인>서브"로 저장됨
+    String dbCat = '${main.trim()}>${sub.trim()}';
+    // 혹시 모를 개행/탭 제거
+    dbCat =
+        dbCat.replaceAll('\n', '').replaceAll('\r', '').replaceAll('\t', '');
+
+    final params = <String, String>{
+      'category': dbCat,
       'page': '$page',
       'limit': '$limit',
-      'sort': 'createdAt,DESC',
     };
-    final q = params.entries
-        .map((e) =>
-            '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}')
-        .join('&');
-    return Uri.parse(_apiUrl('/products?$q'));
+
+    // ✅ 쿼리 파라미터는 여기서 맡기면 개행·인코딩 문제 없음
+    final base =
+        _apiUrl('/products'); // ex) http://localhost:3000/api/v1/products
+    final uri = Uri.parse(base).replace(queryParameters: params);
+
+    debugPrint('[ProductPage] GET $uri');
+    return uri;
   }
 
   Future<void> _fetch() async {
@@ -72,24 +82,40 @@ class _ProductPageState extends State<ProductPage> {
         main: widget.mainCategory,
         sub: widget.subCategory,
       );
+
       final resp = await http.get(uri, headers: {
         'Content-Type': 'application/json',
         // 'Authorization': 'Bearer ${await TokenStorage.getAccessToken()}',
       });
 
       if (resp.statusCode != 200) {
-        throw Exception('상품 조회 실패 (${resp.statusCode})');
+        throw Exception('상품 조회 실패 (${resp.statusCode}) : ${resp.body}');
       }
 
       final decoded = jsonDecode(resp.body);
-      // { success, data: [...] } 또는 바로 [...]
-      final List list = (decoded is Map && decoded['data'] is List)
-          ? decoded['data'] as List
-          : (decoded as List);
+
+      // ✅ 서버 응답: { ok:true, data:{ items:[...], page, ... } } 형태 지원
+      //    그 외 { data:[...] } / { items:[...] } / [...] 도 유연 처리
+      List list = const [];
+      if (decoded is Map) {
+        final data = decoded['data'];
+        if (data is Map && data['items'] is List) {
+          list = data['items'] as List; // ← 현재 서버 형식
+        } else if (data is List) {
+          list = data;
+        } else if (decoded['items'] is List) {
+          list = decoded['items'] as List;
+        } else {
+          list = const [];
+        }
+      } else if (decoded is List) {
+        list = decoded;
+      } else {
+        list = const [];
+      }
 
       final normalized = list.map<Map<String, dynamic>>((raw) {
         final m = (raw as Map);
-        // 필드명은 실제 응답 키에 맞춰 필요한 부분만 조정
         final imageUrls =
             (m['imageUrls'] is List) ? (m['imageUrls'] as List) : const [];
         final thumb =
@@ -113,6 +139,11 @@ class _ProductPageState extends State<ProductPage> {
         _items = normalized;
         _loading = false;
       });
+
+      // 디버깅: 결과 0건이면 본문까지 로그
+      if (_items.isEmpty) {
+        debugPrint('[ProductPage] Empty list. resp.body=${resp.body}');
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -162,8 +193,32 @@ class _ProductPageState extends State<ProductPage> {
 
                         return InkWell(
                           onTap: () {
-                            // TODO: 상세 라우팅 연결 (예: context.pushNamed(R.productDetail, params: {'id': p['id']}) );
-                            debugPrint('$title 클릭됨 (${p['id']})');
+                            final id = (p['id'] ?? '').toString();
+                            if (id.isEmpty) {
+                              debugPrint('상품 ID 없음');
+                              return;
+                            }
+
+                            // 1) GoRouter 네임드 라우트 사용 (등록되어 있다면 권장)
+                            try {
+                              context.pushNamed(
+                                R.RouteNames
+                                    .productDetail, // ex) 'productDetail'
+                                pathParameters: {
+                                  'productId': id
+                                }, // 라우트 정의 키에 맞추기
+                                // extra: {'initialProduct': null},   // 필요 시 초기 데이터 넘길 때
+                              );
+                              return;
+                            } catch (_) {
+                              // 2) 라우트 미등록/오류 시 폴백: Navigator로 직접 푸시
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        ProductDetailScreen(productId: id)),
+                              );
+                            }
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -314,10 +369,11 @@ class _CategoryPageState extends State<CategoryPage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const HomePage()),
-            );
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              context.go('/home');
+            }
           },
         ),
         title: const Text('카테고리', style: TextStyle(color: Colors.white)),

@@ -80,9 +80,11 @@ class _HeartPageState extends State<HeartPage> {
       final mapped = <Map<String, dynamic>>[];
       for (final p in products) {
         final m = p.toMapForHome();
-        final imgList =
-            (m['imageUrls'] is List) ? List<String>.from(m['imageUrls']) : const <String>[];
-        final thumb = (m['thumbnailUrl'] as String?) ?? (imgList.isNotEmpty ? imgList.first : null);
+        final imgList = (m['imageUrls'] is List)
+            ? List<String>.from(m['imageUrls'])
+            : const <String>[];
+        final thumb = (m['thumbnailUrl'] as String?) ??
+            (imgList.isNotEmpty ? imgList.first : null);
 
         final id = (m['id'] ?? '') as String;
         if (id.isEmpty || !seen.add(id)) continue;
@@ -122,7 +124,8 @@ class _HeartPageState extends State<HeartPage> {
     if (!mounted) return;
     if (_syncing) return; // ✅ 로딩/동기화 중엔 스킵
 
-    final have = _items.map((e) => e['id'] as String?).whereType<String>().toSet();
+    final have =
+        _items.map((e) => e['id'] as String?).whereType<String>().toSet();
     final want = favStore.favoriteIds;
 
     // 제거
@@ -142,9 +145,11 @@ class _HeartPageState extends State<HeartPage> {
       final p = await fetchProductById(id);
       if (p == null) continue;
       final m = p.toMapForHome();
-      final imgList =
-          (m['imageUrls'] is List) ? List<String>.from(m['imageUrls']) : const <String>[];
-      final thumb = (m['thumbnailUrl'] as String?) ?? (imgList.isNotEmpty ? imgList.first : null);
+      final imgList = (m['imageUrls'] is List)
+          ? List<String>.from(m['imageUrls'])
+          : const <String>[];
+      final thumb = (m['thumbnailUrl'] as String?) ??
+          (imgList.isNotEmpty ? imgList.first : null);
       final map = {
         ...m,
         'imageUrls': imgList,
@@ -177,8 +182,8 @@ class _HeartPageState extends State<HeartPage> {
     // 현재 카드의 집계값을 스토어 기준으로 읽어 낙관적 처리
     final prevFav = favStore.favoriteIds.contains(productId);
     final idx = _items.indexWhere((e) => e['id'] == productId);
-    final prevCnt =
-        favStore.counts[productId] ?? (idx >= 0 ? _asInt(_items[idx]['favoriteCount'] ?? 0) : 0);
+    final prevCnt = favStore.counts[productId] ??
+        (idx >= 0 ? _asInt(_items[idx]['favoriteCount'] ?? 0) : 0);
 
     // 낙관적 반영
     favStore.toggleOptimistic(
@@ -191,7 +196,10 @@ class _HeartPageState extends State<HeartPage> {
     setState(() {});
 
     try {
-      final res = await toggleFavoriteDetailed(productId);
+      final res = await toggleFavoriteDetailed(
+        productId,
+        currentlyFavorited: prevFav,
+      );
       favStore.applyServer(
         productId,
         isFavorited: res.isFavorited,
@@ -221,7 +229,9 @@ class _HeartPageState extends State<HeartPage> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e' == 'Exception: 401' ? '로그인이 필요합니다.' : '찜 토글 실패: $e')),
+        SnackBar(
+            content:
+                Text('$e' == 'Exception: 401' ? '로그인이 필요합니다.' : '찜 토글 실패: $e')),
       );
       setState(() {});
     }
@@ -252,9 +262,14 @@ class _HeartPageState extends State<HeartPage> {
                     final list = _items
                         .map((p) => {
                               ...p,
-                              'isFavorited': favStore.favoriteIds.contains(p['id']),
-                              'favoriteCount':
-                                  favStore.counts[p['id']] ?? p['favoriteCount'] ?? p['likes'] ?? 0,
+                              'isFavorited':
+                                  favStore.favoriteIds.contains(p['id']),
+                              'favoriteCount': _asInt(
+                                favStore.counts[p['id']] ??
+                                    p['favoriteCount'] ??
+                                    p['likes'] ??
+                                    0,
+                              ),
                             })
                         .toList();
 
@@ -269,7 +284,8 @@ class _HeartPageState extends State<HeartPage> {
                         itemCount: list.length,
                         itemBuilder: (_, index) {
                           final product = list[index];
-                          final liked = (product['isFavorited'] ?? false) as bool;
+                          final liked =
+                              (product['isFavorited'] ?? false) as bool;
 
                           // 이미지: thumbnailUrl → imageUrls[0]
                           final imageUrl = product['thumbnailUrl'] ??
@@ -285,7 +301,10 @@ class _HeartPageState extends State<HeartPage> {
                           final lv = product['location'];
                           if (lv is String && lv.isNotEmpty) {
                             location = lv;
-                          } else if ((product['locationText']?.toString().isNotEmpty ?? false)) {
+                          } else if ((product['locationText']
+                                  ?.toString()
+                                  .isNotEmpty ??
+                              false)) {
                             location = product['locationText'];
                           } else {
                             location = '위치 정보 없음';
@@ -294,8 +313,8 @@ class _HeartPageState extends State<HeartPage> {
                           final time = product['time'] as String? ?? '';
 
                           // 가격: price → priceWon → 라벨 (Home 동일)
-                          final priceLabel =
-                              _formatWon(product['price'] ?? product['priceWon'] ?? 0);
+                          final priceLabel = _formatWon(
+                              product['price'] ?? product['priceWon'] ?? 0);
 
                           return InkWell(
                             onTap: () {
@@ -307,7 +326,8 @@ class _HeartPageState extends State<HeartPage> {
                               );
                             },
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -319,11 +339,13 @@ class _HeartPageState extends State<HeartPage> {
                                             width: 100,
                                             height: 100,
                                             fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) => Container(
+                                            errorBuilder: (_, __, ___) =>
+                                                Container(
                                               width: 100,
                                               height: 100,
                                               color: Colors.grey[300],
-                                              child: const Icon(Icons.broken_image,
+                                              child: const Icon(
+                                                  Icons.broken_image,
                                                   color: Colors.white70),
                                             ),
                                           )
@@ -331,13 +353,15 @@ class _HeartPageState extends State<HeartPage> {
                                             width: 100,
                                             height: 100,
                                             color: Colors.grey[300],
-                                            child: const Icon(Icons.image, color: Colors.white70),
+                                            child: const Icon(Icons.image,
+                                                color: Colors.white70),
                                           ),
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           title,
@@ -358,7 +382,8 @@ class _HeartPageState extends State<HeartPage> {
                                         ),
                                         const SizedBox(height: 6),
                                         Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
                                           children: [
                                             Text.rich(
                                               TextSpan(
@@ -367,7 +392,8 @@ class _HeartPageState extends State<HeartPage> {
                                                   TextSpan(
                                                     text: priceLabel,
                                                     style: const TextStyle(
-                                                      fontWeight: FontWeight.w700,
+                                                      fontWeight:
+                                                          FontWeight.w700,
                                                     ),
                                                   ),
                                                 ],
@@ -375,7 +401,8 @@ class _HeartPageState extends State<HeartPage> {
                                             ),
                                             Text(
                                               '찜 ${product['favoriteCount'] ?? product['likes'] ?? 0}  조회수 ${product['views'] ?? 0}',
-                                              style: const TextStyle(color: Colors.grey),
+                                              style: const TextStyle(
+                                                  color: Colors.grey),
                                             ),
                                           ],
                                         ),
@@ -384,13 +411,19 @@ class _HeartPageState extends State<HeartPage> {
                                           alignment: Alignment.centerRight,
                                           child: GestureDetector(
                                             onTap: () {
-                                              final id = product['id'] as String? ?? '';
+                                              final id =
+                                                  product['id'] as String? ??
+                                                      '';
                                               if (id.isEmpty) return;
                                               _toggleFavorite(id);
                                             },
                                             child: Icon(
-                                              liked ? Icons.favorite : Icons.favorite_border,
-                                              color: liked ? Colors.red : Colors.grey,
+                                              liked
+                                                  ? Icons.favorite
+                                                  : Icons.favorite_border,
+                                              color: liked
+                                                  ? Colors.red
+                                                  : Colors.grey,
                                               size: 22,
                                             ),
                                           ),
