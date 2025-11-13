@@ -9,10 +9,8 @@ import '../home/home_screen.dart';
 // ───────────────────────────────────────────────────────────
 // 공통: API 베이스 URL 빌더 (프로젝트 규칙에 맞춰 있으면 교체)
 // ───────────────────────────────────────────────────────────
-String _apiUrl(String path) {
-  // core/base_url.dart의 apiUrl()을 쓰고 있다면 아래로 교체:
-  // return apiUrl(path);
-  return 'http://localhost:3000/api/v1$path';
+Uri _apiUrl(String path) {
+  return Uri.parse('http://localhost:3000/api/v1$path');
 }
 
 // ───────────────────────────────────────────────────────────
@@ -60,10 +58,9 @@ class _ProductPageState extends State<ProductPage> {
       'sort': 'createdAt,DESC',
     };
     final q = params.entries
-        .map((e) =>
-            '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}')
+        .map((e) => '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}')
         .join('&');
-    return Uri.parse(_apiUrl('/products?$q'));
+    return _apiUrl('/products?$q');
   }
 
   Future<void> _fetch() async {
@@ -83,18 +80,15 @@ class _ProductPageState extends State<ProductPage> {
 
       final decoded = jsonDecode(resp.body);
       // { success, data: [...] } 또는 바로 [...]
-      final List list = (decoded is Map && decoded['data'] is List)
-          ? decoded['data'] as List
-          : (decoded as List);
+      final List list =
+          (decoded is Map && decoded['data'] is List) ? decoded['data'] as List : (decoded as List);
 
       final normalized = list.map<Map<String, dynamic>>((raw) {
         final m = (raw as Map);
         // 필드명은 실제 응답 키에 맞춰 필요한 부분만 조정
-        final imageUrls =
-            (m['imageUrls'] is List) ? (m['imageUrls'] as List) : const [];
+        final imageUrls = (m['imageUrls'] is List) ? (m['imageUrls'] as List) : const [];
         final thumb =
-            (m['thumbnailUrl'] ?? (imageUrls.isNotEmpty ? imageUrls.first : ''))
-                .toString();
+            (m['thumbnailUrl'] ?? (imageUrls.isNotEmpty ? imageUrls.first : '')).toString();
 
         return {
           'id': m['id'] ?? m['_id'],
@@ -166,8 +160,7 @@ class _ProductPageState extends State<ProductPage> {
                             debugPrint('$title 클릭됨 (${p['id']})');
                           },
                           child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             child: Row(
                               children: [
                                 // 썸네일
@@ -179,13 +172,11 @@ class _ProductPageState extends State<ProductPage> {
                                           width: 80,
                                           height: 80,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) =>
-                                              Container(
+                                          errorBuilder: (_, __, ___) => Container(
                                             width: 80,
                                             height: 80,
                                             color: Colors.grey[300],
-                                            child: const Icon(
-                                                Icons.image_not_supported),
+                                            child: const Icon(Icons.image_not_supported),
                                           ),
                                         )
                                       : Container(
@@ -199,31 +190,26 @@ class _ProductPageState extends State<ProductPage> {
                                 // 텍스트
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         title,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16),
+                                            fontWeight: FontWeight.bold, fontSize: 16),
                                       ),
                                       const SizedBox(height: 6),
                                       Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
                                           Text(
                                             '$loc | ${_timeAgo(createdAt)}',
-                                            style: const TextStyle(
-                                                color: Colors.grey),
+                                            style: const TextStyle(color: Colors.grey),
                                           ),
                                           Text(
                                             '찜 $fav  조회수 $views',
-                                            style: const TextStyle(
-                                                color: Colors.grey),
+                                            style: const TextStyle(color: Colors.grey),
                                           ),
                                         ],
                                       ),

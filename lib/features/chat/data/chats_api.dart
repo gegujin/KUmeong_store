@@ -2,26 +2,27 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kumeong_store/core/network/http_client.dart'; // HttpX + ApiException
 
 // ─────────────────────────────────────────────
-// 0) 채팅 방 확보 API
+// 0) 채팅 방 확보/조회 API
 //   - 거래방 멱등 생성: POST /api/v1/chat/rooms/ensure-trade
 //   - 친구방 확보   : POST /api/v1/chat/friend-room (실패시 GET 폴백)
+//   - 방 목록 조회  : GET  /api/v1/chat/rooms?mine=1&limit=50 ...
 // ※ HttpX가 /api/v1을 자동 부착한다고 가정 → 여기서는 항상 "/chat/..." 사용
 // ─────────────────────────────────────────────
 class ChatsApi {
   const ChatsApi();
 
-  // UUID 형식 대충 검증(하이픈 포함 36자) — 필요없으면 제거해도 됨
+  // UUID 형식 대충 검증(하이픈 포함 16자 이상) — 필요없으면 제거해도 됨
   static final RegExp _uuidLike = RegExp(r'^[0-9a-fA-F-]{16,}$');
 
   /// 거래방 멱등 생성 (상품 상세 → 채팅하기에서 사용)
   Future<String> ensureTrade(String productId) async {
-    final pid = (productId).toString().trim();
+    final pid = productId.toString().trim();
     if (pid.isEmpty) {
       throw ApiException('productId가 비었습니다.');
     }
 
     // ✅ 서버가 product.sellerId로 판매자를 판단하므로 sellerId는 보내지 않음
-    final res = await HttpX.postJson(
+    final dynamic res = await HttpX.postJson(
       '/chat/rooms/ensure-trade', // HttpX가 /api/v1 접두사 붙여줌
       {'productId': pid},
     );
@@ -36,8 +37,13 @@ class ChatsApi {
   /// 친구방 확보 (친구 상세 → 채팅하기)
   /// 서버가 POST면 POST 우선, 실패 시 GET 폴백
   Future<String> ensureFriendRoom(String peerId) async {
+    final pid = peerId.trim();
+    if (pid.isEmpty) {
+      throw ApiException('peerId가 비었습니다.');
+    }
+
     try {
-      final res = await HttpX.postJson('/chat/friend-room', {'peerId': peerId});
+      final dynamic res = await HttpX.postJson('/chat/friend-room', {'peerId': pid});
       final rid = _pickRoomId(res);
       if (rid.isEmpty) {
         throw ApiException('roomId 없음', bodyPreview: res.toString());
@@ -45,13 +51,55 @@ class ChatsApi {
       return rid;
     } catch (e) {
       debugPrint('[ChatsApi] POST /chat/friend-room 실패, GET 폴백: $e');
-      final res = await HttpX.get('/chat/friend-room', query: {'peerId': peerId}, noCache: true);
+      final dynamic res = await HttpX.get(
+        '/chat/friend-room',
+        query: {'peerId': pid},
+        noCache: true,
+      );
       final rid = _pickRoomId(res);
       if (rid.isEmpty) {
         throw ApiException('roomId를 얻지 못했습니다', bodyPreview: res.toString());
       }
       return rid;
     }
+  }
+
+  /// 방 목록 조회
+  /// GET /api/v1/chat/rooms?mine=1&limit=50 ...
+  ///
+  /// - 응답이 List, { data: [...] }, { data: { items: [...] } } 인 경우 모두 처리
+  /// - 최종 리턴 타입: List<dynamic>
+  Future<List<dynamic>> fetchRooms({bool mine = true, int? limit}) async {
+    final dynamic res = await HttpX.get(
+      '/chat/rooms',
+      query: {
+        if (mine) 'mine': '1',
+        if (limit != null) 'limit': '$limit',
+      },
+      noCache: true,
+    );
+
+    List<dynamic> out = const <dynamic>[];
+
+    // 1) 응답이 바로 List 형태
+    if (res is List) {
+      out = res;
+    }
+    // 2) { data: [...] }
+    else if (res is Map<String, dynamic>) {
+      final data = res['data'];
+
+      if (data is List) {
+        out = data;
+      }
+      // 3) { data: { items: [...] } }
+      else if (data is Map && data['items'] is List) {
+        out = data['items'] as List;
+      }
+    }
+
+    // 4) 그 외 구조면 빈 리스트
+    return out;
   }
 
   // 공통 파서: {roomId} 또는 {data:{roomId}} 또는 {id}
@@ -174,15 +222,29 @@ class ChatApi {
   }) async {
     final rid = _normalizeRoomId(roomId);
 
-    final j = await HttpX.get(
-      '/chat/rooms/$rid/messages', // ✅ 슬래시/경로 정확
+    final dynamic j = await HttpX.get(
+      '/chat/rooms/$rid/messages',
       query: {'sinceSeq': '$sinceSeq', 'limit': '$limit'},
       noCache: true,
     );
 
-    // j['data']가 List인지 안전 확인
-    final List<dynamic> arr =
-        (j is Map && j['data'] is List) ? j['data'] as List<dynamic> : const <dynamic>[];
+    List<dynamic> arr = const <dynamic>[];
+
+    // 1) 응답이 바로 배열인 경우
+    if (j is List) {
+      arr = j;
+    }
+    // 2) 응답이 Map 구조인 경우
+    else if (j is Map) {
+      // { data: [...] }
+      if (j['data'] is List) {
+        arr = j['data'] as List;
+      }
+      // { data: { items: [...] } }
+      else if (j['data'] is Map && (j['data']['items'] is List)) {
+        arr = j['data']['items'] as List;
+      }
+    }
 
     // 각 원소를 Map으로 보장 후 모델 변환
     return arr.whereType<Map<String, dynamic>>().map(ChatMessage.fromJson).toList();
@@ -195,7 +257,7 @@ class ChatApi {
     required String text,
   }) async {
     final rid = _normalizeRoomId(roomId);
-    final j = await HttpX.postJson(
+    final dynamic j = await HttpX.postJson(
       '/chat/rooms/$rid/messages',
       {
         'text': text, // ✅ content → text (서버 스키마)
@@ -203,8 +265,10 @@ class ChatApi {
     );
 
     // 응답이 { ok, data: {...} } 또는 {...} 모두 대응
-    final data = (j is Map && j['data'] is Map) ? j['data'] as Map : (j as Map);
-    return ChatMessage.fromJson(Map<String, dynamic>.from(data));
+    final Map<String, dynamic> data = (j is Map && j['data'] is Map)
+        ? j['data'] as Map<String, dynamic>
+        : (j as Map<String, dynamic>);
+    return ChatMessage.fromJson(data);
   }
 
   /// 읽음 커서 갱신
