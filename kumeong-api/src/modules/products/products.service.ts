@@ -196,4 +196,25 @@ export class ProductsService {
     await this.repo.update(id, { deletedAt: () => 'CURRENT_TIMESTAMP' } as any);
     return { deleted: true, id };
   }
+
+  async incrementViews(id: string): Promise<number> {
+    // id 존재 확인 (없으면 404)
+    const exists = await this.repo.exists({ where: { id } });
+    if (!exists) throw new NotFoundException('Product not found');
+
+    // views = views + 1 (원자적 증가)
+    await this.repo
+      .createQueryBuilder()
+      .update(Product)
+      .set({ views: () => 'views + 1' })
+      .where('id = :id', { id })
+      .execute();
+
+    // 최신 값 반환
+    const fresh = await this.repo.findOne({
+      where: { id },
+      select: ['id', 'views'],
+    });
+    return fresh?.views ?? 0;
+  }
 }

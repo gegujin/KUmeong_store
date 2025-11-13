@@ -148,7 +148,7 @@ class _HomePageState extends State<HomePage>
     bool added = false;
 
     bool isFav(String id) => favStore.favoriteIds.contains(id);
-    int? favCnt(String id, int? local) => favStore.counts[id] ?? local;
+    int favCnt(String id, int? local) => favStore.counts[id] ?? (local ?? 0);
 
     if (token != null) {
       try {
@@ -245,7 +245,10 @@ class _HomePageState extends State<HomePage>
     setState(() {});
 
     try {
-      final res = await toggleFavoriteDetailed(productId); // 서버 최종값 반영
+      final res = await toggleFavoriteDetailed(
+        productId,
+        currentlyFavorited: prevFav, // ← 현재 상태 전달(이미 찜이면 언찜 분기)
+      );
       favStore.applyServer(
         productId,
         isFavorited: res.isFavorited,
@@ -265,6 +268,18 @@ class _HomePageState extends State<HomePage>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
+  }
+
+  // 🔼 상세에서 돌아올 때 받은 최신 조회수로 리스트 갱신
+  void _applyReturnedViews(String productId, int views) {
+    final idx = allProducts.indexWhere((p) => (p['id'] ?? '') == productId);
+    if (idx == -1) return;
+    setState(() {
+      allProducts[idx] = {
+        ...allProducts[idx],
+        'views': views,
+      };
+    });
   }
 
   void _toggleFabMenu() => setState(() => _isMenuOpen = !_isMenuOpen);
@@ -348,10 +363,12 @@ class _HomePageState extends State<HomePage>
                       ...p,
                       // 상태/카운트는 Store 우선
                       'isFavorited': favStore.favoriteIds.contains(id),
-                      'favoriteCount': favStore.counts[id] ??
-                          p['favoriteCount'] ??
-                          p['likes'] ??
-                          0,
+                      'favoriteCount': _asInt(
+                        favStore.counts[id] ??
+                            p['favoriteCount'] ??
+                            p['likes'] ??
+                            0,
+                      ),
                     };
                   })
                   .where((p) => (p['title'] as String)
@@ -390,13 +407,26 @@ class _HomePageState extends State<HomePage>
                       _formatWon(product['price'] ?? product['priceWon'] ?? 0);
 
                   return InkWell(
-                    onTap: () {
-                      context.pushNamed(
+                    onTap: () async {
+                      final id = (product['id'] as String?) ?? '';
+                      final result = await context.pushNamed<Map>(
                         R.RouteNames.productDetail,
                         pathParameters: {
-                          'productId': product['id'] ?? 'demo-product'
+                          'productId': id.isEmpty ? 'demo-product' : id
                         },
                       );
+
+                      if (!mounted) return;
+                      if (id.isEmpty || id.startsWith('demo-')) return;
+
+                      if (result is Map &&
+                          result['productId'] == id &&
+                          result['views'] != null) {
+                        final newViews = (result['views'] is num)
+                            ? (result['views'] as num).toInt()
+                            : int.tryParse('${result['views']}') ?? 0;
+                        _applyReturnedViews(id, newViews);
+                      }
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(

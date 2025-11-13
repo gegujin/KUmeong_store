@@ -99,12 +99,16 @@ class FavoritesStore extends ChangeNotifier {
   void replaceAll(List<dynamic> items) {
     final ids = <String>[];
     final cnt = <String, int>{};
+    // 기존 카운트 백업 (서버가 favoriteCount를 안 줄 때 0으로 초기화되는 문제 방지)
+    final prevCounts = Map<String, int>.from(counts);
 
     for (final it in items) {
       final id = _idOf(it);
       if (id == null || id.isEmpty) continue;
       ids.add(id);
-      cnt[id] = _favoriteCountOf(it);
+      final c = _favoriteCountOf(it);
+      // 서버가 count를 안 주면(_favoriteCountOf -> 0) 기존값 유지
+      cnt[id] = (c > 0) ? c : (prevCounts[id] ?? 0);
     }
 
     favoriteIds
@@ -122,15 +126,18 @@ class FavoritesStore extends ChangeNotifier {
   /// 낙관적 토글 적용 (현재 상태/카운트를 기준으로 미리 반영)
   /// - 연타/중복 액션이면 기존 상태 그대로 반환
   /// - 반환값: 적용된 nextFavorited
-  bool toggleOptimistic(String id,
-      {required bool currentFavorited, required int currentCount}) {
+  bool toggleOptimistic(
+    String id, {
+    required bool currentFavorited,
+    required int currentCount,
+  }) {
     if (isPending(id)) return currentFavorited; // 이미 요청 중이면 무시
     _markPending(id);
 
     final next = !currentFavorited;
     if (next) {
       favoriteIds.add(id);
-      counts[id] = currentCount + 1;
+      counts[id] = (currentCount + 1).clamp(0, 1 << 31);
     } else {
       favoriteIds.remove(id);
       counts[id] = (currentCount > 0 ? currentCount - 1 : 0);
@@ -141,7 +148,11 @@ class FavoritesStore extends ChangeNotifier {
   }
 
   /// 서버 응답으로 최종 확정. 카운트는 **치환**만!
-  void applyServer(String id, {required bool isFavorited, int? favoriteCount}) {
+  void applyServer(
+    String id, {
+    required bool isFavorited,
+    int? favoriteCount,
+  }) {
     _clearPending(id);
 
     if (isFavorited) {
@@ -157,8 +168,11 @@ class FavoritesStore extends ChangeNotifier {
   }
 
   /// 실패 → 기존 값으로 롤백
-  void rollback(String id,
-      {required bool previousFavorited, required int previousCount}) {
+  void rollback(
+    String id, {
+    required bool previousFavorited,
+    required int previousCount,
+  }) {
     _clearPending(id);
 
     if (previousFavorited) {
@@ -177,56 +191,44 @@ class FavoritesStore extends ChangeNotifier {
   int favCountOf(String id) => counts[id] ?? 0;
 
   /// 전체 토글(낙관적→서버확정/실패 롤백 포함)
-  // lib/state/favorites_store.dart — toggle() 교체
   Future<void> toggle(String id) async {
     final prevFavorited = isFavOf(id);
     final prevCount = favCountOf(id);
 
     // 1) 낙관적 적용
-    final nextFavorited = toggleOptimistic(
+    final _ = toggleOptimistic(
       id,
       currentFavorited: prevFavorited,
       currentCount: prevCount,
     );
 
     try {
-      // 2) 서버 호출 (반환형이 record/Map/dynamic/nullable 여도 안전하게 처리)
-      final dynamic r = await toggleFavoriteById(id);
+      // 2) 서버 호출 — 현재 상태(prevFavorited)에 따라 분기되는 API 사용
+      final r = await toggleFavoriteDetailed(
+        id,
+        currentlyFavorited: prevFavorited,
+      );
 
-      // ok 추출 (nullable/Map/dynamic 모두 커버)
-      final bool ok = (r is Map) ? (r['ok'] == true) : (r?.ok == true) == true;
-
-      if (!ok) {
-        // 서버가 실패면 롤백
-        rollback(id,
-            previousFavorited: prevFavorited, previousCount: prevCount);
-        return;
-      }
-
-      // isFavorite 추출 (키 다양한 경우 대비)
-      final bool isFav = (r is Map)
-          ? (r['isFavorite'] == true || r['fav'] == true || r['liked'] == true)
-          : (r?.isFavorite == true) ?? nextFavorited;
-
-      // favoriteCount 추출 (num -> int 변환 + 안전 기본값)
-      int favCnt;
-      if (r is Map) {
-        final dyn = (r['favoriteCount'] ?? r['favorites'] ?? r['count']);
-        favCnt = (dyn is num)
-            ? dyn.toInt()
-            : (isFav ? prevCount + 1 : (prevCount > 0 ? prevCount - 1 : 0));
-      } else {
-        final dyn = r?.favoriteCount;
-        favCnt = (dyn is num)
-            ? dyn.toInt()
-            : (isFav ? prevCount + 1 : (prevCount > 0 ? prevCount - 1 : 0));
-      }
+      // 서버가 count를 안 주면(=null) 낙관적 계산값으로 보정
+      final confirmedCount = (r.favoriteCount != null)
+          ? r.favoriteCount!.clamp(0, 1 << 31)
+          : (r.isFavorited
+              ? prevCount + 1
+              : (prevCount > 0 ? prevCount - 1 : 0));
 
       // 3) 서버값으로 확정 반영
-      applyServer(id, isFavorited: isFav, favoriteCount: favCnt);
+      applyServer(
+        id,
+        isFavorited: r.isFavorited,
+        favoriteCount: confirmedCount,
+      );
     } catch (_) {
-      // 네트워크/예외 → 롤백
-      rollback(id, previousFavorited: prevFavorited, previousCount: prevCount);
+      // 네트워크/예외 → 롨백
+      rollback(
+        id,
+        previousFavorited: prevFavorited,
+        previousCount: prevCount,
+      );
     }
   }
 
@@ -258,12 +260,14 @@ class FavoritesStore extends ChangeNotifier {
 
     if (item is Map) {
       final m = Map<String, dynamic>.from(item);
-      return _safeInt(m['favoriteCount'] ??
-          m['favorites'] ??
-          m['favorite_cnt'] ??
-          m['likeCount'] ??
-          m['likes'] ??
-          m['favCount']);
+      return _safeInt(
+        m['favoriteCount'] ??
+            m['favorites'] ??
+            m['favorite_cnt'] ??
+            m['likeCount'] ??
+            m['likes'] ??
+            m['favCount'],
+      );
     }
 
     try {

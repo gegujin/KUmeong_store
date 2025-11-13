@@ -71,8 +71,10 @@ Future<String?> login(String email, String password) async {
     );
 
     final flat = _flatten(res);
-    final access = _get<String>(flat, 'accessToken') ?? _get<String>(res, 'accessToken');
-    final refresh = _get<String>(flat, 'refreshToken') ?? _get<String>(res, 'refreshToken');
+    final access =
+        _get<String>(flat, 'accessToken') ?? _get<String>(res, 'accessToken');
+    final refresh =
+        _get<String>(flat, 'refreshToken') ?? _get<String>(res, 'refreshToken');
 
     if (access != null && access.isNotEmpty) {
       // ✅ HttpX는 session.v1 을 읽지만, 저장은 기존 TokenStorage 사용 유지
@@ -87,7 +89,8 @@ Future<String?> login(String email, String password) async {
   }
 }
 
-Future<String?> register(String email, String password, String name, {String? univToken}) async {
+Future<String?> register(String email, String password, String name,
+    {String? univToken}) async {
   try {
     final payload = {
       'email': _normalizeEmail(email),
@@ -95,11 +98,14 @@ Future<String?> register(String email, String password, String name, {String? un
       'name': name.trim(),
       if (univToken != null && univToken.isNotEmpty) 'univToken': univToken,
     };
-    final res = await HttpX.postJson('/auth/register', payload, withAuth: false);
+    final res =
+        await HttpX.postJson('/auth/register', payload, withAuth: false);
 
     final flat = _flatten(res);
-    final access = _get<String>(flat, 'accessToken') ?? _get<String>(res, 'accessToken');
-    final refresh = _get<String>(flat, 'refreshToken') ?? _get<String>(res, 'refreshToken');
+    final access =
+        _get<String>(flat, 'accessToken') ?? _get<String>(res, 'accessToken');
+    final refresh =
+        _get<String>(flat, 'refreshToken') ?? _get<String>(res, 'refreshToken');
 
     if (access != null && access.isNotEmpty) {
       await TokenStorage.setTokens(access, refreshToken: refresh);
@@ -123,7 +129,8 @@ Future<List<http.MultipartFile>> _buildImageFiles(List<dynamic> images) async {
       if (img is XFile) {
         if (kIsWeb) {
           final bytes = await img.readAsBytes();
-          final safeName = (img.name.trim().isNotEmpty) ? img.name : 'image.jpg';
+          final safeName =
+              (img.name.trim().isNotEmpty) ? img.name : 'image.jpg';
           files.add(http.MultipartFile.fromBytes(
             'images',
             bytes,
@@ -158,14 +165,20 @@ Future<Map<String, dynamic>?> createProductWithImages(
 ) async {
   try {
     final title = productData['title']?.toString().trim();
-    final rawPrice = (productData['priceWon'] ?? productData['price'])?.toString();
-    final priceNum =
-        rawPrice == null ? 0 : int.tryParse(rawPrice.replaceAll(RegExp(r'[, ]'), '')) ?? 0;
+    final rawPrice =
+        (productData['priceWon'] ?? productData['price'])?.toString();
+    final priceNum = rawPrice == null
+        ? 0
+        : int.tryParse(rawPrice.replaceAll(RegExp(r'[, ]'), '')) ?? 0;
     final desc = productData['description']?.toString().trim();
     final categoryPath =
-        (productData['categoryPath'] ?? productData['category'])?.toString().trim();
+        (productData['categoryPath'] ?? productData['category'])
+            ?.toString()
+            .trim();
     final locationText = (productData['locationText'] ??
-            (productData['location'] is String ? productData['location'] : null))
+            (productData['location'] is String
+                ? productData['location']
+                : null))
         ?.toString()
         .trim();
     final status = productData['status']?.toString().trim();
@@ -175,7 +188,8 @@ Future<Map<String, dynamic>?> createProductWithImages(
       'priceWon': priceNum.toString(),
       if (desc?.isNotEmpty == true) 'description': desc!,
       if (categoryPath?.isNotEmpty == true) 'categoryPath': categoryPath!,
-      if (locationText != null && locationText.isNotEmpty) 'locationText': locationText,
+      if (locationText != null && locationText.isNotEmpty)
+        'locationText': locationText,
       if (status?.isNotEmpty == true) 'status': status!,
     };
 
@@ -211,13 +225,18 @@ Future<Map<String, dynamic>?> updateProductWithImages(
 ) async {
   try {
     final title = productData['title']?.toString().trim();
-    final rawPrice = (productData['priceWon'] ?? productData['price'])?.toString();
+    final rawPrice =
+        (productData['priceWon'] ?? productData['price'])?.toString();
     final desc = productData['description']?.toString().trim();
     final categoryPath =
-        (productData['categoryPath'] ?? productData['category'])?.toString().trim();
+        (productData['categoryPath'] ?? productData['category'])
+            ?.toString()
+            .trim();
     final category = productData['category']?.toString().trim();
     final locationText = (productData['locationText'] ??
-            (productData['location'] is String ? productData['location'] : null))
+            (productData['location'] is String
+                ? productData['location']
+                : null))
         ?.toString()
         .trim();
     final status = productData['status']?.toString().trim();
@@ -225,11 +244,14 @@ Future<Map<String, dynamic>?> updateProductWithImages(
     final fields = <String, String>{
       if (title?.isNotEmpty == true) 'title': title!,
       if (rawPrice != null)
-        'priceWon': (int.tryParse(rawPrice.replaceAll(RegExp(r'[, ]'), '')) ?? 0).toString(),
+        'priceWon':
+            (int.tryParse(rawPrice.replaceAll(RegExp(r'[, ]'), '')) ?? 0)
+                .toString(),
       if (desc?.isNotEmpty == true) 'description': desc!,
       if (categoryPath?.isNotEmpty == true) 'categoryPath': categoryPath!,
       if (category?.isNotEmpty == true) 'category': category!,
-      if (locationText != null && locationText.isNotEmpty) 'locationText': locationText,
+      if (locationText != null && locationText.isNotEmpty)
+        'locationText': locationText,
       if (status?.isNotEmpty == true) 'status': status!,
     };
 
@@ -276,7 +298,8 @@ Future<List<Product>> fetchProducts(
 
   const allowedSort = {'createdAt', 'price', 'title'};
   const allowedOrder = {'ASC', 'DESC'};
-  if (sortField != null && allowedSort.contains(sortField)) params['sort'] = sortField;
+  if (sortField != null && allowedSort.contains(sortField))
+    params['sort'] = sortField;
   if (order != null && allowedOrder.contains(order)) params['order'] = order;
 
   try {
@@ -294,7 +317,10 @@ Future<List<Product>> fetchProducts(
 
     final flat = _flatten(j);
     final items = _normalizeItems(flat);
-    return items.whereType<Map<String, dynamic>>().map((e) => Product.fromJson(e)).toList();
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map((e) => Product.fromJson(e))
+        .toList();
   } catch (e, st) {
     debugPrint('[API] 상품 조회 예외: $e\n$st');
     return [];
@@ -317,7 +343,8 @@ Future<Product?> fetchProductById(String productId, {String? token}) async {
 //   - 기본 경로: POST /products/:id/favorite
 //   - 레거시 폴백: /favorites/:id/toggle (404시에만)
 // ----------------------------------------------------
-({bool? isFavorited, int? favoriteCount}) _readFavoritePayload(Map<String, dynamic> root) {
+({bool? isFavorited, int? favoriteCount}) _readFavoritePayload(
+    Map<String, dynamic> root) {
   final data = _get<Map>(root, 'data') ?? root;
   bool? fav = _get<bool>(data, 'isFavorited');
   int? cnt;
@@ -348,7 +375,8 @@ class ChatRoomSummaryDto {
 
   factory ChatRoomSummaryDto.fromMap(Map<String, dynamic> m) {
     String _s(Object? v) => v?.toString() ?? '';
-    int _i(Object? v) => (v is num) ? v.toInt() : int.tryParse('${v ?? 0}') ?? 0;
+    int _i(Object? v) =>
+        (v is num) ? v.toInt() : int.tryParse('${v ?? 0}') ?? 0;
     DateTime _dt(Object? v) {
       final s = _s(v);
       if (s.isEmpty) return DateTime.fromMillisecondsSinceEpoch(0);
@@ -357,7 +385,8 @@ class ChatRoomSummaryDto {
 
     return ChatRoomSummaryDto(
       id: _s(m['roomId'] ?? m['id']),
-      partnerName: _s(m['partnerName'] ?? m['peerNameOrEmail'] ?? m['peerEmail'] ?? '상대방'),
+      partnerName: _s(
+          m['partnerName'] ?? m['peerNameOrEmail'] ?? m['peerEmail'] ?? '상대방'),
       lastMessage: _s(m['lastSnippet'] ?? m['lastMessage'] ?? ''),
       updatedAt: _dt(m['lastMessageAt'] ?? m['updatedAt'] ?? m['lastSeenAt']),
       unreadCount: _i(m['unreadCount']),
@@ -375,7 +404,9 @@ Future<List<ChatRoomSummaryDto>> fetchMyChatRooms({int limit = 50}) async {
   try {
     final r1 = await HttpX.get('/chat/rooms', query: {'limit': '$limit'});
     final items = (r1['data'] ?? r1['items'] ?? r1) as Object?;
-    final list = items is List ? items : (items is Map ? (items['items'] ?? const []) : const []);
+    final list = items is List
+        ? items
+        : (items is Map ? (items['items'] ?? const []) : const []);
     return (list as List)
         .whereType<Map<String, dynamic>>()
         .map(ChatRoomSummaryDto.fromMap)
@@ -388,7 +419,10 @@ Future<List<ChatRoomSummaryDto>> fetchMyChatRooms({int limit = 50}) async {
   final r2 = await HttpX.get('/friends');
   final arr = (r2['data'] ?? r2['items'] ?? r2);
   final list = arr is List ? arr : const [];
-  return list.whereType<Map<String, dynamic>>().map(ChatRoomSummaryDto.fromMap).toList();
+  return list
+      .whereType<Map<String, dynamic>>()
+      .map(ChatRoomSummaryDto.fromMap)
+      .toList();
 }
 
 class FavoriteToggleResult {
@@ -397,19 +431,29 @@ class FavoriteToggleResult {
   FavoriteToggleResult(this.isFavorited, this.favoriteCount);
 }
 
-Future<FavoriteToggleResult> toggleFavoriteDetailed(String productId) async {
+Future<FavoriteToggleResult> toggleFavoriteDetailed(
+  String productId, {
+  required bool currentlyFavorited,
+}) async {
   try {
     Map<String, dynamic> res;
 
-    // 기본 엔드포인트
-    try {
-      res = await HttpX.postJson('/products/$productId/favorite', {});
-    } on ApiException catch (e) {
-      // 레거시 경로 폴백(404일 때만)
-      if (e.status == 404) {
-        res = await HttpX.postJson('/favorites/$productId/toggle', {});
-      } else {
-        rethrow;
+    if (currentlyFavorited) {
+      // 이미 찜 → "언찜" 수행 (레거시 토글 사용)
+      // 백엔드가 DELETE를 요구하더라도 HttpX에 delete 헬퍼가 없어
+      // 안전하게 동작하는 토글 엔드포인트로 언찜을 처리.
+      res = await HttpX.postJson('/favorites/$productId/toggle', {});
+    } else {
+      // 아직 안 찜 → "찜 추가"
+      try {
+        res = await HttpX.postJson('/products/$productId/favorite', {});
+      } on ApiException catch (e) {
+        // 어떤 서버에선 products 경로가 없고 favorites 토글만 있는 경우가 있어서 폴백
+        if (e.status == 404) {
+          res = await HttpX.postJson('/favorites/$productId/toggle', {});
+        } else {
+          rethrow;
+        }
       }
     }
 
@@ -424,17 +468,22 @@ Future<FavoriteToggleResult> toggleFavoriteDetailed(String productId) async {
 
 Future<bool?> toggleFavoriteById(String productId) async {
   try {
-    final r = await toggleFavoriteDetailed(productId);
+    // 호환용: 상태를 모르면 안전하게 토글 엔드포인트로만 처리 (필요시 HeartPage에서 직접 호출 권장)
+    final r =
+        await toggleFavoriteDetailed(productId, currentlyFavorited: false);
     return r.isFavorited;
   } catch (_) {
     return null;
   }
 }
 
-Future<Map<String, dynamic>?> fetchMyFavorites({int page = 1, int limit = 50}) async {
+Future<Map<String, dynamic>?> fetchMyFavorites(
+    {int page = 1, int limit = 50}) async {
   try {
-    final j = await HttpX.get('/favorites/me', query: {'page': '$page', 'limit': '$limit'});
-    if ((j['ok'] is bool && j['ok'] == false) || (j['status'] is int && j['status'] != 200)) {
+    final j = await HttpX.get('/favorites/me',
+        query: {'page': '$page', 'limit': '$limit'});
+    if ((j['ok'] is bool && j['ok'] == false) ||
+        (j['status'] is int && j['status'] != 200)) {
       debugPrint('[API] 즐겨찾기 목록 실패: $j');
       return null;
     }
@@ -456,9 +505,81 @@ Future<Map<String, dynamic>?> fetchMyFavorites({int page = 1, int limit = 50}) a
   }
 }
 
-Future<List<Product>> fetchMyFavoriteItems({int page = 1, int limit = 50}) async {
+Future<List<Product>> fetchMyFavoriteItems(
+    {int page = 1, int limit = 50}) async {
   final m = await fetchMyFavorites(page: page, limit: limit);
   if (m == null) return const [];
   final items = (m['items'] as List?) ?? const [];
-  return items.whereType<Map<String, dynamic>>().map((e) => Product.fromJson(e)).toList();
+  return items
+      .whereType<Map<String, dynamic>>()
+      .map((e) => Product.fromJson(e))
+      .toList();
+}
+
+// ───────────────────────────────────────────────────────────
+// ▶ 조회수 적립 (상세 진입 시 1회 호출)
+//    - 서버가 최신 조회수를 돌려주면 그 값을 반환
+//    - 엔드포인트가 다르면 try-catch 폴백 분기만 바꿔주면 됨
+// ───────────────────────────────────────────────────────────
+class ViewIncrementResult {
+  final String productId;
+  final int views;
+  const ViewIncrementResult(this.productId, this.views);
+}
+
+Future<ViewIncrementResult?> incrementProductView(String productId) async {
+  if (productId.isEmpty || productId.startsWith('demo-')) return null;
+
+  // JSON 숫자/문자 어떤 형식이 와도 int로 안전 파싱
+  int _asInt(Object? v) {
+    if (v is num) return v.toInt();
+    if (v is String && v.isNotEmpty) {
+      return int.tryParse(v.replaceAll(RegExp(r'[, ]'), '')) ?? 0;
+    }
+    return 0;
+  }
+
+  Map<String, dynamic> _asMap(Object? v) =>
+      (v is Map<String, dynamic>) ? v : <String, dynamic>{};
+
+  try {
+    // 1차 시도: POST /products/:id/views
+    Map<String, dynamic> r =
+        await HttpX.postJson('/products/$productId/views', {});
+
+    // 응답은 { ok?, data: { id, views } } 혹은 평평한 { id, views } 등 다양할 수 있음
+    final flat = _flatten(r);
+    final id = (flat['id'] ?? productId).toString();
+    final views = _asInt(flat['views'] ?? _asMap(r)['views']);
+    if (views > 0) return ViewIncrementResult(id, views);
+
+    // 혹시 data 깊이에 들어있다면 거기서도 시도
+    final dat = _asMap(r['data']);
+    final v2 = _asInt(dat['views']);
+    if (v2 > 0) return ViewIncrementResult(id, v2);
+
+    // 서버가 2xx지만 views를 안 보내는 경우도 있어 null 반환(홈에서는 낙관값 유지 가능)
+    return null;
+  } on ApiException catch (e) {
+    // 404라면 서버 엔드포인트가 다른 경우일 수 있으니 폴백 경로 한 번 더 시도
+    if (e.status == 404) {
+      try {
+        // 2차 폴백 예: POST /products/:id/view  (서버에 맞춰 교체)
+        final r = await HttpX.postJson('/products/$productId/view', {});
+        final flat = _flatten(r);
+        final id = (flat['id'] ?? productId).toString();
+        final views = _asInt(flat['views']);
+        if (views > 0) return ViewIncrementResult(id, views);
+        return null;
+      } catch (_) {
+        return null;
+      }
+    }
+    // 그 외 에러는 무시(상세 화면은 계속 진행)
+    if (kDebugMode) debugPrint('[API] incrementProductView error: $e');
+    return null;
+  } catch (e, st) {
+    if (kDebugMode) debugPrint('[API] incrementProductView ex: $e\n$st');
+    return null;
+  }
 }
