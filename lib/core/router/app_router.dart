@@ -46,8 +46,7 @@ import 'package:kumeong_store/features/delivery/ku_delivery_signup_screen.dart'
     show KuDeliverySignupPage;
 
 // ⬇️ 이미 있는 import 유지 + gate 위젯 import가 있어야 함
-import 'package:kumeong_store/features/delivery/ku_delivery_gate.dart'
-    show KuDeliveryGate;
+import 'package:kumeong_store/features/delivery/ku_delivery_gate.dart' show KuDeliveryGate;
 
 // Settings
 import 'package:kumeong_store/features/settings/settings_screen.dart' show SettingsScreen;
@@ -166,12 +165,30 @@ final GoRouter appRouter = GoRouter(
                   path: 'room/:roomId',
                   builder: (context, state) {
                     final roomId = state.pathParameters['roomId']!;
-                    final ex = (state.extra as Map?) ?? const {};
+
+                    // ✅ extra 파싱 (partnerName, productId, isKuDelivery, securePaid, meUserId)
+                    final extra = state.extra;
+                    String? partnerName;
+                    String? productId;
+                    String? meUserId; // ⭐ 추가
+                    bool isKuDelivery = false;
+                    bool securePaid = false;
+
+                    if (extra is Map) {
+                      partnerName = extra['partnerName'] as String?;
+                      productId = extra['productId'] as String?;
+                      meUserId = extra['meUserId'] as String?; // ⭐ 추가
+                      isKuDelivery = extra['isKuDelivery'] as bool? ?? false;
+                      securePaid = extra['securePaid'] as bool? ?? false;
+                    }
+
                     return ChatScreen(
                       roomId: roomId,
-                      partnerName: (ex['partnerName'] as String?) ?? '상대방',
-                      isKuDelivery: ex['isKuDelivery'] as bool? ?? false,
-                      securePaid: ex['securePaid'] as bool? ?? false,
+                      partnerName: partnerName ?? '상대방',
+                      meUserId: meUserId ?? '', // ⭐ 생성자 인자로 전달
+                      isKuDelivery: isKuDelivery,
+                      securePaid: securePaid,
+                      productId: productId, // 👈 기존처럼 유지
                     );
                   },
                 ),
@@ -251,12 +268,30 @@ final GoRouter appRouter = GoRouter(
       name: R.RouteNames.chatRoomOverlay,
       builder: (context, state) {
         final roomId = state.pathParameters['roomId']!;
-        final ex = (state.extra as Map?) ?? const {};
+
+        // ✅ extra 파싱 (partnerName, productId, isKuDelivery, securePaid, meUserId)
+        final extra = state.extra;
+        String? partnerName;
+        String? productId;
+        String? meUserId; // ⭐ 추가
+        bool isKuDelivery = false;
+        bool securePaid = false;
+
+        if (extra is Map) {
+          partnerName = extra['partnerName'] as String?;
+          productId = extra['productId'] as String?;
+          meUserId = extra['meUserId'] as String?; // ⭐ 추가
+          isKuDelivery = extra['isKuDelivery'] as bool? ?? false;
+          securePaid = extra['securePaid'] as bool? ?? false;
+        }
+
         return ChatScreen(
           roomId: roomId,
-          partnerName: (ex['partnerName'] as String?) ?? '상대방',
-          isKuDelivery: ex['isKuDelivery'] as bool? ?? false,
-          securePaid: ex['securePaid'] as bool? ?? false,
+          partnerName: partnerName ?? '상대방',
+          meUserId: meUserId ?? '', // ⭐ 생성자 인자로 전달
+          isKuDelivery: isKuDelivery,
+          securePaid: securePaid,
+          productId: productId,
         );
       },
     ),

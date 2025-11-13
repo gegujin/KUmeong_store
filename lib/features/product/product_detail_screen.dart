@@ -61,9 +61,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Future<Map<String, String>> _authHeaders() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
-    final h = <String, String>{
-      'Content-Type': 'application/json; charset=utf-8'
-    };
+    final h = <String, String>{'Content-Type': 'application/json; charset=utf-8'};
     if (token != null && token.isNotEmpty) h['Authorization'] = 'Bearer $token';
     return h;
   }
@@ -164,6 +162,35 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   // ========================= 헬퍼들 =========================
 
+  Future<String?> _currentUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('session.v1');
+    if (raw == null || raw.isEmpty) return null;
+
+    try {
+      final obj = jsonDecode(raw);
+      if (obj is Map && obj['me'] is Map) {
+        final me = obj['me'] as Map;
+        final id = me['id'];
+        if (id is String && id.trim().isNotEmpty) {
+          return id.trim();
+        }
+      }
+    } catch (_) {
+      // 파싱 실패 시 그냥 null
+    }
+    return null;
+  }
+
+  String _localPartFromEmail(String? email) {
+    if (email == null) return '';
+    final trimmed = email.trim();
+    if (trimmed.isEmpty) return '';
+    final at = trimmed.indexOf('@');
+    if (at <= 0) return trimmed; // @ 없으면 전체 반환
+    return trimmed.substring(0, at).trim();
+  }
+
   String _firstNonEmptyString(List<dynamic> candidates) {
     for (final c in candidates) {
       if (c == null) continue;
@@ -260,11 +287,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             o['dong'] ?? o['town'] ?? o['neighborhood'],
             o['detail'] ?? o['roadAddress'] ?? o['street'],
           ];
-          final parts = partsRaw
-              .whereType<String>()
-              .map((e) => e.trim())
-              .where((e) => e.isNotEmpty)
-              .toList();
+          final parts =
+              partsRaw.whereType<String>().map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
           if (parts.isNotEmpty) return parts.join(' ');
         }
       }
@@ -305,14 +329,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       ]);
       if (direct.isNotEmpty) return direct;
 
-      for (final o in [
-        dyn.seller,
-        dyn.user,
-        dyn.owner,
-        dyn.author,
-        dyn.profile,
-        dyn.account
-      ]) {
+      for (final o in [dyn.seller, dyn.user, dyn.owner, dyn.author, dyn.profile, dyn.account]) {
         if (o is Map) {
           final a = _firstNonEmptyString([
             o['avatarUrl'],
@@ -337,8 +354,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
-  String _formatPrice(int p) =>
-      '${NumberFormat.decimalPattern('ko_KR').format(p)}원';
+  String _formatPrice(int p) => '${NumberFormat.decimalPattern('ko_KR').format(p)}원';
   String _timeAgo(DateTime dt) => timeago.format(dt, locale: 'ko');
 
   @override
@@ -358,14 +374,57 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final p = _product!;
 
     final String sellerName = (() {
+      // 1) 정식 name 필드
       try {
         final n = p.seller.name;
-        if (n is String && n.trim().isNotEmpty) return n.trim();
+        if (n is String && n.trim().isNotEmpty) {
+          final t = n.trim();
+          if (!_isUnknownText(t)) {
+            // 🔹 name 자체가 이메일(jin@kku.ac.kr)이면 로컬파트만 사용
+            if (t.contains('@')) {
+              final local = _localPartFromEmail(t);
+              if (local.isNotEmpty) return local;
+            }
+            return t;
+          }
+        }
       } catch (_) {}
-      return _sellerName(p);
+
+      // 2) 기타 이름 후보들(_sellerName 헬퍼)
+      try {
+        final candidate = _sellerName(p);
+        if (candidate.trim().isNotEmpty && !_isUnknownText(candidate)) {
+          final c = candidate.trim();
+          if (c.contains('@')) {
+            final local = _localPartFromEmail(c);
+            if (local.isNotEmpty) return local;
+          }
+          return c;
+        }
+      } catch (_) {}
+
+      // 3) 이메일에서 아이디 부분 뽑기 (jin@kku.ac.kr → jin)
+      try {
+        final dyn = p as dynamic;
+        String? email;
+
+        // seller.email 우선
+        if (dyn.seller != null && dyn.seller.email is String) {
+          email = dyn.seller.email as String;
+        } else if (dyn.user != null && dyn.user.email is String) {
+          // 혹시 user.email 에만 있는 경우 대비
+          email = dyn.user.email as String;
+        }
+
+        final local = _localPartFromEmail(email);
+        if (local.isNotEmpty) return local;
+      } catch (_) {}
+
+      // 4) 그래도 없으면 빈 문자열
+      return '';
     })();
-    final String displaySellerName =
-        _isUnknownText(sellerName) ? '' : sellerName;
+
+    final String displaySellerName = _isUnknownText(sellerName) ? '' : sellerName;
 
     final String productAddress = (() {
       try {
@@ -429,8 +488,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               child: SizedBox(
                 height: 300,
                 child: images.isEmpty
-                    ? const Center(
-                        child: Icon(Icons.image_not_supported, size: 64))
+                    ? const Center(child: Icon(Icons.image_not_supported, size: 64))
                     : PageView.builder(
                         controller: _thumbController,
                         itemCount: images.length,
@@ -450,10 +508,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             fit: BoxFit.contain,
                             loadingBuilder: (_, child, prog) => prog == null
                                 ? child
-                                : const Center(
-                                    child: CircularProgressIndicator()),
-                            errorBuilder: (_, __, ___) => const Center(
-                                child: Icon(Icons.broken_image, size: 48)),
+                                : const Center(child: CircularProgressIndicator()),
+                            errorBuilder: (_, __, ___) =>
+                                const Center(child: Icon(Icons.broken_image, size: 48)),
                           ),
                         ),
                       ),
@@ -466,15 +523,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 children: List.generate(
                   images.length,
                   (i) => Container(
-                    margin:
-                        const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: _thumbIndex == i
-                          ? colors.primary
-                          : colors.onSurface.withAlpha(80),
+                      color: _thumbIndex == i ? colors.primary : colors.onSurface.withAlpha(80),
                     ),
                   ),
                 ),
@@ -578,12 +632,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         ),
 
         // 하단 채팅하기 + 찜 버튼
-        bottomNavigationBar: _buildBottomBar(colors),
+        bottomNavigationBar: _buildBottomBar(colors, displaySellerName),
       ),
     );
   }
 
-  Widget _buildBottomBar(ColorScheme colors) {
+  // 하단 채팅하기 + 찜 버튼
+  Widget _buildBottomBar(ColorScheme colors, String displaySellerName) {
+    // 이 시점에는 _product != null 인 상태에서만 호출됨
+    final product = _product!;
+
     return SafeArea(
       minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Row(
@@ -615,41 +673,64 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   ? null
                   : () async {
                       if (_product == null) return;
+
                       setState(() => _creating = true);
                       try {
-                        final productId = widget.productId; // UUID 사용
-                        final roomId = await chatsApi
-                            .ensureTrade(productId); // ✅ ChatsApi 호출
-
-                        if (!mounted) return;
-                        // 판매자 정보
-                        String peerId = '';
-                        String peerName = '';
-                        try {
-                          peerId = _product!.seller.id;
-                        } catch (_) {}
-                        try {
-                          peerName = _product!.seller.name;
-                        } catch (_) {}
-                        if (peerName.trim().isEmpty) {
-                          peerName = _sellerName(_product!);
+                        // 1) 내 유저 ID 읽기
+                        final meUserId = await _currentUserId();
+                        if (meUserId == null || meUserId.isEmpty) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('로그인 정보를 불러오지 못했습니다. 다시 로그인 해주세요.'),
+                            ),
+                          );
+                          return;
                         }
 
+                        // 2) 내가 등록한 상품이면 채팅 금지
+                        final sellerId = product.seller.id.trim();
+                        if (sellerId.isNotEmpty && sellerId == meUserId.trim()) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('사용자가 등록한 상품이라 채팅방을 생성할 수 없습니다.'),
+                            ),
+                          );
+                          return;
+                        }
+
+                        // 3) 거래방 멱등 생성
+                        final productId = widget.productId; // 문자열 ID
+                        final roomId = await chatsApi.ensureTrade(productId);
+
+                        if (!mounted) return;
+
+                        // 4) 파트너 이름(판매자 표시명)
+                        final partnerName =
+                            displaySellerName.isNotEmpty ? displaySellerName : '상대방';
+
+                        // 5) 채팅방으로 이동 (GoRouter)
                         context.pushNamed(
                           R.RouteNames.chatRoom,
                           pathParameters: {'roomId': roomId},
                           extra: {
-                            'peerId': _product!.seller.id,
-                            'peerName': _product!.seller.name,
-                            'isTrade': true,
+                            'partnerName': partnerName,
+                            'productId': productId,
+                            'meUserId': meUserId,
+                            'isKuDelivery': false,
+                            'securePaid': false,
                           },
                         );
                       } catch (e) {
+                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('채팅방 생성 실패: $e')),
                         );
                       } finally {
-                        if (mounted) setState(() => _creating = false);
+                        if (mounted) {
+                          setState(() => _creating = false);
+                        }
                       }
                     },
               child: _creating
@@ -749,8 +830,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -766,8 +846,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         throw '위치 권한이 거부되었습니다.';
       }
     }
-    return Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
+    return Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
   }
 
   Future<void> _openNaverMap(
@@ -806,16 +885,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   // --- 판매자 이름 보정 ---
   Future<String?> _fetchUserNameById(String userId) async {
     if (userId.isEmpty) return null;
+
     final uri = Uri.parse('$baseUrl/users/$userId');
     final res = await http.get(uri, headers: await _authHeaders());
     if (res.statusCode != 200) return null;
 
     final obj = jsonDecode(res.body);
     final data = (obj is Map) ? (obj['data'] ?? obj) : null;
-    if (data is Map) {
-      final n = data['name'];
-      if (n is String && n.trim().isNotEmpty) return n.trim();
+    if (data is! Map) return null;
+
+    final rawName = (data['name'] as String?)?.trim();
+    final rawEmail = (data['email'] as String?)?.trim();
+
+    // 1) name이 제대로 있으면 그대로 사용
+    if (rawName != null && rawName.isNotEmpty && !_isUnknownText(rawName)) {
+      return rawName;
     }
+
+    // 2) name이 없거나 "알 수 없음"이면 이메일에서 로컬파트 추출
+    final local = _localPartFromEmail(rawEmail);
+    if (local.isNotEmpty) {
+      return local; // ex) vm@kku.ac.kr → "vm"
+    }
+
     return null;
   }
 
@@ -861,15 +953,13 @@ class _SellerCard extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: 28,
-          backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
-              ? NetworkImage(avatarUrl!)
-              : null,
+          backgroundImage:
+              (avatarUrl != null && avatarUrl!.isNotEmpty) ? NetworkImage(avatarUrl!) : null,
           child: (avatarUrl == null || avatarUrl!.isEmpty)
               ? (name.isNotEmpty
                   ? Text(
                       name[0].toUpperCase(),
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                     )
                   : null)
               : null,
@@ -896,8 +986,7 @@ class _SellerCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: Colors.green.shade50,
                         borderRadius: BorderRadius.circular(12),
@@ -933,8 +1022,7 @@ class _SellerCard extends StatelessWidget {
               itemCount: 5,
               itemSize: 20.0,
               unratedColor: Colors.grey.shade300,
-              itemBuilder: (context, index) =>
-                  const Icon(Icons.star, color: Colors.orange),
+              itemBuilder: (context, index) => const Icon(Icons.star, color: Colors.orange),
               direction: Axis.horizontal,
             ),
             const SizedBox(height: 4),
@@ -952,8 +1040,7 @@ class _SellerCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   '${safeRating.toStringAsFixed(1)}/5',
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -1041,11 +1128,10 @@ class _PhotoGalleryPageState extends State<PhotoGalleryPage> {
           child: Image.network(
             widget.images[i],
             fit: BoxFit.contain,
-            loadingBuilder: (_, child, prog) => prog == null
-                ? child
-                : const Center(child: CircularProgressIndicator()),
-            errorBuilder: (_, __, ___) => const Center(
-                child: Icon(Icons.broken_image, color: Colors.white, size: 64)),
+            loadingBuilder: (_, child, prog) =>
+                prog == null ? child : const Center(child: CircularProgressIndicator()),
+            errorBuilder: (_, __, ___) =>
+                const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 64)),
           ),
         ),
       ),

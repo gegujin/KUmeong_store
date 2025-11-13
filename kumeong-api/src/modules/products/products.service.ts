@@ -107,6 +107,7 @@ export class ProductsService {
     const row = await this.repo
       .createQueryBuilder('p')
       .leftJoinAndSelect('p.images', 'img')
+      .leftJoinAndSelect('p.seller', 'seller')
       .where('p.id = :id', { id })
       .andWhere('p.deletedAt IS NULL')
       .orderBy('img.ord', 'ASC')

@@ -174,23 +174,43 @@ Future<void> openProductChat({
       return;
     }
 
-    // (선택) meUserId 필요 시 읽기
+    // ✅ 상품 채팅에서는 meUserId가 필수는 아님 (방 생성은 토큰 기준)
+    //    다만 UI 용도로는 쓸 수 있으니, 실패해도 그냥 빈 문자열로 둔다.
     final meUserId = await _readMeUserId();
-    if (meUserId.isEmpty) {
-      _closeLoading(context);
-      _toast(context, '로그인 정보를 불러오지 못했습니다. 다시 로그인 해주세요.');
-      return;
+
+    // ⭐ (선택) 내가 상품 작성자인 경우 → 서버 호출 전에 한 번 더 방어
+    if (sellerId != null && meUserId.isNotEmpty) {
+      final normSeller = _normalizeId(sellerId);
+      if (normSeller.isNotEmpty && normSeller == meUserId) {
+        _closeLoading(context);
+        _toast(context, '사용자가 등록한 상품이라 채팅방을 생성할 수 없습니다.');
+        return;
+      }
     }
 
     // 1) 서버에서 거래방 멱등 생성
     final api = const ChatsApi();
-    final String roomId = await api.ensureTrade(pid);
+    final String roomId;
+    try {
+      roomId = await api.ensureTrade(pid);
+    } catch (e) {
+      // ⭐ 백엔드에서 buyerId/sellerId 동일 에러를 던지는 경우 방어
+      final msg = e.toString();
+      _closeLoading(context);
+
+      if (msg.contains('buyerId and sellerId cannot be the same')) {
+        _toast(context, '사용자가 등록한 상품이라 채팅방을 생성할 수 없습니다.');
+        return;
+      }
+
+      _toast(context, '상품 채팅 열기 실패: $e');
+      return;
+    }
 
     // 2) 이동
     _closeLoading(context);
     if (!context.mounted) return;
 
-    // ChatScreen으로 진입 (파트너명/배달옵션 전달)
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ChatScreen(
@@ -198,6 +218,8 @@ Future<void> openProductChat({
           roomId: roomId,
           isKuDelivery: isKuDelivery,
           securePaid: securePaid,
+          productId: pid,
+          meUserId: meUserId, // UI 용: 비어 있어도 괜찮게 처리
         ),
       ),
     );

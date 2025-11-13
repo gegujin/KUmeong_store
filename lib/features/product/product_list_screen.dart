@@ -1,5 +1,8 @@
+// lib/features/product/product_list_screen.dart (예시 파일명)
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 
 import 'package:kumeong_store/core/widgets/app_bottom_nav.dart'; // 하단바 (미사용이어도 유지)
@@ -9,14 +12,14 @@ import '../home/home_screen.dart';
 import 'package:kumeong_store/features/product/product_detail_screen.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
 import 'package:go_router/go_router.dart';
+import 'package:kumeong_store/core/base_url.dart'; // ✅ 공통 apiUrl 사용
 
 // ───────────────────────────────────────────────────────────
-// 공통: API 베이스 URL 빌더 (프로젝트 규칙에 맞춰 있으면 교체)
+// 공통: API 베이스 URL 빌더 (프로젝트 규칙에 맞춰 apiUrl 사용)
 // ───────────────────────────────────────────────────────────
-String _apiUrl(String path) {
-  // core/base_url.dart의 apiUrl()을 쓰고 있다면 아래로 교체:
-  // return apiUrl(path);
-  return 'http://localhost:3000/api/v1$path';
+Uri _apiUrl(String path) {
+  // core/base_url.dart 의 apiUrl(path, [query]) 규칙에 맞춰 사용
+  return apiUrl(path);
 }
 
 // ───────────────────────────────────────────────────────────
@@ -58,8 +61,7 @@ class _ProductPageState extends State<ProductPage> {
     // DB에는 "메인>서브"로 저장됨
     String dbCat = '${main.trim()}>${sub.trim()}';
     // 혹시 모를 개행/탭 제거
-    dbCat =
-        dbCat.replaceAll('\n', '').replaceAll('\r', '').replaceAll('\t', '');
+    dbCat = dbCat.replaceAll('\n', '').replaceAll('\r', '').replaceAll('\t', '');
 
     final params = <String, String>{
       'category': dbCat,
@@ -68,9 +70,8 @@ class _ProductPageState extends State<ProductPage> {
     };
 
     // ✅ 쿼리 파라미터는 여기서 맡기면 개행·인코딩 문제 없음
-    final base =
-        _apiUrl('/products'); // ex) http://localhost:3000/api/v1/products
-    final uri = Uri.parse(base).replace(queryParameters: params);
+    final base = _apiUrl('/products'); // base: Uri
+    final uri = base.replace(queryParameters: params);
 
     debugPrint('[ProductPage] GET $uri');
     return uri;
@@ -83,10 +84,14 @@ class _ProductPageState extends State<ProductPage> {
         sub: widget.subCategory,
       );
 
-      final resp = await http.get(uri, headers: {
-        'Content-Type': 'application/json',
-        // 'Authorization': 'Bearer ${await TokenStorage.getAccessToken()}',
-      });
+      final resp = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          // TODO: 로그인 연동 시 토큰 헤더 추가
+          // 'Authorization': 'Bearer ${await TokenStorage.getAccessToken()}',
+        },
+      );
 
       if (resp.statusCode != 200) {
         throw Exception('상품 조회 실패 (${resp.statusCode}) : ${resp.body}');
@@ -116,11 +121,9 @@ class _ProductPageState extends State<ProductPage> {
 
       final normalized = list.map<Map<String, dynamic>>((raw) {
         final m = (raw as Map);
-        final imageUrls =
-            (m['imageUrls'] is List) ? (m['imageUrls'] as List) : const [];
+        final imageUrls = (m['imageUrls'] is List) ? (m['imageUrls'] as List) : const [];
         final thumb =
-            (m['thumbnailUrl'] ?? (imageUrls.isNotEmpty ? imageUrls.first : ''))
-                .toString();
+            (m['thumbnailUrl'] ?? (imageUrls.isNotEmpty ? imageUrls.first : '')).toString();
 
         return {
           'id': m['id'] ?? m['_id'],
@@ -202,10 +205,9 @@ class _ProductPageState extends State<ProductPage> {
                             // 1) GoRouter 네임드 라우트 사용 (등록되어 있다면 권장)
                             try {
                               context.pushNamed(
-                                R.RouteNames
-                                    .productDetail, // ex) 'productDetail'
+                                R.RouteNames.productDetail, // ex) 'productDetail'
                                 pathParameters: {
-                                  'productId': id
+                                  'productId': id,
                                 }, // 라우트 정의 키에 맞추기
                                 // extra: {'initialProduct': null},   // 필요 시 초기 데이터 넘길 때
                               );
@@ -215,14 +217,13 @@ class _ProductPageState extends State<ProductPage> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                    builder: (_) =>
-                                        ProductDetailScreen(productId: id)),
+                                  builder: (_) => ProductDetailScreen(productId: id),
+                                ),
                               );
                             }
                           },
                           child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             child: Row(
                               children: [
                                 // 썸네일
@@ -234,13 +235,13 @@ class _ProductPageState extends State<ProductPage> {
                                           width: 80,
                                           height: 80,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) =>
-                                              Container(
+                                          errorBuilder: (_, __, ___) => Container(
                                             width: 80,
                                             height: 80,
                                             color: Colors.grey[300],
                                             child: const Icon(
-                                                Icons.image_not_supported),
+                                              Icons.image_not_supported,
+                                            ),
                                           ),
                                         )
                                       : Container(
@@ -254,31 +255,32 @@ class _ProductPageState extends State<ProductPage> {
                                 // 텍스트
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         title,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16),
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
                                       ),
                                       const SizedBox(height: 6),
                                       Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
                                           Text(
                                             '$loc | ${_timeAgo(createdAt)}',
                                             style: const TextStyle(
-                                                color: Colors.grey),
+                                              color: Colors.grey,
+                                            ),
                                           ),
                                           Text(
                                             '찜 $fav  조회수 $views',
                                             style: const TextStyle(
-                                                color: Colors.grey),
+                                              color: Colors.grey,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -407,7 +409,6 @@ class _CategoryPageState extends State<CategoryPage> {
                     (sub) => ListTile(
                       title: Text(sub),
                       onTap: () {
-                        // ✅ 더미 리스트 제거: 실제 카테고리만 넘김
                         Navigator.push(
                           context,
                           MaterialPageRoute(

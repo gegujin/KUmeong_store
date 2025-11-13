@@ -13,15 +13,19 @@ class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
     required this.partnerName,
+    required this.meUserId,
     this.roomId,
     this.isKuDelivery = false,
     this.securePaid = false,
+    this.productId, // ⭐ 신규 파라미터 (nullable)
   });
 
   final String partnerName;
+  final String meUserId;
   final String? roomId;
   final bool isKuDelivery; // 복귀 시 에스크로(배달) 여부 표시
   final bool securePaid; // 복귀 시 결제/선택 완료 여부 표시
+  final String? productId; // ⭐ 거래 채팅이면 상품 ID 넘어옴
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -92,18 +96,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ── Helpers ────────────────────────────────────────────────────
-  String _resolveMyUserId() {
-    // TODO: 프로젝트의 세션/프로바이더에서 me.id 가져오기
-    // 예: context.read(sessionProvider).me!.id 등
-    // 여기서는 런타임 오류 방지를 위해 try-catch + fallback 처리
-    try {
-      // ignore: dead_code
-      // return session.me!.id; // 네 프로젝트 전역 세션이 있다면 이렇게
-      return ''; // fallback
-    } catch (_) {
-      return '';
-    }
-  }
+  String _resolveMyUserId() => widget.meUserId;
 
   bool _isMe(String senderId) => senderId.isNotEmpty && senderId == _myUserId;
 
@@ -259,7 +252,9 @@ class _ChatScreenState extends State<ChatScreen> {
   /// 거래 방식 선택 화면으로 이동 → 결과는 paymentMethod에서 처리
   Future<void> _goTradeMethod() async {
     final roomId = widget.roomId ?? 'room-demo';
-    const productId = 'demo-product';
+
+    // ⭐ 상품 상세에서 넘어온 productId 우선 사용, 없으면 데모값
+    final productId = widget.productId ?? 'demo-product';
 
     await context.pushNamed(
       'tradeConfirm',
