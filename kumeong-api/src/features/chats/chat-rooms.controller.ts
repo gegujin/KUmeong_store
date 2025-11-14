@@ -49,6 +49,8 @@ export class ChatRoomsController {
         unreadCount: 0, // TODO: 실제 계산 로직으로 교체
         lastMessageAt: r.lastMessageAt ?? null,
         lastSnippet: r.lastSnippet ?? null,
+        partnerName: r.partnerName ?? null,  // ✅ 추가
+        partnerEmail: r.partnerEmail ?? null, // ✅ 추가
       }));
     }
     return [];

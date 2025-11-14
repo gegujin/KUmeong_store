@@ -325,27 +325,77 @@ export class ChatsService {
     return rows?.[0]?.id ?? null;
   }
 
-  // ── DS 기반 내 방 목록 ─────────
-  async listMyRooms(meUserId: string) {
+    // ── DS 기반 내 방 목록 ─────────
+  // src/features/chats/chats.service.ts
+
+    // ── DS 기반 내 방 목록 ─────────
+  //   - opts 형태({ meUserId, limit })도 받고
+  //   - 그냥 meUserId 문자열만 넘겨도 동작하도록 처리
+  async listMyRooms(optsOrMeUserId: any) {
+    let meUserId: string;
+    let limit = 50;
+
+    if (typeof optsOrMeUserId === 'string') {
+      // ChatRoomsController처럼 string만 넘긴 경우
+      meUserId = optsOrMeUserId;
+    } else if (optsOrMeUserId && typeof optsOrMeUserId === 'object') {
+      // ChatsController처럼 { meUserId, mine, limit } 넘긴 경우
+      meUserId = String(optsOrMeUserId.meUserId);
+      if (optsOrMeUserId.limit != null) {
+        const n = Number(optsOrMeUserId.limit);
+        if (!Number.isNaN(n) && n > 0 && n <= 200) {
+          limit = n;
+        }
+      }
+    } else {
+      throw new BadRequestException('meUserId required');
+    }
+
     assertUuidLike(meUserId, 'meUserId');
+
     const rows = await this.ds.query(
       `
-      SELECT id, lastSnippet, lastMessageAt
-      FROM chatRooms
-      WHERE buyerId = ? OR sellerId = ?
-      ORDER BY COALESCE(lastMessageAt, createdAt) DESC
+      SELECT
+        r.id,
+        r.id AS roomId,
+        r.lastSnippet,
+        r.lastMessageAt,
+        -- 내가 buyer면 seller 이름/이메일, 내가 seller면 buyer 이름/이메일
+        CASE
+          WHEN r.buyerId = ? THEN us.name
+          WHEN r.sellerId = ? THEN ub.name
+          ELSE NULL
+        END AS partnerName,
+        CASE
+          WHEN r.buyerId = ? THEN us.email
+          WHEN r.sellerId = ? THEN ub.email
+          ELSE NULL
+        END AS partnerEmail
+      FROM chatRooms r
+        LEFT JOIN users ub ON ub.id = r.buyerId
+        LEFT JOIN users us ON us.id = r.sellerId
+      WHERE r.buyerId = ? OR r.sellerId = ?
+      ORDER BY COALESCE(r.lastMessageAt, r.createdAt) DESC
+      LIMIT ?
       `,
-      [meUserId, meUserId],
+      // ? 6개 → meUserId 다섯 번 + limit 한 번
+      [meUserId, meUserId, meUserId, meUserId, meUserId, limit],
     );
-    return rows.map((r: any) => (keyifyRoomRow(r)));
+
+    // 아래 helper로 shape 정리
+    return rows.map((r: any) => keyifyRoomRow(r));
   }
+
 }
 
 // 내부 헬퍼
 function keyifyRoomRow(r: any) {
   return {
-    id: String(r.id),
-    lastSnippet: r.lastSnippet ?? null,
+    id: String(r.id ?? r.roomId),
+    roomId: String(r.roomId ?? r.id),
+    lastSnippet: r.lastSnippet ?? '',
     lastMessageAt: r.lastMessageAt ?? null,
+    partnerName: r.partnerName ?? '',
+    partnerEmail: r.partnerEmail ?? '',
   };
 }

@@ -108,6 +108,39 @@ export class ChatsController {
   // Endpoints
   // ─────────────────────────────────────────────────────────────
 
+  // ⭐ NEW
+  /**
+   * ✅ GET /api/v1/chat/rooms?mine=1&limit=50
+   *  - 프런트 채팅 목록(친구 + 거래방) 조회
+   */
+  @Get('rooms')
+  async getMyRooms(
+    @Req() req: any,
+    @Query('mine') mine = '1',
+    @Query('limit') limitRaw = '50',
+  ) {
+    const meUserId: string | undefined = req.user?.sub || req.user?.id;
+    if (!meUserId) {
+      throw new HttpException('UNAUTHENTICATED', HttpStatus.UNAUTHORIZED);
+    }
+
+    const onlyMine =
+      mine === '1' || mine === 'true' || mine === 'yes' || mine === 'Y' || mine === 'y';
+
+    let limit = parseInt(limitRaw ?? '50', 10);
+    if (Number.isNaN(limit)) limit = 50;
+    limit = Math.min(200, Math.max(1, limit));
+
+    // ChatsService 쪽에 listMyRooms 구현 필요 (opts 형태로 설계)
+    const items = await this.chats.listMyRooms({
+      meUserId: String(meUserId),
+      mine: onlyMine,
+      limit,
+    });
+
+    return { ok: true, data: items };
+  }
+
   /**
    * ✅ POST /api/v1/chat/rooms/ensure-trade
    * Body: { productId: UUID }
