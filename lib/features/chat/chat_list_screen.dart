@@ -61,6 +61,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   Future<void> _refresh() => _load();
 
+  /// 🔹 partnerName이 비어있거나 '상대방'일 때를 위한 디스플레이용 이름
+  String _displayName(ChatRoomSummaryDto chat) {
+    final raw = (chat.partnerName ?? '').trim();
+    if (raw.isNotEmpty && raw != '상대방') {
+      return raw;
+    }
+    // TODO: 나중에 peerName / peerEmail 같은 필드 추가되면 여기서 사용
+    return '상대방';
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -96,9 +106,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
               onTap: () async {
                 await context.pushNamed(
                   R.RouteNames.chatRoomOverlay,
+                  // 🔸 roomId로 사용하는 필드가 뭐가 맞는지 주의 (id vs roomId)
                   pathParameters: {'roomId': chat.id},
                   extra: {
-                    'partnerName': chat.partnerName,
+                    'partnerName': _displayName(chat),
                     'isKuDelivery': false,
                     'securePaid': false,
                   },
@@ -108,7 +119,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
               },
               leading: _Avatar(url: chat.avatarUrl),
               title: Text(
-                chat.partnerName,
+                _displayName(chat),
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 overflow: TextOverflow.ellipsis,
               ),

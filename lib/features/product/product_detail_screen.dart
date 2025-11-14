@@ -676,48 +676,27 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
                       setState(() => _creating = true);
                       try {
-                        // 1) 내 유저 ID 읽기
-                        final meUserId = await _currentUserId();
-                        if (meUserId == null || meUserId.isEmpty) {
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('로그인 정보를 불러오지 못했습니다. 다시 로그인 해주세요.'),
-                            ),
-                          );
-                          return;
-                        }
+                        final productId = widget.productId;
 
-                        // 2) 내가 등록한 상품이면 채팅 금지
-                        final sellerId = product.seller.id.trim();
-                        if (sellerId.isNotEmpty && sellerId == meUserId.trim()) {
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('사용자가 등록한 상품이라 채팅방을 생성할 수 없습니다.'),
-                            ),
-                          );
-                          return;
-                        }
-
-                        // 3) 거래방 멱등 생성
-                        final productId = widget.productId; // 문자열 ID
+                        // 1) 거래방 멱등 생성
                         final roomId = await chatsApi.ensureTrade(productId);
-
                         if (!mounted) return;
 
-                        // 4) 파트너 이름(판매자 표시명)
+                        // 2) 현재 로그인한 사용자 ID 읽기
+                        final meUserId = await _currentUserId(); // 상단에 이미 정의돼 있음(null일 수도 있음)
+
+                        // 3) 상대 이름 결정
                         final partnerName =
                             displaySellerName.isNotEmpty ? displaySellerName : '상대방';
 
-                        // 5) 채팅방으로 이동 (GoRouter)
+                        // 4) 채팅방 화면으로 이동 (GoRouter)
                         context.pushNamed(
                           R.RouteNames.chatRoom,
                           pathParameters: {'roomId': roomId},
                           extra: {
                             'partnerName': partnerName,
                             'productId': productId,
-                            'meUserId': meUserId,
+                            'meUserId': meUserId ?? '',
                             'isKuDelivery': false,
                             'securePaid': false,
                           },
@@ -728,9 +707,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           SnackBar(content: Text('채팅방 생성 실패: $e')),
                         );
                       } finally {
-                        if (mounted) {
-                          setState(() => _creating = false);
-                        }
+                        if (mounted) setState(() => _creating = false);
                       }
                     },
               child: _creating

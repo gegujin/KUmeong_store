@@ -330,38 +330,76 @@ Future<Product?> fetchProductById(String productId, {String? token}) async {
 }
 
 class ChatRoomSummaryDto {
-  final String id; // roomId
-  final String partnerName;
+  final String id;
+  final String roomId;
+  final String partnerName; // 상대방 표시 이름(없으면 roomId 일부로 대체 가능)
   final String lastMessage;
-  final DateTime updatedAt;
   final int unreadCount;
-  final String? avatarUrl;
+  final DateTime updatedAt;
+
+  /// 🔹 프로필 이미지 URL (지금은 서버에서 안 보내서 대부분 빈 문자열)
+  final String avatarUrl;
 
   ChatRoomSummaryDto({
     required this.id,
+    required this.roomId,
     required this.partnerName,
     required this.lastMessage,
-    required this.updatedAt,
     required this.unreadCount,
-    this.avatarUrl,
+    required this.updatedAt,
+    this.avatarUrl = '',
   });
 
-  factory ChatRoomSummaryDto.fromMap(Map<String, dynamic> m) {
-    String _s(Object? v) => v?.toString() ?? '';
-    int _i(Object? v) => (v is num) ? v.toInt() : int.tryParse('${v ?? 0}') ?? 0;
-    DateTime _dt(Object? v) {
-      final s = _s(v);
-      if (s.isEmpty) return DateTime.fromMillisecondsSinceEpoch(0);
-      return DateTime.tryParse(s) ?? DateTime.fromMillisecondsSinceEpoch(0);
+  factory ChatRoomSummaryDto.fromJson(Map<String, dynamic> json) {
+    // id / roomId
+    final id = (json['id'] ?? json['roomId'] ?? '').toString();
+    final roomId = (json['roomId'] ?? id).toString();
+
+    // 안 읽은 개수
+    final unreadRaw = json['unreadCount'];
+    final unread = unreadRaw is num ? unreadRaw.toInt() : 0;
+
+    // 마지막 메시지(스니펫)
+    final snippet = (json['lastSnippet'] ?? '').toString();
+
+    // 마지막 메시지 시간
+    final lastAtStr = json['lastMessageAt']?.toString();
+    DateTime lastAt;
+    if (lastAtStr == null || lastAtStr.isEmpty) {
+      // null이면 아주 옛날 시점으로 넣어서 정렬 시 뒤로 가도록
+      lastAt = DateTime.fromMillisecondsSinceEpoch(0);
+    } else {
+      lastAt = DateTime.parse(lastAtStr).toLocal();
     }
 
+    // 🔹 상대방 이름: partnerName > peerName > peerEmail > fallback
+    String partnerName = '';
+    final rawPartner =
+        (json['partnerName'] ?? json['peerName'] ?? json['peerEmail'] ?? '').toString().trim();
+
+    if (rawPartner.isNotEmpty) {
+      partnerName = rawPartner;
+    } else {
+      // 서버가 아직 이름을 안 줄 때는 roomId 앞부분으로 임시 표시
+      partnerName = '거래 채팅 (${roomId.substring(0, 6)})';
+    }
+
+    // 🔹 아바타 URL: 나중에 서버가 뭘 줄지 대비해서 후보 키 여러 개 체크
+    final avatar = (json['avatarUrl'] ??
+            json['peerAvatar'] ??
+            json['peerProfileImage'] ??
+            json['peerProfileImageUrl'] ??
+            '')
+        .toString();
+
     return ChatRoomSummaryDto(
-      id: _s(m['roomId'] ?? m['id']),
-      partnerName: _s(m['partnerName'] ?? m['peerNameOrEmail'] ?? m['peerEmail'] ?? '상대방'),
-      lastMessage: _s(m['lastSnippet'] ?? m['lastMessage'] ?? ''),
-      updatedAt: _dt(m['lastMessageAt'] ?? m['updatedAt'] ?? m['lastSeenAt']),
-      unreadCount: _i(m['unreadCount']),
-      avatarUrl: m['avatarUrl']?.toString(),
+      id: id,
+      roomId: roomId,
+      partnerName: partnerName,
+      lastMessage: snippet,
+      unreadCount: unread,
+      updatedAt: lastAt,
+      avatarUrl: avatar,
     );
   }
 }
@@ -380,13 +418,12 @@ Future<List<ChatRoomSummaryDto>> fetchMyChatRooms({int limit = 50}) async {
     final res = await HttpX.get(
       '/chat/rooms',
       query: {
-        'mine': '1', // ✅ 내가 속한 방만
+        'mine': '1',
         'limit': '$limit',
       },
-      noCache: true, // 선택이지만 있으면 캐시 방지
+      noCache: true,
     );
 
-    // 응답 래핑 구조: { ok, data: [...] } / { data: { items: [...] } } / [... ]
     dynamic data = res;
     if (data is Map<String, dynamic>) {
       data = data['data'] ?? data['items'] ?? data;
@@ -401,16 +438,20 @@ Future<List<ChatRoomSummaryDto>> fetchMyChatRooms({int limit = 50}) async {
       list = const [];
     }
 
-    return list.whereType<Map<String, dynamic>>().map(ChatRoomSummaryDto.fromMap).toList();
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((e) => ChatRoomSummaryDto.fromJson(e))
+        .toList();
   } catch (_) {
     // fall through to friends
   }
 
-  // 2) 대체: /friends → roomId, lastSnippet, lastMessageAt, unreadCount 이용
+  // 2) /friends 폴백
   final r2 = await HttpX.get('/friends');
   final arr = (r2['data'] ?? r2['items'] ?? r2);
   final list = arr is List ? arr : const [];
-  return list.whereType<Map<String, dynamic>>().map(ChatRoomSummaryDto.fromMap).toList();
+
+  return list.whereType<Map<String, dynamic>>().map((e) => ChatRoomSummaryDto.fromJson(e)).toList();
 }
 
 class FavoriteToggleResult {
