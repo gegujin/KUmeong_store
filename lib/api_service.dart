@@ -350,7 +350,7 @@ class ChatRoomSummaryDto {
     this.avatarUrl = '',
   });
 
-  factory ChatRoomSummaryDto.fromJson(Map<String, dynamic> json) {
+  factory ChatRoomSummaryDto.fromJson(Map json) {
     // id / roomId
     final id = (json['id'] ?? json['roomId'] ?? '').toString();
     final roomId = (json['roomId'] ?? id).toString();
@@ -366,25 +366,41 @@ class ChatRoomSummaryDto {
     final lastAtStr = json['lastMessageAt']?.toString();
     DateTime lastAt;
     if (lastAtStr == null || lastAtStr.isEmpty) {
-      // null이면 아주 옛날 시점으로 넣어서 정렬 시 뒤로 가도록
       lastAt = DateTime.fromMillisecondsSinceEpoch(0);
     } else {
       lastAt = DateTime.parse(lastAtStr).toLocal();
     }
 
-    // 🔹 상대방 이름: partnerName > peerName > peerEmail > fallback
-    String partnerName = '';
-    final rawPartner =
-        (json['partnerName'] ?? json['peerName'] ?? json['peerEmail'] ?? '').toString().trim();
-
-    if (rawPartner.isNotEmpty) {
-      partnerName = rawPartner;
-    } else {
-      // 서버가 아직 이름을 안 줄 때는 roomId 앞부분으로 임시 표시
-      partnerName = '거래 채팅 (${roomId.substring(0, 6)})';
+    // 🔽 여기부터 partnerName / 이메일 처리 부분 수정
+    // 이메일에서 '@' 앞부분만 잘라주는 헬퍼
+    String _emailLocalPart(String v) {
+      final s = v.trim();
+      final at = s.indexOf('@');
+      if (at <= 0) return s; // '@' 없거나 맨 앞이면 전체 사용
+      return s.substring(0, at);
     }
 
-    // 🔹 아바타 URL: 나중에 서버가 뭘 줄지 대비해서 후보 키 여러 개 체크
+    // 상대방 이름 우선순위:
+    // 1) partnerName / peerName
+    // 2) partnerEmail / peerEmail 의 local-part (jin@kku.ac.kr → jin)
+    // 3) fallback: "거래 채팅 (roomId앞 6자리)"
+    String partnerName = '';
+
+    final rawPartnerName = (json['partnerName'] ?? json['peerName'] ?? '').toString().trim();
+
+    final rawEmailAny =
+        (json['partnerEmail'] ?? json['peerEmail'] ?? json['peerEmail'] ?? '').toString().trim();
+
+    if (rawPartnerName.isNotEmpty) {
+      partnerName = rawPartnerName;
+    } else if (rawEmailAny.isNotEmpty) {
+      partnerName = _emailLocalPart(rawEmailAny);
+    } else {
+      partnerName = '거래 채팅 (${roomId.substring(0, 6)})';
+    }
+    // 🔼 여기까지 새 이름 처리 로직
+
+    // 아바타 URL: 나중에 서버가 뭘 줄지 대비해서 후보 키 여러 개 체크
     final avatar = (json['avatarUrl'] ??
             json['peerAvatar'] ??
             json['peerProfileImage'] ??

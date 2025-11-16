@@ -354,33 +354,33 @@ export class ChatsService {
     assertUuidLike(meUserId, 'meUserId');
 
     const rows = await this.ds.query(
-      `
-      SELECT
-        r.id,
-        r.id AS roomId,
-        r.lastSnippet,
-        r.lastMessageAt,
-        -- 내가 buyer면 seller 이름/이메일, 내가 seller면 buyer 이름/이메일
-        CASE
-          WHEN r.buyerId = ? THEN us.name
-          WHEN r.sellerId = ? THEN ub.name
-          ELSE NULL
-        END AS partnerName,
-        CASE
-          WHEN r.buyerId = ? THEN us.email
-          WHEN r.sellerId = ? THEN ub.email
-          ELSE NULL
-        END AS partnerEmail
-      FROM chatRooms r
-        LEFT JOIN users ub ON ub.id = r.buyerId
-        LEFT JOIN users us ON us.id = r.sellerId
-      WHERE r.buyerId = ? OR r.sellerId = ?
-      ORDER BY COALESCE(r.lastMessageAt, r.createdAt) DESC
-      LIMIT ?
-      `,
-      // ? 6개 → meUserId 다섯 번 + limit 한 번
-      [meUserId, meUserId, meUserId, meUserId, meUserId, limit],
-    );
+    `
+    SELECT
+      r.id,
+      r.id AS roomId,
+      r.lastSnippet,
+      r.lastMessageAt,
+      -- 내가 buyer면 seller 이름/이메일, 내가 seller면 buyer 이름/이메일
+      CASE
+        WHEN r.buyerId = ? THEN us.name
+        WHEN r.sellerId = ? THEN ub.name
+        ELSE NULL
+      END AS partnerName,
+      CASE
+        WHEN r.buyerId = ? THEN us.email
+        WHEN r.sellerId = ? THEN ub.email
+        ELSE NULL
+      END AS partnerEmail
+    FROM chatRooms r
+      LEFT JOIN users ub ON ub.id = r.buyerId
+      LEFT JOIN users us ON us.id = r.sellerId
+    WHERE r.buyerId = ? OR r.sellerId = ?
+    ORDER BY COALESCE(r.lastMessageAt, r.createdAt) DESC
+    LIMIT ?
+    `,
+    // ? 7개 → meUserId 여섯 번 + limit 한 번
+    [meUserId, meUserId, meUserId, meUserId, meUserId, meUserId, limit],
+  );
 
     // 아래 helper로 shape 정리
     return rows.map((r: any) => keyifyRoomRow(r));

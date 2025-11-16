@@ -29,6 +29,7 @@ import 'package:kumeong_store/features/mypage/recent_post_screen.dart' show Rece
 import 'package:kumeong_store/features/friend/friend_screen.dart' show FriendScreen;
 import 'package:kumeong_store/features/friend/friend_requests_screen.dart'
     show FriendRequestsScreen; // ✅ 추가
+import 'package:kumeong_store/features/friend/friend_chat_screen.dart' show FriendChatPage;
 
 import 'package:kumeong_store/features/trade/trade_confirm_screen.dart';
 import 'package:kumeong_store/features/trade/payment_method_screen.dart';
@@ -253,6 +254,23 @@ final GoRouter appRouter = GoRouter(
                     final extra = state.extra as Map<String, dynamic>?;
                     final meId = extra?['meUserId'] as String? ?? ''; // 👈 전달값 수신
                     return FriendRequestsScreen(meUserId: meId);
+                  },
+                ),
+                GoRoute(
+                  name: R.RouteNames.friendChat,
+                  path: 'friends/chat',
+                  builder: (context, state) {
+                    final extra = (state.extra ?? const {}) as Map;
+
+                    final friendName = (extra['friendName'] ?? '친구') as String;
+                    final meUserId = (extra['meUserId'] ?? '') as String;
+                    final roomId = (extra['roomId'] ?? '') as String;
+
+                    return FriendChatPage(
+                      friendName: friendName,
+                      meUserId: meUserId,
+                      roomId: roomId,
+                    );
                   },
                 ),
               ],

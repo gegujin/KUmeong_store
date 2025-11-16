@@ -63,7 +63,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   /// 🔹 partnerName이 비어있거나 '상대방'일 때를 위한 디스플레이용 이름
   String _displayName(ChatRoomSummaryDto chat) {
-    final raw = (chat.partnerName ?? '').trim();
+    final raw = chat.partnerName.trim();
     if (raw.isNotEmpty && raw != '상대방') {
       return raw;
     }
@@ -106,8 +106,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
               onTap: () async {
                 await context.pushNamed(
                   R.RouteNames.chatRoomOverlay,
-                  // 🔸 roomId로 사용하는 필드가 뭐가 맞는지 주의 (id vs roomId)
-                  pathParameters: {'roomId': chat.id},
+                  // ✅ 이제 항상 roomId 필드를 사용
+                  pathParameters: {'roomId': chat.roomId},
                   extra: {
                     'partnerName': _displayName(chat),
                     'isKuDelivery': false,

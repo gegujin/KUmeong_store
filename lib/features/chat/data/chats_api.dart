@@ -35,39 +35,27 @@ class ChatsApi {
     return rid;
   }
 
-  /// 친구방 확보 (친구 상세 → 채팅하기)
+  /// 친구방 확보 (친구 상세/친구 목록 → 채팅하기)
   ///
-  /// POST /chat/friend-room
-  /// body: { peerUserId }
-  /// (필요시 GET 폴백)
+  /// GET /chat/friend-room?peerId=<UUID>
   Future<String> ensureFriendRoom(String peerUserId) async {
     final pid = peerUserId.trim();
     if (pid.isEmpty) {
       throw ApiException('peerUserId가 비었습니다.');
     }
 
-    try {
-      // ✅ 백엔드 스펙: peerUserId
-      final dynamic res = await HttpX.postJson('/chat/friend-room', {'peerUserId': pid});
-      final rid = _pickRoomId(res);
-      if (rid.isEmpty) {
-        throw ApiException('roomId 없음', bodyPreview: res.toString());
-      }
-      return rid;
-    } catch (e) {
-      // 필요 없으면 이 폴백은 삭제해도 됨
-      debugPrint('[ChatsApi] POST /chat/friend-room 실패, GET 폴백: $e');
-      final dynamic res = await HttpX.get(
-        '/chat/friend-room',
-        query: {'peerUserId': pid},
-        noCache: true,
-      );
-      final rid = _pickRoomId(res);
-      if (rid.isEmpty) {
-        throw ApiException('roomId를 얻지 못했습니다', bodyPreview: res.toString());
-      }
-      return rid;
+    // 🔥 백엔드 스펙: GET /chat/friend-room?peerId=...
+    final dynamic res = await HttpX.get(
+      '/chat/friend-room',
+      query: {'peerId': pid}, // ← 여기 이름이 peerId 여야 함
+      noCache: true,
+    );
+
+    final rid = _pickRoomId(res);
+    if (rid.isEmpty) {
+      throw ApiException('roomId를 얻지 못했습니다', bodyPreview: res.toString());
     }
+    return rid;
   }
 
   /// 방 목록 조회
