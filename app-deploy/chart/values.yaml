@@ -1,0 +1,33 @@
+# ===========================
+# Backend API 설정
+# ===========================
+backend:
+  image:
+    repository: gegujin/kumeong-api
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  port: 3000
+
+# ===========================
+# Frontend (Nginx)
+# ===========================
+frontend:
+  image:
+    repository: gegujin/kumeong-front
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  port: 80
+
+# ===========================
+# Ingress (필요시)
+# ===========================
+ingress:
+  enabled: false
+  className: ""
+  hosts:
+    - host: example.com
+      paths:
+        - path: /
+          pathType: Prefix

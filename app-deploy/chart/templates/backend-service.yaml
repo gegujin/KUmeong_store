@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kumeong-api
+spec:
+  type: ClusterIP
+  selector:
+    app: kumeong-api
+  ports:
+    - port: 3000
+      targetPort: {{ .Values.backend.port }}

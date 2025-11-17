@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kumeong-app
+description: Helm chart for KUmeong Store API & Frontend
+type: application
+version: 0.1.0        # 헬름 차트 버전
+appVersion: "1.0.0"   # 실제 앱 버전 (임의)

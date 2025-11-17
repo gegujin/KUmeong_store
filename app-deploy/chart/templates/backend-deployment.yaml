@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kumeong-api
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      app: kumeong-api
+  template:
+    metadata:
+      labels:
+        app: kumeong-api
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.backend.port }}
