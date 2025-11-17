@@ -1,5 +1,6 @@
 // lib/features/auth/login_service.dart
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/network/http_client.dart'; // HttpX static 메서드 사용
 import 'package:kumeong_store/core/utils/email.dart';

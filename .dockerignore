@@ -1,0 +1,19 @@
+# 빌드/툴 캐시 & OS/IDE 관련 파일 무시
+.build/
+.git/
+.github/
+.idea/
+.vscode/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+pub-cache/
+build/
+.android/
+.ios/
+linux/
+macos/
+windows/
+web/old/
+test/
+*.iml

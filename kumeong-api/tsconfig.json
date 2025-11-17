@@ -9,11 +9,12 @@
 
     "outDir": "dist",
     "baseUrl": ".",
-    "sourceMap": true,
+
+    "sourceMap": false,         
+    "inlineSources": false,      
     "incremental": true,
 
     "experimentalDecorators": true,
-    "inlineSources": true,
     "emitDecoratorMetadata": true,
 
     "useDefineForClassFields": false,

@@ -2,7 +2,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Logger, VersioningType } from '@nestjs/common';
-import 'source-map-support/register';
+//import 'source-map-support/register';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
