@@ -1,9 +1,9 @@
 version: "3.9"
 
 services:
-  mysql:
+  db:
     image: mysql:8
-    container_name: mysql-kumeong
+    container_name: kumeong-mysql
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root
@@ -16,14 +16,25 @@ services:
       - ./kumeong_store.sql:/docker-entrypoint-initdb.d/init.sql
 
   api:
-    build:
-      context: ./kumeong-api
-      dockerfile: Dockerfile
+    image: gegujin/kumeong-api:0.1.0
     container_name: kumeong-api
     restart: always
-    env_file:
-      - ./kumeong-api/.env.docker
+    environment:
+      NODE_ENV: production
+      DB_HOST: db            # ⬅ MySQL 컨테이너 이름
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      DB_DATABASE: kumeong_store
     ports:
       - "3000:3000"
     depends_on:
-      - mysql
+      - db
+
+  front:
+    image: gegujin/kumeong-front:0.1.0
+    container_name: kumeong-front
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - api

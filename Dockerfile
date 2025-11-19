@@ -1,43 +1,46 @@
 # ===============================
-# 1) Flutter Web 빌드 스테이지
+# 1) Flutter Web 빌드 스테이지 (공식 Flutter 이미지)
 # ===============================
-# 네 로컬 버전에 맞춰서 Flutter 3.35.6 사용
-FROM ghcr.io/cirruslabs/flutter:3.35.6 AS build
+FROM ghcr.io/cirruslabs/flutter:stable AS build
 
-# (이미 flutter/dart/git 등이 들어있는 이미지라고 가정)
 WORKDIR /app
 
-# git dubious ownership 방지 (이미지 내부 flutter 디렉터리 기준)
-RUN git config --global --add safe.directory /usr/local/flutter
+# git safe.directory 설정
+RUN git config --global --add safe.directory /sdks/flutter \
+    && git config --global --add safe.directory /app
 
-# ──────────────────────────────
-# 1단계: pubspec.*만 먼저 복사 + 의존성 설치
-#   → pubspec 안 바뀌면 이 레이어 캐시 재사용됨
-# ──────────────────────────────
-COPY pubspec.yaml pubspec.lock ./ 
-# pubspec_overrides.yaml 쓰면 아래처럼 같이 복사
-# COPY pubspec.yaml pubspec.lock pubspec_overrides.yaml ./
+# 웹 빌드에 필요한 dependencies 설치
+RUN apt-get update && apt-get install -y \
+    chromium \
+    clang \
+    libgtk-3-dev \
+    liblzma-dev \
+    xz-utils \
+    && apt-get clean
 
+# API_ORIGIN 전달 가능하도록 build arg 추가
+ARG API_ORIGIN
+ENV API_ORIGIN=$API_ORIGIN
+
+# pubspec 의존성 설치
+COPY pubspec.yaml pubspec.lock ./
 RUN flutter pub get
 
-# ──────────────────────────────
-# 2단계: 나머지 소스 전체 복사
-#   .dockerignore로 쓰레기(빌드 결과, .git 등)는 빼줌
-# ──────────────────────────────
+# 전체 프로젝트 복사
 COPY . .
 
-# 웹 활성화 + 릴리즈 빌드
+# Flutter Web 빌드
 RUN flutter config --enable-web \
-  && flutter build web --release --no-wasm-dry-run
+  && flutter build web --release \
+      --no-wasm-dry-run \
+      --dart-define=API_ORIGIN=$API_ORIGIN
 
 # ===============================
-# 2) Nginx로 정적 파일 서빙
+# 2) Nginx 정적 웹 배포
 # ===============================
 FROM nginx:1.27-alpine
 
-# Flutter 빌드 결과물을 nginx 기본 html 디렉터리로 복사
 COPY --from=build /app/build/web /usr/share/nginx/html
 
 EXPOSE 80
-
 CMD ["nginx", "-g", "daemon off;"]

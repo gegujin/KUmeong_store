@@ -1,5 +1,21 @@
 {
     "java.configuration.updateBuildConfiguration": "interactive",
     "cmake.sourceDirectory": "C:/Users/82105/KU-meong Store/windows",
-    "cmake.configureOnOpen": false
+    "cmake.configureOnOpen": false,
+    "sqltools.connections": [
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 3306,
+            "driver": "MySQL",
+            "name": "kumeong_store",
+            "database": "kumeong_store",
+            "username": "root"
+        }
+    ]
 }

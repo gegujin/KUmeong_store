@@ -19,7 +19,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String baseUrl = 'http://localhost:3000/api/v1';
+const String baseUrl = String.fromEnvironment('API_ORIGIN');
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({
@@ -61,7 +61,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Future<Map<String, String>> _authHeaders() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
-    final h = <String, String>{'Content-Type': 'application/json; charset=utf-8'};
+    final h = <String, String>{
+      'Content-Type': 'application/json; charset=utf-8'
+    };
     if (token != null && token.isNotEmpty) h['Authorization'] = 'Bearer $token';
     return h;
   }
@@ -287,8 +289,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             o['dong'] ?? o['town'] ?? o['neighborhood'],
             o['detail'] ?? o['roadAddress'] ?? o['street'],
           ];
-          final parts =
-              partsRaw.whereType<String>().map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+          final parts = partsRaw
+              .whereType<String>()
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .toList();
           if (parts.isNotEmpty) return parts.join(' ');
         }
       }
@@ -329,7 +334,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       ]);
       if (direct.isNotEmpty) return direct;
 
-      for (final o in [dyn.seller, dyn.user, dyn.owner, dyn.author, dyn.profile, dyn.account]) {
+      for (final o in [
+        dyn.seller,
+        dyn.user,
+        dyn.owner,
+        dyn.author,
+        dyn.profile,
+        dyn.account
+      ]) {
         if (o is Map) {
           final a = _firstNonEmptyString([
             o['avatarUrl'],
@@ -354,7 +366,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
-  String _formatPrice(int p) => '${NumberFormat.decimalPattern('ko_KR').format(p)}원';
+  String _formatPrice(int p) =>
+      '${NumberFormat.decimalPattern('ko_KR').format(p)}원';
   String _timeAgo(DateTime dt) => timeago.format(dt, locale: 'ko');
 
   @override
@@ -424,7 +437,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return '';
     })();
 
-    final String displaySellerName = _isUnknownText(sellerName) ? '' : sellerName;
+    final String displaySellerName =
+        _isUnknownText(sellerName) ? '' : sellerName;
 
     final String productAddress = (() {
       try {
@@ -488,7 +502,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               child: SizedBox(
                 height: 300,
                 child: images.isEmpty
-                    ? const Center(child: Icon(Icons.image_not_supported, size: 64))
+                    ? const Center(
+                        child: Icon(Icons.image_not_supported, size: 64))
                     : PageView.builder(
                         controller: _thumbController,
                         itemCount: images.length,
@@ -508,9 +523,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             fit: BoxFit.contain,
                             loadingBuilder: (_, child, prog) => prog == null
                                 ? child
-                                : const Center(child: CircularProgressIndicator()),
-                            errorBuilder: (_, __, ___) =>
-                                const Center(child: Icon(Icons.broken_image, size: 48)),
+                                : const Center(
+                                    child: CircularProgressIndicator()),
+                            errorBuilder: (_, __, ___) => const Center(
+                                child: Icon(Icons.broken_image, size: 48)),
                           ),
                         ),
                       ),
@@ -523,12 +539,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 children: List.generate(
                   images.length,
                   (i) => Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                    margin:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: _thumbIndex == i ? colors.primary : colors.onSurface.withAlpha(80),
+                      color: _thumbIndex == i
+                          ? colors.primary
+                          : colors.onSurface.withAlpha(80),
                     ),
                   ),
                 ),
@@ -683,11 +702,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         if (!mounted) return;
 
                         // 2) 현재 로그인한 사용자 ID 읽기
-                        final meUserId = await _currentUserId(); // 상단에 이미 정의돼 있음(null일 수도 있음)
+                        final meUserId =
+                            await _currentUserId(); // 상단에 이미 정의돼 있음(null일 수도 있음)
 
                         // 3) 상대 이름 결정
-                        final partnerName =
-                            displaySellerName.isNotEmpty ? displaySellerName : '상대방';
+                        final partnerName = displaySellerName.isNotEmpty
+                            ? displaySellerName
+                            : '상대방';
 
                         // 4) 채팅방 화면으로 이동 (GoRouter)
                         context.pushNamed(
@@ -807,7 +828,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -823,7 +845,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         throw '위치 권한이 거부되었습니다.';
       }
     }
-    return Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    return Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high);
   }
 
   Future<void> _openNaverMap(
@@ -930,13 +953,15 @@ class _SellerCard extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: 28,
-          backgroundImage:
-              (avatarUrl != null && avatarUrl!.isNotEmpty) ? NetworkImage(avatarUrl!) : null,
+          backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
+              ? NetworkImage(avatarUrl!)
+              : null,
           child: (avatarUrl == null || avatarUrl!.isEmpty)
               ? (name.isNotEmpty
                   ? Text(
                       name[0].toUpperCase(),
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w700),
                     )
                   : null)
               : null,
@@ -963,7 +988,8 @@ class _SellerCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: Colors.green.shade50,
                         borderRadius: BorderRadius.circular(12),
@@ -999,7 +1025,8 @@ class _SellerCard extends StatelessWidget {
               itemCount: 5,
               itemSize: 20.0,
               unratedColor: Colors.grey.shade300,
-              itemBuilder: (context, index) => const Icon(Icons.star, color: Colors.orange),
+              itemBuilder: (context, index) =>
+                  const Icon(Icons.star, color: Colors.orange),
               direction: Axis.horizontal,
             ),
             const SizedBox(height: 4),
@@ -1017,7 +1044,8 @@ class _SellerCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   '${safeRating.toStringAsFixed(1)}/5',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -1105,10 +1133,11 @@ class _PhotoGalleryPageState extends State<PhotoGalleryPage> {
           child: Image.network(
             widget.images[i],
             fit: BoxFit.contain,
-            loadingBuilder: (_, child, prog) =>
-                prog == null ? child : const Center(child: CircularProgressIndicator()),
-            errorBuilder: (_, __, ___) =>
-                const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 64)),
+            loadingBuilder: (_, child, prog) => prog == null
+                ? child
+                : const Center(child: CircularProgressIndicator()),
+            errorBuilder: (_, __, ___) => const Center(
+                child: Icon(Icons.broken_image, color: Colors.white, size: 64)),
           ),
         ),
       ),
