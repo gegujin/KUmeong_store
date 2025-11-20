@@ -1,31 +1,37 @@
 // lib/core/base_url.dart
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show debugPrint;
 
 /// ===============================
-/// ORIGIN 결정 (환경변수 > 플랫폼별 자동)
+/// 1) 빌드 환경 ENV
 /// ===============================
-/// 빌드 시 --dart-define=API_ORIGIN=http://192.168.0.5:3000 로 덮어쓰기 가능.
-const String _envOrigin = String.fromEnvironment('API_ORIGIN', defaultValue: '');
+/// flutter build web --dart-define=API_ORIGIN=https://xxxx.com
+const String _envOrigin =
+    String.fromEnvironment('API_ORIGIN', defaultValue: '');
 
+/// ===============================
+/// 2) 플랫폼 자동 ORIGIN 결정 (웹 제외)
+/// ===============================
+/// 웹에서는 자동 감지 금지 → 반드시 ENV 사용.
+/// 모바일/데스크탑에서는 기존 값 유지.
 String _autoOrigin() {
   if (kIsWeb) {
-    // 웹에선 현재 호스트를 따라가되, 백엔드 포트(3000)로 맞춘다.
-    // 예: http://127.0.0.1:6529 → http://127.0.0.1:3000
-    final base = Uri.base; // org-dartlang-app:/web_entrypoint.dart 일 수도 있음
-    final scheme = (base.scheme == 'https' || base.scheme == 'http') ? base.scheme : 'http';
-    final host = (base.host.isNotEmpty) ? base.host : 'localhost';
-    return Uri(
-      scheme: scheme,
-      host: host,
-      port: 3000,
-    ).toString();
+    // Web 빌드에서 빈 문자열("")을 반환하면 Uri.parse("")가 발생하여 Flutter가 크래시함.
+    // 따라서 ENV가 비어 있으면 fallback 고정 값을 반환한다.
+    if (_envOrigin.isEmpty) {
+      debugPrint(
+        '[ERROR] API_ORIGIN is empty. Set via --dart-define=API_ORIGIN=<your-api-url>',
+      );
+      return 'http://invalid-origin'; // 절대 "" 반환 금지!!!
+    }
+    return _envOrigin.trim();
   }
 
-  // dart:io 없이 플랫폼별 기본값
+  // 모바일/데스크탑 자동 설정
   switch (defaultTargetPlatform) {
     case TargetPlatform.android:
-      // Android emulator → 호스트는 10.0.2.2
-      return 'http://10.0.2.2:3000';
+      return 'http://10.0.2.2:3000'; // Android emulator
     case TargetPlatform.iOS:
     case TargetPlatform.macOS:
     case TargetPlatform.windows:
@@ -36,11 +42,20 @@ String _autoOrigin() {
   }
 }
 
-/// 최종 ORIGIN (환경변수 우선)
-String apiOrigin() => _envOrigin.isNotEmpty ? _envOrigin : _autoOrigin();
+/// ===============================
+/// 3) API Origin (ENV > 자동)
+/// ===============================
+/// Web → 무조건 _autoOrigin() (ENV or fallback)
+/// Mobile/PC → ENV 있으면 ENV, 아니면 자동값
+String apiOrigin() {
+  if (kIsWeb) return _autoOrigin();
+
+  // 모바일/데스크탑
+  return _envOrigin.isNotEmpty ? _envOrigin.trim() : _autoOrigin();
+}
 
 /// ===============================
-/// REST Base (/api/v1 고정)
+/// 4) REST Base (/api/v1)
 /// ===============================
 String restBase() => '${apiOrigin()}/api/v1';
 
@@ -48,22 +63,22 @@ String restBase() => '${apiOrigin()}/api/v1';
 final String kApiOrigin = apiOrigin();
 final String kApiBase = restBase();
 
-/// 내부 경로 정규화: 선두 슬래시 보장
+/// ===============================
+/// 내부 util
+/// ===============================
 String _norm(String path) => path.startsWith('/') ? path : '/$path';
 
-bool _isAbsoluteUrl(String s) => s.startsWith('http://') || s.startsWith('https://');
+bool _isAbsoluteUrl(String s) =>
+    s.startsWith('http://') || s.startsWith('https://');
 
 Map<String, String> _stringifyQuery(Map<String, dynamic> raw) =>
     raw.map((k, v) => MapEntry(k, v?.toString() ?? ''));
 
 /// ===============================
-/// REST API URL 빌더 (호환용)
+/// 5) REST API URL 빌더
 /// ===============================
-/// 예) apiUrl('/auth/me') → http://<origin>/api/v1/auth/me
-/// 예) apiUrl('http://.../api/v1/chat/friend-room', {'peerId': '...'})
-///   → 절대 URL 유지 + 쿼리 병합
 Uri apiUrl(String path, [Map<String, dynamic>? query]) {
-  // 1) 절대 URL이면 그대로 사용(추가 쿼리 있으면 기존 쿼리와 병합)
+  // 1) 절대 URL이면 그대로
   if (_isAbsoluteUrl(path)) {
     final baseUri = Uri.parse(path);
     if (query == null || query.isEmpty) return baseUri;
@@ -75,7 +90,7 @@ Uri apiUrl(String path, [Map<String, dynamic>? query]) {
     return baseUri.replace(queryParameters: merged);
   }
 
-  // 2) 상대 경로면 /api/v1 프리픽스 부착
+  // 2) 상대 경로 → 반드시 valid origin 기반
   final uri = Uri.parse('${restBase()}${_norm(path)}');
   if (query == null || query.isEmpty) return uri;
 
@@ -83,18 +98,18 @@ Uri apiUrl(String path, [Map<String, dynamic>? query]) {
 }
 
 /// ===============================
-/// WebSocket URL
+/// 6) WebSocket URL 빌더
 /// ===============================
-/// 서버: WS_PATH=/ws/realtime
-/// 프로젝트 컨벤션: ?room=<roomId>&me=<uuid>
 String wsUrl({required String meUserId, String? roomId}) {
   final httpOrigin = apiOrigin();
+
   final wsScheme = httpOrigin.startsWith('https') ? 'wss' : 'ws';
   final wsOrigin = httpOrigin.replaceFirst(RegExp(r'^https?'), wsScheme);
 
   final params = <String, String>{'me': meUserId};
   if (roomId != null && roomId.isNotEmpty) params['room'] = roomId;
 
-  final uri = Uri.parse('$wsOrigin/ws/realtime').replace(queryParameters: params);
+  final uri =
+      Uri.parse('$wsOrigin/ws/realtime').replace(queryParameters: params);
   return uri.toString();
 }

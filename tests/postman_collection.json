@@ -1,0 +1,165 @@
+{
+  "info": {
+    "name": "KUmeongStore Automated API Tests",
+    "_postman_id": "kumeong-automation-001",
+    "description": "Automated API test suite for KUmeongStore backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/login",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "login"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"{{email}}\", \"password\": \"{{password}}\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var res = pm.response.json();",
+              "pm.environment.set('accessToken', res.data.accessToken);",
+              "pm.test('Login successful', function() {",
+              "    pm.expect(pm.response.code).to.eql(201);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Users Me",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": "{{base_url}}/users/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Get me successful', function() {",
+              "  pm.expect(pm.response.code).to.eql(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Friends List",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": "{{base_url}}/friends"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Friends list OK', function() {",
+              "  pm.expect(pm.response.code).to.eql(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Chat Rooms (mine=1)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": "{{base_url}}/chat/rooms?mine=1"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Chat rooms OK', function() {",
+              "  pm.expect(pm.response.code).to.eql(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Products List",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/products"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Products OK', function () {",
+              "  pm.expect(pm.response.code).to.eql(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Health Check",
+      "request": {
+        "method": "GET",
+        "url": "{{health_url}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Health OK', function () {",
+              "  pm.expect(pm.response.code).to.eql(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Metrics",
+      "request": {
+        "method": "GET",
+        "url": "{{metrics_url}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Metrics accessible', function () {",
+              "  pm.expect(pm.response.code).to.eql(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "id": "kumeong-env",
+  "name": "kumeong-local",
+  "values": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000/api/v1",
+      "enabled": true
+    },
+    {
+      "key": "health_url",
+      "value": "http://localhost:3000/health",
+      "enabled": true
+    },
+    {
+      "key": "metrics_url",
+      "value": "http://localhost:3000/metrics",
+      "enabled": true
+    },
+    {
+      "key": "email",
+      "value": "test@example.com",
+      "enabled": true
+    },
+    {
+      "key": "password",
+      "value": "1234",
+      "enabled": true
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "enabled": true
+    }
+  ]
+}
