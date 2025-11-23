@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:kumeong_store/core/ui/hero_tags.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
 import 'package:kumeong_store/core/widgets/app_bottom_nav.dart'; // 쓰면 유지, 안 쓰면 제거해도 됨
+import 'package:kumeong_store/core/config/env.dart'; // 🔹 API_BASE_URL / apiUrl 사용
 import '../../core/theme.dart';
 import '../../api_service.dart';
 import 'package:kumeong_store/state/favorites_store.dart';
@@ -13,7 +14,6 @@ import 'package:http/http.dart' as http;
 import 'package:kumeong_store/models/post.dart'; // Product + toMapForHome()
 import 'dart:convert'; // ← jsonDecode 사용
 
-const String _apiBase = 'http://localhost:3000/api/v1';
 const Color kuInfo = Color(0xFF147AD6);
 
 // ✅ 로컬 데모 상품 (홈 카드 맵 포맷)
@@ -65,7 +65,13 @@ class _HomePageState extends State<HomePage>
   String? _absUrl(String? p) {
     if (p == null || p.isEmpty) return null;
     if (p.startsWith('http')) return p;
-    if (p.startsWith('/uploads/')) return 'http://localhost:3000$p';
+    if (p.startsWith('/uploads/')) {
+      // 🔹 env.dart 의 kBaseUrl 사용 (API_BASE_URL 기준)
+      final base = kBaseUrl.endsWith('/')
+          ? kBaseUrl.substring(0, kBaseUrl.length - 1)
+          : kBaseUrl;
+      return '$base$p';
+    }
     return p;
   }
 
@@ -120,7 +126,8 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<List<Map<String, dynamic>>> _fetchProductsRaw(String? token) async {
-    final uri = Uri.parse('$_apiBase/products');
+    // 🔹 env.dart 의 apiUrl 헬퍼 사용 (API_BASE_URL 기준)
+    final uri = apiUrl('/products');
     final res = await http.get(uri, headers: {
       if (token != null) 'Authorization': 'Bearer $token',
     });

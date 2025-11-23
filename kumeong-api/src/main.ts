@@ -27,7 +27,8 @@ async function bootstrap() {
   const cfg = app.get(ConfigService);
 
   // ===== Prefix & Versioning =====
-  const apiPrefix = 'api';
+  // .env 의 API_PREFIX 를 우선 사용, 없으면 기본값 'api'
+  const apiPrefix = cfg.get<string>('API_PREFIX') ?? 'api';
   app.setGlobalPrefix(apiPrefix);
   app.enableVersioning({
     type: VersioningType.URI,
@@ -35,9 +36,31 @@ async function bootstrap() {
   });
 
   // ===== CORS =====
-  const corsOrigin = cfg.get<string>('CORS_ORIGIN') ?? '*';
+  const nodeEnv = cfg.get<string>('NODE_ENV') ?? 'development';
+  const isProd = nodeEnv === 'production';
+
+  const corsEnvRaw = cfg.get<string>('CORS_ORIGIN') ?? '';
+  const originsFromEnv = corsEnvRaw
+    .split(',')
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0);
+
+  let corsOrigin: string | boolean | (string | RegExp)[];
+
+  if (originsFromEnv.length > 0) {
+    // env 에 "https://a.com,https://b.com" 이런 식으로 들어온 경우
+    corsOrigin = originsFromEnv;
+  } else if (isProd) {
+    // 운영인데 CORS_ORIGIN 이 비어 있으면, 일부러 아무 origin 도 허용하지 않음
+    // → K3s 에서 CORS_ORIGIN 설정 안했을 때 바로 문제 인지 가능
+    corsOrigin = [];
+  } else {
+    // 개발 환경 기본값: 로컬에서 자주 쓰는 포트 허용
+    corsOrigin = ['http://localhost:3000', 'http://localhost:8080'];
+  }
+
   app.enableCors({
-    origin: corsOrigin.split(',').map((x) => x.trim()),
+    origin: corsOrigin,
     credentials: true,
     allowedHeaders: [
       'Content-Type',
@@ -127,7 +150,12 @@ async function bootstrap() {
         try {
           const msg = JSON.parse(String(buf));
           if (msg?.type === 'ping') {
-            ws.send(JSON.stringify({ type: 'pong', t: new Date().toISOString() }));
+            ws.send(
+              JSON.stringify({
+                type: 'pong',
+                t: new Date().toISOString(),
+              }),
+            );
           }
         } catch {}
       });
@@ -165,12 +193,25 @@ async function bootstrap() {
 
   // ===== Listen =====
   const port = Number(cfg.get<string>('PORT') ?? 3000);
+  const publicBaseUrl = cfg.get<string>('PUBLIC_BASE_URL');
+
   await new Promise<void>((resolve) =>
     server.listen(port, '0.0.0.0', () => resolve()),
   );
 
-  Logger.log(`🚀 Server running at http://localhost:${port}/api/v1`);
-  Logger.log(`📘 Swagger:        http://localhost:${port}/${apiPrefix}/docs`);
+  if (publicBaseUrl) {
+    // K3s / 실제 도메인 기준 로그
+    Logger.log(
+      `🚀 Server running at ${publicBaseUrl}/${apiPrefix}/v1 (PORT=${port})`,
+    );
+    Logger.log(`📘 Swagger:        ${publicBaseUrl}/${apiPrefix}/docs`);
+  } else {
+    // 로컬 개발용 기본 로그
+    Logger.log(`🚀 Server running at http://localhost:${port}/${apiPrefix}/v1`);
+    Logger.log(
+      `📘 Swagger:        http://localhost:${port}/${apiPrefix}/docs`,
+    );
+  }
 }
 
 bootstrap().catch((e) => {
