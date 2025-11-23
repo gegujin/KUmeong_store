@@ -7,6 +7,12 @@ import { EnvSchema } from './env.schema';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      cache: true,
+      expandVariables: true,
+      envFilePath: [
+        `.env.${process.env.NODE_ENV}`,
+        `.env`,
+      ],
       validate: (config) => {
         const parsed = EnvSchema.safeParse(config);
         if (!parsed.success) {

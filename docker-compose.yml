@@ -16,7 +16,7 @@ services:
       - ./kumeong_store.sql:/docker-entrypoint-initdb.d/init.sql
 
   api:
-    image: gegujin/kumeong-api:0.1.0
+    image: gegujin/kumeong-api:0.3.0
     container_name: kumeong-api
     restart: always
     environment:

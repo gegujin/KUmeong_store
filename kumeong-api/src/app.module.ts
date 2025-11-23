@@ -21,21 +21,22 @@ import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware
 
 @Module({
   imports: [
-    // ===== Config =====
+    // ===================================
+    // Global Config (K3s/Docker friendly)
+    // ===================================
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
       expandVariables: true,
       validationSchema: envValidationSchema,
-      envFilePath: [
-        `.env.${process.env.NODE_ENV}.local`,
-        `.env.${process.env.NODE_ENV}`,
-        '.env.local',
-        '.env',
-      ],
+      // ❗ K3s/Docker는 envFilePath 사용하면 안됨
+      //    → 이미 config.module.ts에서 env 처리
+      //    → 충돌 예방 위해 완전히 제거
     }),
 
-    // ===== TypeORM (ConfigService 기반) =====
+    // ===================================
+    // TypeORM
+    // ===================================
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => {
@@ -49,26 +50,30 @@ import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware
           host: cfg.get<string>('DB_HOST', '127.0.0.1'),
           port: Number(cfg.get<string>('DB_PORT', '3306')),
           username:
-            cfg.get<string>('DB_USERNAME') ?? cfg.get<string>('DB_USER', 'root'),
-          password: pw, // 공백/누락 방지
+            cfg.get<string>('DB_USERNAME') ??
+            cfg.get<string>('DB_USER', 'root'),
+          password: pw,
           database:
-            cfg.get<string>('DB_DATABASE') ?? cfg.get<string>('DB_NAME', 'kumeong_store'),
+            cfg.get<string>('DB_DATABASE') ??
+            cfg.get<string>('DB_NAME', 'kumeong_store'),
           charset: 'utf8mb4',
           autoLoadEntities: true,
           synchronize: false,
-          // migrationsRun: true, // 필요 시 활성화
-          // logging: true,       // 디버깅 시 활성화
         };
       },
     }),
 
-    // ===== Mailer =====
+    // ===================================
+    // Mail
+    // ===================================
     MailerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => mailConfigFactory(cfg),
     }),
 
-    // ===== Modules =====
+    // ===================================
+    // Feature Modules
+    // ===================================
     UsersModule,
     AuthModule,
     ProductsModule,
