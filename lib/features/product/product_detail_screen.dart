@@ -11,15 +11,15 @@ import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:kumeong_store/core/router/route_names.dart' as R;
 import 'package:kumeong_store/features/chat/data/chats_api.dart'; // ✅ ChatsApi 사용
 
+import 'package:kumeong_store/features/product/products_api.dart';
+import 'package:kumeong_store/core/network/http_client.dart'; // HttpX, ApiException
+
 // 🔼 추가: 조회수 적립 API 사용
 import 'package:kumeong_store/api_service.dart' show incrementProductView;
 
 // 서버 요청
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-
-const String baseUrl = String.fromEnvironment('API_ORIGIN');
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({
@@ -69,15 +69,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Future<Product> _fetchProduct(String id) async {
-    final uri = Uri.parse('$baseUrl/products/$id');
-    final res = await http.get(uri, headers: await _authHeaders());
-    if (res.statusCode != 200) {
-      throw '상세 조회 실패 ${res.statusCode}: ${res.body}';
+    // ✅ HttpX + productsApi 사용 → /api/v1/products/:id 로 호출
+    final map = await productsApi.detail(id);
+    if (map == null) {
+      throw ApiException('상품을 찾지 못했습니다.', status: 404);
     }
-    final data = jsonDecode(res.body);
-    final map = data is Map && data['data'] != null ? data['data'] : data;
-    return Product.fromJson(map as Map<String, dynamic>);
+    return Product.fromJson(map);
   }
+
   // -----------------------------------
 
   @override
@@ -786,30 +785,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Future<bool?> _apiToggleFavorite(String productId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('accessToken');
-    final headers = <String, String>{
-      'Content-Type': 'application/json; charset=utf-8',
-      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
-    };
+    try {
+      // ✅ /api/v1/favorites/:id/toggle 로 POST (body 없음 → {})
+      final res = await HttpX.postJson(
+        '/favorites/$productId/toggle',
+        const {},
+      );
 
-    final uri = Uri.parse('$baseUrl/favorites/$productId/toggle');
-    final res = await http.post(uri, headers: headers);
-
-    if (res.statusCode == 401) return null;
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw '즐겨찾기 토글 실패 ${res.statusCode}: ${res.body}';
-    }
-
-    final obj = jsonDecode(res.body);
-    if (obj is Map) {
-      if (obj['isFavorited'] is bool) return obj['isFavorited'] as bool;
-      final data = obj['data'];
-      if (data is Map && data['isFavorited'] is bool) {
-        return data['isFavorited'] as bool;
+      dynamic obj = res;
+      if (obj is Map && obj['data'] is Map) {
+        obj = obj['data'];
       }
+      if (obj is Map && obj['isFavorited'] is bool) {
+        return obj['isFavorited'] as bool;
+      }
+      return null;
+    } on ApiException catch (e) {
+      // 인증 만료일 경우 null 리턴 → "로그인 필요" 처리
+      if (e.status == 401 || e.status == 419) {
+        return null;
+      }
+      rethrow;
     }
-    return null;
   }
 
   // --- 지도/위치 (옵션) ---
@@ -886,29 +883,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Future<String?> _fetchUserNameById(String userId) async {
     if (userId.isEmpty) return null;
 
-    final uri = Uri.parse('$baseUrl/users/$userId');
-    final res = await http.get(uri, headers: await _authHeaders());
-    if (res.statusCode != 200) return null;
+    try {
+      // ✅ /api/v1/users/:id
+      final obj = await HttpX.get('/users/$userId');
+      final raw = (obj['data'] is Map) ? obj['data'] : obj;
 
-    final obj = jsonDecode(res.body);
-    final data = (obj is Map) ? (obj['data'] ?? obj) : null;
-    if (data is! Map) return null;
+      if (raw is! Map) return null;
+      final data = raw as Map;
 
-    final rawName = (data['name'] as String?)?.trim();
-    final rawEmail = (data['email'] as String?)?.trim();
+      final rawName = (data['name'] as String?)?.trim();
+      final rawEmail = (data['email'] as String?)?.trim();
 
-    // 1) name이 제대로 있으면 그대로 사용
-    if (rawName != null && rawName.isNotEmpty && !_isUnknownText(rawName)) {
-      return rawName;
+      if (rawName != null && rawName.isNotEmpty && !_isUnknownText(rawName)) {
+        return rawName;
+      }
+
+      final local = _localPartFromEmail(rawEmail);
+      if (local.isNotEmpty) return local;
+
+      return null;
+    } catch (_) {
+      return null;
     }
-
-    // 2) name이 없거나 "알 수 없음"이면 이메일에서 로컬파트 추출
-    final local = _localPartFromEmail(rawEmail);
-    if (local.isNotEmpty) {
-      return local; // ex) vm@kku.ac.kr → "vm"
-    }
-
-    return null;
   }
 
   Future<void> _fillSellerNameIfMissing(Product p) async {

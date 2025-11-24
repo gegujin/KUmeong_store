@@ -14,7 +14,7 @@ import { FriendRequestEntity } from './entities/friend-request.entity';
 import { FriendEntity } from './entities/friend.entity';
 import { UserBlockEntity } from './entities/user-block.entity';
 import { ERR } from './types/errors';
-import { makeId, normalizeId, isUuid } from '../../common/utils/ids';
+import { makeId, normalizeId } from '../../common/utils/ids';
 import { User } from '../../modules/users/entities/user.entity';
 
 // ─────────────────────────────────────────────────────────────
@@ -26,9 +26,14 @@ function pair(a: string, b: string) {
   return A.localeCompare(B) <= 0 ? ([A, B] as const) : ([B, A] as const);
 }
 
+// ✅ RFC 형식만 체크(8-4-4-4-12, 대소문자 허용)
+const UUID_LIKE_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function assertUuidLike(v: string, field: string) {
-  if (!v || !isUuid(v)) {
-    throw new BadRequestException(`${field} must be a UUID (8-4-4-4-12)`);
+  const s = (v ?? '').trim();
+  if (!UUID_LIKE_RE.test(s)) {
+    throw new BadRequestException(`${field} must be a UUID (8-4-4-12)`);
   }
 }
 
@@ -75,10 +80,12 @@ export class FriendsService {
     assertUuidLike(target, 'toUserId');
 
     if (from === target) throw this.e('SELF_NOT_ALLOWED');
-    if (await this.isBlockedEither(from, target)) throw this.e('BLOCKED', HttpStatus.FORBIDDEN);
+    if (await this.isBlockedEither(from, target)) {
+      throw this.e('BLOCKED', HttpStatus.FORBIDDEN);
+    }
 
     const [A, B] = pair(from, target);
-    if (await this.frRepo.exist({ where: { userAId: A, userBId: B } })) {
+    if (await this.frRepo.exist({ where: { userAId: A, userBId: B } as any })) {
       throw this.e('ALREADY_FRIEND', HttpStatus.CONFLICT);
     }
 
@@ -87,7 +94,9 @@ export class FriendsService {
       where: { fromUserId: target, toUserId: from, status: 'PENDING' as any },
       order: { createdAt: 'DESC' },
     });
-    if (reversePending) return { id: reversePending.id, status: reversePending.status, dedup: true };
+    if (reversePending) {
+      return { id: reversePending.id, status: reversePending.status, dedup: true };
+    }
 
     // 신규 삽입 시도 — id는 앱에서 생성(MySQL: INSERT IGNORE)
     const newId = makeId();
@@ -120,7 +129,9 @@ export class FriendsService {
       .orderBy('r.createdAt', 'DESC')
       .getOne();
 
-    if (pendingSame) return { id: pendingSame.id, status: 'PENDING', dedup: true };
+    if (pendingSame) {
+      return { id: pendingSame.id, status: 'PENDING', dedup: true };
+    }
 
     // 비-PENDING이 있으면 PENDING으로 재활성화
     await this.reqRepo
@@ -146,50 +157,29 @@ export class FriendsService {
   async sendRequestMixed(me: string, body: { toUserId?: string; targetEmail?: string }) {
     const { toUserId, targetEmail } = body ?? {};
     if (toUserId) return this.sendRequest(me, toUserId);
+
     const email = (targetEmail ?? '').trim().toLowerCase();
-    if (!email || !email.includes('@')) throw new BadRequestException('유효한 이메일이 아닙니다.');
+    if (!email || !email.includes('@')) {
+      throw new BadRequestException('유효한 이메일이 아닙니다.');
+    }
     return this.sendRequestByEmail(me, email);
   }
 
   async sendRequestByEmail(meId: string, email: string) {
-    const me = normalizeId(meId);
-    const to = await this.userRepo.findOne({ where: { email: email.toLowerCase() } });
+    // 1) 이메일로 상대 유저 찾기
+    const to = await this.userRepo.findOne({
+      where: { email: email.toLowerCase() },
+    });
     if (!to) throw new NotFoundException('USER_NOT_FOUND');
-    if (to.id === me) throw new BadRequestException('SELF_NOT_ALLOWED');
 
-    const [A, B] = pair(me, to.id);
-    const existFriend = await this.frRepo.findOne({ where: { userAId: A, userBId: B } });
-    if (existFriend) throw new ConflictException('ALREADY_FRIEND');
-
-    const newId = makeId();
-    const insertRes = await this.reqRepo
-      .createQueryBuilder()
-      .insert()
-      .into(FriendRequestEntity)
-      .values({
-        id: newId,
-        fromUserId: me,
-        toUserId: to.id,
-        status: 'PENDING' as any,
-      })
-      .orIgnore()
-      .execute();
-
-    const affected = (insertRes as any)?.raw?.affectedRows ?? 0;
-    if (affected === 0) {
-      const pending = await this.reqRepo
-        .createQueryBuilder('r')
-        .where(
-          'LEAST(r.fromUserId, r.toUserId) = LEAST(:a, :b) AND GREATEST(r.fromUserId, r.toUserId) = GREATEST(:a, :b)',
-          { a: me, b: to.id },
-        )
-        .andWhere('r.status = :s', { s: 'PENDING' })
-        .orderBy('r.createdAt', 'DESC')
-        .getOne();
-      return { id: pending?.id, status: 'PENDING', dedup: true };
+    // 2) 자기 자신이면 에러
+    const meNorm = normalizeId(meId);
+    if (to.id === meNorm) {
+      throw new BadRequestException('SELF_NOT_ALLOWED');
     }
 
-    return { id: newId, status: 'PENDING', dedup: false };
+    // 3) 나머지 로직은 sendRequest에 위임
+    return this.sendRequest(meId, to.id);
   }
 
   /**
@@ -252,9 +242,10 @@ export class FriendsService {
       const roomId = await this.ensureFriendRoom(req.fromUserId, req.toUserId);
 
       // 5) 요청 상태 갱신
-      await trx.query(`UPDATE friendRequests SET status='ACCEPTED', decidedAt=NOW() WHERE id=?`, [
-        requestId,
-      ]);
+      await trx.query(
+        `UPDATE friendRequests SET status='ACCEPTED', decidedAt=NOW() WHERE id=?`,
+        [requestId],
+      );
       await trx.query(
         `
         UPDATE friendRequests
@@ -366,8 +357,38 @@ export class FriendsService {
 
   // 요청함(수신/발신) — pending only
   async listRequestsBox(me: string, box: 'incoming' | 'outgoing') {
-    const meNorm = normalizeId(me);
-    assertUuidLike(meNorm, 'meUserId');
+    // 1) 토큰에서 들어온 원본 값 로그
+    const meRaw = me;
+    let meNorm = (me ?? '').trim();
+
+    console.log(
+      '[FriendsService.listRequestsBox] meRaw =',
+      meRaw,
+      ', meNorm(before) =',
+      meNorm,
+    );
+
+    // 2) 이미 UUID 포맷이면 소문자로만 통일
+    if (UUID_LIKE_RE.test(meNorm)) {
+      meNorm = meNorm.toLowerCase();
+    } else {
+      // 3) UUID 포맷 아니면 normalizeId로 보정
+      meNorm = normalizeId(meNorm);
+      console.log(
+        '[FriendsService.listRequestsBox] meNorm(after normalizeId) =',
+        meNorm,
+      );
+    }
+
+    // ⚠ 더 이상 assertUuidLike()로 400 내보내지 않음
+    // 값이 너무 이상하면 그냥 빈 리스트 리턴해서 200으로 처리
+    if (!meNorm || meNorm.length < 10) {
+      console.warn(
+        '[FriendsService.listRequestsBox] meNorm looks invalid, return []:',
+        meNorm,
+      );
+      return [];
+    }
 
     const qb = this.reqRepo
       .createQueryBuilder('r')
@@ -383,12 +404,18 @@ export class FriendsService {
         'fu.email AS fromEmail',
         'tu.email AS toEmail',
       ])
-      .where(box === 'incoming' ? 'r.toUserId = :me' : 'r.fromUserId = :me', { me: meNorm })
+      .where(
+        box === 'incoming' ? 'r.toUserId = :me' : 'r.fromUserId = :me',
+        { me: meNorm },
+      )
       .andWhere('LOWER(r.status) = :pending', { pending: 'pending' })
       .orderBy('r.createdAt', 'DESC');
 
     const rows = await qb.getRawMany();
-    return rows.map((r: any) => ({ ...r, status: String(r.status ?? '').toLowerCase() }));
+    return rows.map((r: any) => ({
+      ...r,
+      status: String(r.status ?? '').toLowerCase(),
+    }));
   }
 
   /**
@@ -434,8 +461,38 @@ export class FriendsService {
    * 친구 목록 (soft-deleted 제외) + FRIEND 룸/안읽음 집계
    */
   async listFriends(meId: string) {
-    const meNorm = normalizeId(meId);
-    assertUuidLike(meNorm, 'meUserId');
+    // 1) 토큰에서 들어온 값 그대로 확인용 로그
+    const meRaw = meId;
+    let meNorm = (meId ?? '').trim();
+
+    console.log(
+      '[FriendsService.listFriends] meRaw =',
+      meRaw,
+      ', meNorm(before) =',
+      meNorm,
+    );
+
+    // 2) UUID 형태면 소문자로만 통일
+    if (UUID_LIKE_RE.test(meNorm)) {
+      meNorm = meNorm.toLowerCase();
+    } else {
+      // 3) UUID 아니면 normalizeId로 보정 시도
+      meNorm = normalizeId(meNorm);
+      console.log(
+        '[FriendsService.listFriends] meNorm(after normalizeId) =',
+        meNorm,
+      );
+    }
+
+    // ⚠️ 여기서 더 이상 assertUuidLike() 호출하지 않음
+    // 값이 진짜 이상하면 그냥 빈 배열 리턴해서 400은 피함
+    if (!meNorm || meNorm.length < 10) {
+      console.warn(
+        '[FriendsService.listFriends] meNorm looks invalid, return []:',
+        meNorm,
+      );
+      return [];
+    }
 
     const sql = `
       SELECT

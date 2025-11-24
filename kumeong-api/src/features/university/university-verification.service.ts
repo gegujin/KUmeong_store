@@ -1,4 +1,4 @@
-// src/features/university/university-verification.service.ts
+// kumeong-api/src/features/university/university-verification.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
@@ -31,6 +31,7 @@ export class UniversityVerificationService {
   constructor(
     private readonly mailer: MailerService,
     private readonly codes: CodeStoreService,
+    // NOTE: 더 이상 도메인 강제 검증에는 사용하지 않지만, DI 구조 유지 가능
     private readonly domains: UniversityDomainService,
     private readonly cfg: ConfigService,
   ) {}
@@ -88,23 +89,23 @@ export class UniversityVerificationService {
    * ============================ */
   async issueCode(email: string): Promise<{
     code: string;
-    nextSendAt: string | Date | null;
     ttlSec: number;
-    schoolName: string;
   }> {
     const norm = String(email).trim().toLowerCase();
+    void norm; // 현재는 단순 정규화만, 도메인 검증은 하지 않음
+
     const policy = await this.getPolicy();
 
-    const { schoolName } = this.domains.assertUniversityEmail(norm);
+    // 예전에는 여기서 this.domains.assertUniversityEmail(norm) 호출하며 schoolName을 사용했지만,
+    // 이제는 일반 이메일이므로 도메인 제한 X
 
-    const can = this.codes.canSend(norm);
-    const nextSendAt = can.ok
-      ? new Date(Date.now() + policy.cooldownSec * 1000).toISOString()
-      : can.nextSendAt ?? null;
+    // (선택) 내부 중복 발송 방지 로직이 있다면 재사용 가능
+    // const can = this.codes.canSend(norm);
+    // if (!can.ok) { ... }
 
     const code = generateNumericCode(this.codeLength);
 
-    return { code, nextSendAt, ttlSec: policy.ttlSec, schoolName };
+    return { code, ttlSec: policy.ttlSec };
   }
 
   /** ===========================
@@ -113,22 +114,23 @@ export class UniversityVerificationService {
   async sendMail(email: string, code: string) {
     this.logger.log(`[EMAIL-CODE] ${email} -> ${code}`);
 
+    const ttlMin = Math.floor(this.codeTtlSec / 60);
+
     // Handlebars 템플릿 사용 가능 (university-code.hbs)
     await this.mailer.sendMail({
       to: email,
       from: this.fromAddress,
-      subject: '[KU멍가게] 학교 이메일 인증코드',
+      // ❌ 기존: '[KU멍가게] 학교 이메일 인증코드'
+      subject: '[KU멍가게] 이메일 인증코드',
       template: 'university-code',
       context: {
         code,
-        ttlMin: Math.floor(this.codeTtlSec / 60),
+        ttlMin,
         ttlSec: this.codeTtlSec,
       },
 
       // 템플릿 없이 텍스트만 쓸 수도 있음 (fallback)
-      text: `학교 인증코드는 [${code}] 입니다. ${Math.floor(
-        this.codeTtlSec / 60,
-      )}분 이내에 입력해주세요.`,
+      text: `이메일 인증코드는 [${code}] 입니다. ${ttlMin}분 이내에 입력해주세요.`,
     });
   }
 

@@ -39,24 +39,31 @@ async function bootstrap() {
   const nodeEnv = cfg.get<string>('NODE_ENV') ?? 'development';
   const isProd = nodeEnv === 'production';
 
-  const corsEnvRaw = cfg.get<string>('CORS_ORIGIN') ?? '';
-  const originsFromEnv = corsEnvRaw
-    .split(',')
-    .map((x) => x.trim())
-    .filter((x) => x.length > 0);
+  const corsEnvRaw = (cfg.get<string>('CORS_ORIGIN') ?? '').trim();
 
-  let corsOrigin: string | boolean | (string | RegExp)[];
+  // Nest CORS origin 타입: boolean | string | RegExp | (string | RegExp)[]
+  let corsOrigin: boolean | string | RegExp | (string | RegExp)[];
 
-  if (originsFromEnv.length > 0) {
-    // env 에 "https://a.com,https://b.com" 이런 식으로 들어온 경우
-    corsOrigin = originsFromEnv;
-  } else if (isProd) {
-    // 운영인데 CORS_ORIGIN 이 비어 있으면, 일부러 아무 origin 도 허용하지 않음
-    // → K3s 에서 CORS_ORIGIN 설정 안했을 때 바로 문제 인지 가능
-    corsOrigin = [];
+  if (corsEnvRaw === '*') {
+    // 개발 편의용: 모든 Origin 허용
+    corsOrigin = true;
   } else {
-    // 개발 환경 기본값: 로컬에서 자주 쓰는 포트 허용
-    corsOrigin = ['http://localhost:3000', 'http://localhost:8080'];
+    const originsFromEnv = corsEnvRaw
+      .split(',')
+      .map((x) => x.trim())
+      .filter((x) => x.length > 0);
+
+    if (originsFromEnv.length > 0) {
+      // env 에 "https://a.com,https://b.com" 이런 식으로 들어온 경우
+      corsOrigin = originsFromEnv;
+    } else if (isProd) {
+      // 운영인데 CORS_ORIGIN 이 비어 있으면, 일부러 아무 origin 도 허용하지 않음
+      // → K3s 에서 CORS_ORIGIN 설정 안했을 때 바로 문제 인지 가능
+      corsOrigin = [];
+    } else {
+      // 개발 환경 기본값: localhost 의 모든 포트 허용 (Flutter web dev 랜덤 포트 포함)
+      corsOrigin = [/^http:\/\/localhost(?::\d+)?$/];
+    }
   }
 
   app.enableCors({

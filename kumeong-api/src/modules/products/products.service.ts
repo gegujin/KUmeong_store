@@ -2,6 +2,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, Repository } from 'typeorm';
+
 import { Product, ProductStatus } from './entities/product.entity';
 import { ProductImage } from './entities/product-image.entity';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -33,17 +34,30 @@ export class ProductsService {
   /** 목록: 페이지네이션/정렬/검색/필터 (+ deletedAt IS NULL 기본) */
   async findAll(
     q: QueryProductDto,
-  ): Promise<{ items: Product[]; page: number; limit: number; total: number; pages: number }> {
+  ): Promise<{
+    items: Product[];
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  }> {
     const page = Math.max(1, Number(q?.page ?? 1));
     const limit = Math.min(100, Math.max(1, Number(q?.limit ?? 20)));
 
-    const allowedSort: Array<'createdAt' | 'priceWon' | 'title'> = ['createdAt', 'priceWon', 'title'];
-    const orderField = (allowedSort.includes(q?.sort as any) ? (q?.sort as any) : 'createdAt') as
-      | 'createdAt'
-      | 'priceWon'
-      | 'title';
+    const allowedSort: Array<'createdAt' | 'priceWon' | 'title'> = [
+      'createdAt',
+      'priceWon',
+      'title',
+    ];
+
+    const orderField = (allowedSort.includes(q?.sort as any)
+      ? (q?.sort as any)
+      : 'createdAt') as 'createdAt' | 'priceWon' | 'title';
+
     const orderDir: 'ASC' | 'DESC' =
-      ((q?.order ?? 'DESC').toString().toUpperCase() === 'ASC' ? 'ASC' : 'DESC');
+      ((q?.order ?? 'DESC').toString().toUpperCase() === 'ASC'
+        ? 'ASC'
+        : 'DESC');
 
     const qb = this.repo
       .createQueryBuilder('p')
@@ -51,7 +65,8 @@ export class ProductsService {
       .where('p.deletedAt IS NULL');
 
     // 상태(미지정 시 LISTED)
-    const status = (q?.status as ProductStatus) ?? ProductStatus.LISTED;
+    const status =
+      (q?.status as ProductStatus) ?? ProductStatus.LISTED;
     qb.andWhere('p.status = :status', { status });
 
     // 키워드 검색(제목/설명/카테고리경로/위치텍스트)
@@ -63,23 +78,27 @@ export class ProductsService {
     }
 
     // --- 카테고리 필터 (신/구 파라미터 호환) ---
-    // 신: categoryPath / categoryPathPrefix
-    // 구: category / categoryPrefix
     const catExactRaw =
       (q as any)?.categoryPath ??
       (q as any)?.category ??
       undefined;
-    const catExact = typeof catExactRaw === 'string' ? catExactRaw.trim() : undefined;
+    const catExact =
+      typeof catExactRaw === 'string' ? catExactRaw.trim() : undefined;
 
     const catPrefixRaw =
       (q as any)?.categoryPathPrefix ??
       (q as any)?.categoryPrefix ??
       undefined;
-    const catPrefix =
-      catExact ? undefined : (typeof catPrefixRaw === 'string' ? catPrefixRaw.trim() : undefined);
+    const catPrefix = catExact
+      ? undefined
+      : typeof catPrefixRaw === 'string'
+      ? catPrefixRaw.trim()
+      : undefined;
 
     if (catExact) {
-      qb.andWhere('p.categoryPath = :categoryPath', { categoryPath: catExact });
+      qb.andWhere('p.categoryPath = :categoryPath', {
+        categoryPath: catExact,
+      });
     } else if (catPrefix) {
       // %, _, \ 이스케이프 → 접두사 매칭
       const esc = catPrefix.replace(/([%_\\])/g, '\\$1');
@@ -88,8 +107,16 @@ export class ProductsService {
     }
 
     // 가격 범위
-    if (q?.priceWonMin != null) qb.andWhere('p.priceWon >= :min', { min: Number(q.priceWonMin) });
-    if (q?.priceWonMax != null) qb.andWhere('p.priceWon <= :max', { max: Number(q.priceWonMax) });
+    if (q?.priceWonMin != null) {
+      qb.andWhere('p.priceWon >= :min', {
+        min: Number(q.priceWonMin),
+      });
+    }
+    if (q?.priceWonMax != null) {
+      qb.andWhere('p.priceWon <= :max', {
+        max: Number(q.priceWonMax),
+      });
+    }
 
     qb.orderBy(`p.${orderField}`, orderDir)
       .addOrderBy('p.id', 'DESC')
@@ -113,7 +140,9 @@ export class ProductsService {
       .orderBy('img.ord', 'ASC')
       .getOne();
 
-    if (!row) throw new NotFoundException('Product not found');
+    if (!row) {
+      throw new NotFoundException('Product not found');
+    }
     return row;
   }
 
@@ -142,12 +171,11 @@ export class ProductsService {
     if (images && images.length > 0) {
       const rows = images
         .map((f, idx) => {
-          const url =
-            f?.filename
-              ? `/uploads/${f.filename}`
-              : (f?.path && f.path.includes('/uploads/'))
-                ? f.path.slice(f.path.indexOf('/uploads/'))
-                : '';
+          const url = f?.filename
+            ? `/uploads/${f.filename}`
+            : f?.path && f.path.includes('/uploads/')
+            ? f.path.slice(f.path.indexOf('/uploads/'))
+            : '';
           if (!url) return null; // 빈 URL은 저장 스킵
           return this.imgRepo.create({
             productId: saved.id,
@@ -175,13 +203,16 @@ export class ProductsService {
   /** 수정: 소프트 삭제된 레코드는 수정 불가 */
   async update(id: string, dto: UpdateProductDto): Promise<Product> {
     const exists = await this.repo.findOne({ where: { id } });
-    if (!exists || exists.deletedAt) throw new NotFoundException('Product not found');
+    if (!exists || exists.deletedAt) {
+      throw new NotFoundException('Product not found');
+    }
 
     const merged = this.repo.merge(exists, {
       title: dto.title ?? exists.title,
       priceWon: dto.priceWon ?? exists.priceWon,
       categoryPath: (dto as any).categoryPath ?? (exists as any).categoryPath,
-      locationText: (dto as any).locationText ?? (exists as any).locationText,
+      locationText:
+        (dto as any).locationText ?? (exists as any).locationText,
       description: dto.description ?? exists.description,
       status: dto.status ?? exists.status,
     } as DeepPartial<Product>);
@@ -192,16 +223,23 @@ export class ProductsService {
   /** 삭제: 소프트 삭제 */
   async remove(id: string): Promise<{ deleted: true; id: string }> {
     const exists = await this.repo.findOne({ where: { id } });
-    if (!exists || exists.deletedAt) throw new NotFoundException('Product not found');
+    if (!exists || exists.deletedAt) {
+      throw new NotFoundException('Product not found');
+    }
 
-    await this.repo.update(id, { deletedAt: () => 'CURRENT_TIMESTAMP' } as any);
+    await this.repo.update(id, {
+      deletedAt: () => 'CURRENT_TIMESTAMP',
+    } as any);
     return { deleted: true, id };
   }
 
+  /** 조회수 증가 후 최신 값 반환 */
   async incrementViews(id: string): Promise<number> {
     // id 존재 확인 (없으면 404)
     const exists = await this.repo.exists({ where: { id } });
-    if (!exists) throw new NotFoundException('Product not found');
+    if (!exists) {
+      throw new NotFoundException('Product not found');
+    }
 
     // views = views + 1 (원자적 증가)
     await this.repo

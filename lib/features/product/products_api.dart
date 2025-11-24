@@ -98,6 +98,9 @@ Future<List<http.MultipartFile>> _toMultipartFiles(List<dynamic> images) async {
 class ProductsApi {
   const ProductsApi();
 
+  // ✅ 모든 상품 관련 엔드포인트 공통 prefix
+  static const String _basePath = '/products';
+
   /// 목록: 다양한 서버 포맷을 흡수해서 ProductsPage로 통일
   static Future<ProductsPage> list({
     int page = 1,
@@ -105,7 +108,7 @@ class ProductsApi {
     String? q,
   }) async {
     final res = await HttpX.get(
-      '/products',
+      _basePath,
       query: {
         'page': page,
         'size': size,
@@ -145,8 +148,8 @@ class ProductsApi {
   }
 
   /// 상세
-  static Future<Map<String, dynamic>?> detail(String id) async {
-    final res = await HttpX.get('/products/$id');
+  Future<Map<String, dynamic>?> detail(String id) async {
+    final res = await HttpX.get('$_basePath/$id');
     // { ok, data } | { ... }
     if (res.containsKey('data')) {
       final d = res['data'];
@@ -157,7 +160,7 @@ class ProductsApi {
 
   /// 등록 (JSON)
   static Future<Map<String, dynamic>?> create(Map<String, dynamic> dto) async {
-    final res = await HttpX.postJson('/products', dto);
+    final res = await HttpX.postJson(_basePath, dto);
     return res.containsKey('data') ? _asMap(res['data']) : _asMap(res);
   }
 
@@ -166,13 +169,13 @@ class ProductsApi {
     String id,
     Map<String, dynamic> dto,
   ) async {
-    final res = await HttpX.patchJson('/products/$id', dto);
+    final res = await HttpX.patchJson('$_basePath/$id', dto);
     return res.containsKey('data') ? _asMap(res['data']) : _asMap(res);
   }
 
   /// 삭제
   static Future<bool> remove(String id) async {
-    await HttpX.delete('/products/$id');
+    await HttpX.delete('$_basePath/$id');
     return true;
   }
 
@@ -193,7 +196,7 @@ class ProductsApi {
     });
 
     final res = await HttpX.multipart(
-      '/products',
+      _basePath,
       method: 'POST',
       withAuth: true,
       fields: fields,
@@ -216,7 +219,7 @@ class ProductsApi {
     });
 
     final res = await HttpX.multipart(
-      '/products/$id',
+      '$_basePath/$id',
       method: 'PUT',
       withAuth: true,
       fields: fields,

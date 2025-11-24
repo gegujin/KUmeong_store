@@ -1,5 +1,5 @@
 // kumeong-api/src/features/university/university-verification.controller.ts
-import { Body, Controller, Headers, HttpCode, HttpStatus, Post, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Headers, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { SendEmailCodeDto } from '../dto/send-email-code.dto';
 import { VerifyEmailCodeDto } from '../dto/verify-email-code.dto';
 import { CodeStoreService } from '../../core/verify/code-store.service';
@@ -21,10 +21,11 @@ const isProd = process.env.NODE_ENV === 'production';
 export class UniversityVerificationController {
   constructor(
     private readonly codeStore: CodeStoreService,
+    // NOTE: 이제 도메인 강제 검증에는 사용하지 않지만, DI 구조는 유지
     private readonly domainSvc: UniversityDomainService,
     private readonly usersService: UsersService,
     private readonly jwt: JwtService,
-    // ✅ 병합 정책/메일발송은 서비스로 위임
+    // ✅ 정책/메일발송은 서비스로 위임
     private readonly verification: UniversityVerificationService,
   ) {}
 
@@ -34,8 +35,9 @@ export class UniversityVerificationController {
   async send(@Body() dto: SendEmailCodeDto) {
     const email = String(dto.email ?? '').trim().toLowerCase();
 
-    // *.ac.kr 확인 + 학교명 파싱(형식 검증)
-    const { schoolName } = this.domainSvc.assertUniversityEmail(email);
+    // ❌ 기존: *.ac.kr 확인 + 학교명 파싱(형식 검증)
+    // const { schoolName } = this.domainSvc.assertUniversityEmail(email);
+    // → 이제는 DTO(@IsEmail)에서 형식만 검증하고, 도메인 제한은 두지 않는다.
 
     // 정책/쿨다운 확인 (UNIV_* → EMAIL_* → 기본값 순)
     const policy = await this.verification.getPolicy();
@@ -44,10 +46,14 @@ export class UniversityVerificationController {
     const cooldownKey = `univ:cooldown:${email}`;
     const still = await this.codeStore.ttl(cooldownKey); // 초 단위 TTL
     if (still > 0) {
-      return { ok: false as const, reason: 'cooldown' as const, nextSendAt: new Date(Date.now() + still * 1000).toISOString() };
+      return {
+        ok: false as const,
+        reason: 'cooldown' as const,
+        nextSendAt: new Date(Date.now() + still * 1000).toISOString(),
+      };
     }
 
-    // 코드/TTL/학교명 발급 (코드 생성은 서비스 내부에서 정책 기반 길이로 수행)
+    // 코드/TTL 발급 (코드 생성은 서비스 내부에서 정책 기반 길이로 수행)
     const { code, ttlSec } = await this.verification.issueCode(email);
 
     // DEV 로깅(응답에는 미포함)
@@ -62,7 +68,10 @@ export class UniversityVerificationController {
       if (isProd) {
         return { ok: false as const, reason: 'mail_send_failed' as const };
       }
-      console.warn('[UniversityVerification] sendVerificationCode failed (dev ignored):', (e as any)?.message ?? e);
+      console.warn(
+        '[UniversityVerification] sendVerificationCode failed (dev ignored):',
+        (e as any)?.message ?? e,
+      );
     }
 
     // ✅ 저장(코드 TTL + 쿨다운 TTL)
@@ -70,7 +79,10 @@ export class UniversityVerificationController {
     await this.codeStore.set(cooldownKey, '1', policy.cooldownSec);
 
     const nextSendAt = new Date(Date.now() + policy.cooldownSec * 1000).toISOString();
-    return { ok: true, ttlSec, nextSendAt, school: schoolName };
+
+    // ❌ 기존: school: schoolName
+    // 이제 클라이언트는 school 정보를 쓰지 않으므로 제거
+    return { ok: true, ttlSec, nextSendAt };
   }
 
   /** ② 인증코드 검증 */
@@ -85,14 +97,18 @@ export class UniversityVerificationController {
       return { ok: false as const, reason: result.reason };
     }
 
-    // 이메일에서 학교명 재파싱
-    const { schoolName } = this.domainSvc.assertUniversityEmail(email);
+    // ❌ 기존: 이메일에서 학교명 재파싱
+    // const { schoolName } = this.domainSvc.assertUniversityEmail(email);
+    // → 일반 이메일이므로 단순히 도메인 정도만 참고 (필요 시)
+    const emailDomain = email.split('@')[1] ?? '';
+    const schoolName = emailDomain || 'email';
 
     // 사용자 프로필 갱신 (이미 있으면 already, 없으면 업데이트)
     const upd = await this.usersService.markUniversityVerifiedByEmail(email, schoolName);
-    const profileUpdated = !!(upd as any)?.updated || !!(upd as any)?.already;
+    const profileUpdated =
+      !!(upd as any)?.updated || !!(upd as any)?.already;
 
-    // 학교인증 전용 토큰 (회원가입 단계 연계용)
+    // 이메일 인증용 토큰 (회원가입 단계 연계용)
     const univToken = await this.jwt.signAsync(
       { email, purpose: 'univ', school: schoolName },
       {
@@ -107,7 +123,7 @@ export class UniversityVerificationController {
         verified: true as const,
         profileUpdated: false as const,
         profileReason: (upd as any)?.reason,
-        school: schoolName,
+        school: schoolName, // 이름은 유지하되 의미는 "이메일 도메인"
         univToken,
       };
     }
@@ -130,22 +146,45 @@ export class UniversityVerificationController {
     @Headers('x-dev-secret') devSecret: string,
   ) {
     if (isProd || process.env.ALLOW_CODE_PEEK !== 'true') {
-      return { ok: false as const, reason: 'forbidden' as const, message: 'disabled_in_prod' };
+      return {
+        ok: false as const,
+        reason: 'forbidden' as const,
+        message: 'disabled_in_prod',
+      };
     }
 
     const expected = process.env.DEV_CODE_PEEK_SECRET ?? '';
     if (!expected || devSecret !== expected) {
-      return { ok: false as const, reason: 'unauthorized' as const, message: 'invalid_dev_secret' };
+      return {
+        ok: false as const,
+        reason: 'unauthorized' as const,
+        message: 'invalid_dev_secret',
+      };
     }
 
     const email = String(body?.email ?? '').trim().toLowerCase();
-    if (!email) return { ok: false as const, reason: 'bad_request' as const, message: 'email_required' };
+    if (!email) {
+      return {
+        ok: false as const,
+        reason: 'bad_request' as const,
+        message: 'email_required',
+      };
+    }
 
-    // 학교 이메일 규칙 검증(도메인/형식)
-    try {
-      this.domainSvc.assertUniversityEmail(email);
-    } catch {
-      return { ok: false as const, reason: 'bad_request' as const, message: 'invalid_univ_email' };
+    // ❌ 기존: 학교 이메일 규칙 검증(도메인/형식)
+    // try {
+    //   this.domainSvc.assertUniversityEmail(email);
+    // } catch {
+    //   return { ok: false as const, reason: 'bad_request' as const, message: 'invalid_univ_email' };
+    // }
+
+    // → 간단한 형식 체크만 (실제 형식 검증은 DTO에서 처리)
+    if (!email.includes('@')) {
+      return {
+        ok: false as const,
+        reason: 'bad_request' as const,
+        message: 'invalid_email',
+      };
     }
 
     // CodeStore의 유효 코드 조회
@@ -155,6 +194,10 @@ export class UniversityVerificationController {
     }
 
     // DEV 전용이므로 코드 그대로 반환
-    return { ok: true as const, code: peek.code, expiresAt: peek.expiresAt };
+    return {
+      ok: true as const,
+      code: peek.code,
+      expiresAt: peek.expiresAt,
+    };
   }
 }

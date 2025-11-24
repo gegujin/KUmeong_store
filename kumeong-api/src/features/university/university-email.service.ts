@@ -12,14 +12,15 @@ export class UniversityEmailService {
     try {
       await this.mailer.sendMail({
         to: email,
-        subject: '[KU멍가게] 학교 이메일 인증코드',
+        // 기존: '[KU멍가게] 학교 이메일 인증코드',
+        subject: '[KU멍가게] 이메일 인증코드',  // ⬅ 여기만 바꿔주면 됨
         template: 'verify-code', // templates/mail/verify-code.hbs
         context: { code, ttlMin, email },
       });
       this.logger.log(`메일 발송 성공: ${email}`);
     } catch (e: any) {
       this.logger.error(`메일 발송 실패: ${email} / ${e?.message ?? e}`);
-      throw e; // 컨트롤러에서 DEV/PROD 분기 처리
+      throw e;
     }
   }
 }

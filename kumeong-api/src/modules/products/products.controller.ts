@@ -1,5 +1,6 @@
 // kumeong-api/src/modules/products/products.controller.ts
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -7,42 +8,36 @@ import {
   Param,
   Patch,
   Post,
-  Body,
   Query,
-  UseGuards,
   UnauthorizedException,
   UploadedFiles,
+  UseGuards,
   UseInterceptors,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiConsumes,
   ApiOperation,
   ApiTags,
-  ApiConsumes,
 } from '@nestjs/swagger';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { productImageStorage } from './upload.util';
+import { ConfigService } from '@nestjs/config';
 
 import { ProductsService } from './products.service';
-import { ConfigService } from '@nestjs/config';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
 import { Product } from './entities/product.entity';
+import { productImageStorage } from './upload.util';
 
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
-// ----- 파일명 유틸 (클래스 밖에 선언) -----
-function sanitizeFilename(name: string) {
-  const base = name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
-  const ts = Date.now();
-  return `${ts}-${base}`.slice(0, 200);
-}
-
 @ApiTags('products')
 @ApiBearerAuth()
-@Controller({ path: 'products', version: '1' })
+// ✅ 전역 prefix가 `/api/v1` 라고 가정하고, 컨트롤러는 단순 path만 사용
+@Controller('products')
 export class ProductsController {
   constructor(
     private readonly productsService: ProductsService,
@@ -53,8 +48,11 @@ export class ProductsController {
   private absUrl = (u?: string | null) => {
     if (!u) return null;
     if (/^https?:\/\//i.test(u)) return u;
+
     const port = Number(this.cfg.get<string>('PORT') ?? 3000);
-    const base = this.cfg.get<string>('PUBLIC_BASE_URL') || `http://localhost:${port}`;
+    const base =
+      this.cfg.get<string>('PUBLIC_BASE_URL') || `http://localhost:${port}`;
+
     return `${base}${u.startsWith('/') ? '' : '/'}${u}`;
   };
 
@@ -90,13 +88,23 @@ export class ProductsController {
   /** 단건 조회 */
   @ApiOperation({ summary: '상품 상세 조회' })
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<{ ok: true; data: Product }> {
+  async findOne(
+    @Param('id', new ParseUUIDPipe({ version: '4', optional: true })) id: string,
+  ): Promise<{ ok: true; data: Product }> {
     const item = await this.productsService.findOne(id);
-    if (!item) throw new NotFoundException('Product not found');
+    if (!item) {
+      throw new NotFoundException('Product not found');
+    }
+
     const mapped: any = {
       ...item,
-      images: (item as any)?.images?.map((i: any) => ({ ...i, url: this.absUrl(i.url) })) ?? [],
+      images:
+        (item as any)?.images?.map((i: any) => ({
+          ...i,
+          url: this.absUrl(i.url),
+        })) ?? [],
     };
+
     return { ok: true, data: mapped };
   }
 
@@ -120,16 +128,23 @@ export class ProductsController {
     @Body() dto: CreateProductDto,
     @UploadedFiles() files?: { images?: Express.Multer.File[] },
   ): Promise<{ ok: true; data: Product }> {
-    if (!me?.id) throw new UnauthorizedException('No authenticated user in request');
-    const created = await this.productsService.create(me.id, dto, files?.images ?? []);
+    if (!me?.id) {
+      throw new UnauthorizedException('No authenticated user in request');
+    }
+    const created = await this.productsService.create(
+      me.id,
+      dto,
+      files?.images ?? [],
+    );
     return { ok: true, data: created };
   }
 
   /** 상품 수정 */
   @ApiOperation({ summary: '상품 수정' })
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   async update(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4', optional: true })) id: string,
     @Body() dto: UpdateProductDto,
   ): Promise<{ ok: true; data: Product }> {
     const updated = await this.productsService.update(id, dto);
@@ -138,18 +153,21 @@ export class ProductsController {
 
   /** 상품 삭제 (소프트 삭제) */
   @ApiOperation({ summary: '상품 삭제' })
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   async remove(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe({ version: '4', optional: true })) id: string,
   ): Promise<{ ok: true; data: { deleted: true; id: string } }> {
     const result = await this.productsService.remove(id);
     return { ok: true, data: result };
   }
 
-  @Post(':id/views')
-  // @Public() // (선택) 프로젝트에 Public 데코레이터가 있으면 열어두는 걸 추천
+  /** 조회수 +1 */
   @ApiOperation({ summary: '상품 조회수 +1 및 최신 조회수 반환' })
-  async addView(@Param('id') id: string) {
+  @Post(':id/views')
+  async addView(
+    @Param('id', new ParseUUIDPipe({ version: '4', optional: true })) id: string,
+  ) {
     const views = await this.productsService.incrementViews(id);
     return { ok: true, data: { id, views } };
   }
