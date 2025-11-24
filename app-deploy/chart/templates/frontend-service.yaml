@@ -3,9 +3,9 @@ kind: Service
 metadata:
   name: kumeong-front
 spec:
-  type: ClusterIP
   selector:
     app: kumeong-front
   ports:
-    - port: 80
+    - port: {{ .Values.frontend.port }}
       targetPort: {{ .Values.frontend.port }}
+  type: LoadBalancer

@@ -1,33 +1,67 @@
-# ===========================
-# Backend API 설정
-# ===========================
+# -------------------------
+# Global Values
+# -------------------------
+namespace: default
+
+# -------------------------
+# Backend API Settings
+# -------------------------
 backend:
   image:
     repository: gegujin/kumeong-api
-    tag: "0.1.0"
+    tag: "0.4.0"
     pullPolicy: IfNotPresent
+
   replicaCount: 1
   port: 3000
 
-# ===========================
-# Frontend (Nginx)
-# ===========================
+  env:
+    NODE_ENV: "production"
+    API_PREFIX: "/api"
+    API_VERSION: "1"
+    DB_HOST: "mysql"
+    DB_PORT: "3306"
+    DB_USERNAME: "root"
+    DB_PASSWORD: "root"
+    DB_DATABASE: "kumeong_store"
+
+  ingress:
+    enabled: false
+    className: ""
+    host: "api.example.com"
+    path: /
+    tls: false
+
+# -------------------------
+# Frontend Settings
+# -------------------------
 frontend:
   image:
     repository: gegujin/kumeong-front
-    tag: "0.1.0"
+    tag: "0.4.0"
     pullPolicy: IfNotPresent
+
   replicaCount: 1
   port: 80
 
-# ===========================
-# Ingress (필요시)
-# ===========================
-ingress:
-  enabled: false
-  className: ""
-  hosts:
-    - host: example.com
-      paths:
-        - path: /
-          pathType: Prefix
+  ingress:
+    enabled: false
+    className: ""
+    host: "front.example.com"
+    path: /
+    tls: false
+
+# -------------------------
+# MySQL Settings
+# -------------------------
+mysql:
+  enabled: true
+  image: mysql:8
+  port: 3306
+  rootPassword: "root"
+  database: "kumeong_store"
+
+  persistence:
+    enabled: false                  # PVC는 선택 사항
+    size: 1Gi
+    storageClass: ""

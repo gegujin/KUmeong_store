@@ -3,9 +3,9 @@ kind: Service
 metadata:
   name: kumeong-api
 spec:
-  type: ClusterIP
   selector:
     app: kumeong-api
   ports:
-    - port: 3000
+    - port: {{ .Values.backend.port }}
       targetPort: {{ .Values.backend.port }}
+  type: ClusterIP
