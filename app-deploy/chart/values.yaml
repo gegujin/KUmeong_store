@@ -56,15 +56,23 @@ frontend:
 # -------------------------
 mysql:
   enabled: true
-  image:
-    repository: mysql
-    tag: "8"
+  image: "mysql:8"
   port: 3306
+
   rootPassword: "root"
   database: "kumeong_store"
 
+  user: "kumeong"
+  password: "kumeong123"
 
   persistence:
-    enabled: false                  # PVC는 선택 사항
+    enabled: false
     size: 1Gi
     storageClass: ""
+
+# -------------------------
+# Monitoring Settings
+# -------------------------
+monitoring:
+  prometheus:
+    enabled: false

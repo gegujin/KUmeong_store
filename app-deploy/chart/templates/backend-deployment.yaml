@@ -18,20 +18,40 @@ spec:
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.backend.port }}
+
           env:
             {{- range $key, $value := .Values.backend.env }}
             - name: {{ $key }}
               value: "{{ $value }}"
             {{- end }}
+
+          # ---------------------------
+          # Liveness Probe
+          # ---------------------------
           livenessProbe:
             httpGet:
               path: /api/v1/health
               port: {{ .Values.backend.port }}
-            initialDelaySeconds: 15
+            initialDelaySeconds: 20
             periodSeconds: 10
+
+          # ---------------------------
+          # Readiness Probe
+          # ---------------------------
           readinessProbe:
             httpGet:
               path: /api/v1/health
               port: {{ .Values.backend.port }}
             initialDelaySeconds: 10
             periodSeconds: 5
+
+          # ---------------------------
+          # Resources
+          # ---------------------------
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
