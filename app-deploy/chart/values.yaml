@@ -56,10 +56,13 @@ frontend:
 # -------------------------
 mysql:
   enabled: true
-  image: mysql:8
+  image:
+    repository: mysql
+    tag: "8"
   port: 3306
   rootPassword: "root"
   database: "kumeong_store"
+
 
   persistence:
     enabled: false                  # PVC는 선택 사항
