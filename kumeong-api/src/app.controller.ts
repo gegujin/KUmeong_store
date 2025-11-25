@@ -9,4 +9,13 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  // -------------------------
+  // Health Check Endpoint
+  // Kubernetes readiness/liveness probe
+  // -------------------------
+  @Get('api/v1/health')
+  health() {
+    return { status: 'ok' };
+  }
 }

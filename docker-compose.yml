@@ -16,14 +16,14 @@ services:
       - ./kumeong_store.sql:/docker-entrypoint-initdb.d/init.sql
 
   api:
-    image: gegujin/kumeong-api:0.4.0
+    image: gegujin/kumeong-api:0.4.1
     container_name: kumeong-api
     restart: always
     environment:
       NODE_ENV: production
       DB_HOST: db
       DB_USERNAME: root
-      DB_PASSWORD: root
+      DB_PASSWORD: "root"
       DB_DATABASE: kumeong_store
     ports:
       - "3000:3000"

@@ -9,7 +9,7 @@ namespace: default
 backend:
   image:
     repository: gegujin/kumeong-api
-    tag: "0.4.0"
+    tag: "0.4.1"
     pullPolicy: IfNotPresent
 
   replicaCount: 1
@@ -19,11 +19,17 @@ backend:
     NODE_ENV: "production"
     API_PREFIX: "/api"
     API_VERSION: "1"
+
     DB_HOST: "mysql"
     DB_PORT: "3306"
     DB_USERNAME: "root"
     DB_PASSWORD: "root"
     DB_DATABASE: "kumeong_store"
+
+    # 🔥 필수값
+    CORS_ORIGIN: "*"
+    JWT_ACCESS_SECRET: "kumeong_access_secret"
+    JWT_REFRESH_SECRET: "kumeong_refresh_secret"
 
   ingress:
     enabled: false
@@ -59,11 +65,8 @@ mysql:
   image: "mysql:8"
   port: 3306
 
-  rootPassword: "root"
+  rootPassword: "jin20503*"
   database: "kumeong_store"
-
-  user: "kumeong"
-  password: "kumeong123"
 
   persistence:
     enabled: false
