@@ -20,42 +20,40 @@ spec:
           ports:
             - containerPort: {{ .Values.backend.port }}
 
-          # ---------------------------
-          # Environment Variables
-          # ---------------------------
           env:
             {{- range $key, $value := .Values.backend.env }}
             - name: {{ $key }}
               value: "{{ $value }}"
             {{- end }}
 
-          # ---------------------------
-          # Liveness Probe
-          # ---------------------------
+          # -----------------------
+          # 업로드 폴더 PVC 마운트
+          # -----------------------
+          volumeMounts:
+            - name: uploads
+              mountPath: /usr/src/app/uploads
+
+          # -----------------------
+          # 헬스 체크 (only-friend 브랜치 기준)
+          # -----------------------
           livenessProbe:
             httpGet:
-              path: /api/v1/health
+              path: /health
               port: {{ .Values.backend.port }}
             initialDelaySeconds: 20
             periodSeconds: 10
 
-          # ---------------------------
-          # Readiness Probe
-          # ---------------------------
           readinessProbe:
             httpGet:
-              path: /api/v1/health
+              path: /health
               port: {{ .Values.backend.port }}
             initialDelaySeconds: 10
             periodSeconds: 5
 
-          # ---------------------------
-          # Resources
-          # ---------------------------
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "256Mi"
-            limits:
-              cpu: "500m"
-              memory: "512Mi"
+      # -----------------------
+      # PVC 연결
+      # -----------------------
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: uploads-pvc

@@ -13,6 +13,7 @@ import 'package:kumeong_store/utils/storage.dart'; // ★ 토큰 단일 소스
 import 'package:http/http.dart' as http;
 import 'package:kumeong_store/models/post.dart'; // Product + toMapForHome()
 import 'dart:convert'; // ← jsonDecode 사용
+import 'package:kumeong_store/core/config/env.dart';
 
 const Color kuInfo = Color(0xFF147AD6);
 
@@ -62,17 +63,18 @@ class _HomePageState extends State<HomePage>
     return fallback;
   }
 
-  String? _absUrl(String? p) {
-    if (p == null || p.isEmpty) return null;
-    if (p.startsWith('http')) return p;
-    if (p.startsWith('/uploads/')) {
-      // 🔹 env.dart 의 kBaseUrl 사용 (API_BASE_URL 기준)
-      final base = kBaseUrl.endsWith('/')
-          ? kBaseUrl.substring(0, kBaseUrl.length - 1)
-          : kBaseUrl;
-      return '$base$p';
-    }
-    return p;
+  /// 서버에서 넘어온 이미지 URL을 절대 URL로 변환
+  String? _absUrl(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+
+    // 이미 절대 URL이면 그대로
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+
+    // 백엔드 업로드 경로 보정
+    if (raw.startsWith('/uploads/')) return '$kBaseUrl$raw';
+
+    // 파일명만 온 경우 → /uploads/ 붙이기
+    return '$kBaseUrl/uploads/$raw';
   }
 
   String _formatWon(dynamic v) {
@@ -96,6 +98,7 @@ class _HomePageState extends State<HomePage>
 
   Map<String, dynamic> _normalizeServerProduct(Map<String, dynamic> p) {
     List<String> images = [];
+
     final rawImages = p['images'] ?? p['imageUrls'] ?? [];
     if (rawImages is List) {
       images = rawImages.map((e) => _absUrl('$e')).whereType<String>().toList();
@@ -103,8 +106,13 @@ class _HomePageState extends State<HomePage>
       final a = _absUrl(rawImages);
       if (a != null) images = [a];
     }
-    final thumb = _absUrl(p['thumbnailUrl']?.toString()) ??
-        (images.isNotEmpty ? images.first : null);
+
+    String? fixThumb(dynamic t, List<String> fallback) {
+      if (t == null) return fallback.isNotEmpty ? fallback.first : null;
+      return _absUrl(t.toString());
+    }
+
+    final thumb = fixThumb(p['thumbnailUrl'], images);
 
     final loc =
         p['location'] ?? p['locationText'] ?? p['seller']?['locationName'];

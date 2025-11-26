@@ -6,12 +6,9 @@ metadata:
   labels:
     app: mysql
 spec:
-  # StatefulSet과 반드시 짝으로 가는 값
-  clusterIP: None  # Headless Service
-
+  clusterIP: None
   selector:
     app: mysql
-
   ports:
     - name: mysql
       port: 3306

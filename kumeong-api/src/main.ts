@@ -8,6 +8,7 @@ import { AppModule } from './app.module';
 import { SuccessResponseInterceptor } from './common/interceptors/success-response.interceptor';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { DataSource } from 'typeorm';
+
 import { join } from 'path';
 import * as express from 'express';
 import * as http from 'http';
@@ -26,26 +27,27 @@ async function bootstrap() {
   });
   const cfg = app.get(ConfigService);
 
-  // ===== Prefix & Versioning =====
-  // .env 의 API_PREFIX 를 우선 사용, 없으면 기본값 'api'
+  // ======================================
+  // Prefix & Versioning
+  // ======================================
   const apiPrefix = cfg.get<string>('API_PREFIX') ?? 'api';
   app.setGlobalPrefix(apiPrefix);
+
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: '1',
   });
 
-  // ===== CORS =====
+  // ======================================
+  // CORS
+  // ======================================
   const nodeEnv = cfg.get<string>('NODE_ENV') ?? 'development';
   const isProd = nodeEnv === 'production';
 
   const corsEnvRaw = (cfg.get<string>('CORS_ORIGIN') ?? '').trim();
-
-  // Nest CORS origin 타입: boolean | string | RegExp | (string | RegExp)[]
   let corsOrigin: boolean | string | RegExp | (string | RegExp)[];
 
   if (corsEnvRaw === '*') {
-    // 개발 편의용: 모든 Origin 허용
     corsOrigin = true;
   } else {
     const originsFromEnv = corsEnvRaw
@@ -54,14 +56,10 @@ async function bootstrap() {
       .filter((x) => x.length > 0);
 
     if (originsFromEnv.length > 0) {
-      // env 에 "https://a.com,https://b.com" 이런 식으로 들어온 경우
       corsOrigin = originsFromEnv;
     } else if (isProd) {
-      // 운영인데 CORS_ORIGIN 이 비어 있으면, 일부러 아무 origin 도 허용하지 않음
-      // → K3s 에서 CORS_ORIGIN 설정 안했을 때 바로 문제 인지 가능
       corsOrigin = [];
     } else {
-      // 개발 환경 기본값: localhost 의 모든 포트 허용 (Flutter web dev 랜덤 포트 포함)
       corsOrigin = [/^http:\/\/localhost(?::\d+)?$/];
     }
   }
@@ -81,10 +79,17 @@ async function bootstrap() {
   app.use(methodOverride('X-HTTP-Method-Override'));
   app.use(methodOverride('_method'));
 
-  // uploads 디렉토리를 마운트한 경우에만 사용
-  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
+  // ======================================
+  // ⭐ 정적 파일 서빙 (uploads)
+  // ======================================
+  // dist/main.js 기준으로 uploads 는 dist/../uploads 에 존재
+  const uploadsPath = join(__dirname, '..', 'uploads');
+  app.use('/uploads', express.static(uploadsPath));
+  Logger.log(`Static uploads path: ${uploadsPath}`);
 
-  // ===== Global Pipes/Filters/Interceptors =====
+  // ======================================
+  // Global Pipes / Interceptors / Filters
+  // ======================================
   app.useGlobalPipes(createGlobalValidationPipe());
   app.useGlobalInterceptors(
     new RouteContextInterceptor(),
@@ -95,12 +100,13 @@ async function bootstrap() {
     new GlobalExceptionFilter(),
   );
 
-  // ===== Swagger =====
+  // ======================================
+  // Swagger
+  // ======================================
   const swaggerConfig = new DocumentBuilder()
     .setTitle('KU멍가게 API')
     .setDescription('캠퍼스 중고거래/배달(KU대리) 백엔드 v1')
     .setVersion('1.0.0')
-    // 🔧 addServer 제거 — K8s ingress 경로에 맡김
     .addBearerAuth(
       { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
       'bearer',
@@ -108,9 +114,11 @@ async function bootstrap() {
     .build();
 
   const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup(`/${apiPrefix}/docs`, app, swaggerDoc);
+  SwaggerModule.setup(`${apiPrefix}/docs`, app, swaggerDoc);
 
-  // ===== DB 체크 =====
+  // ======================================
+  // DB Check
+  // ======================================
   const ds = app.get(DataSource);
   try {
     const [dbRow] = await ds.query('SELECT DATABASE() AS db');
@@ -121,16 +129,20 @@ async function bootstrap() {
 
   await app.init();
 
-  // ===== HTTP + WebSocket =====
+  // ======================================
+  // HTTP + WebSocket
+  // ======================================
   const server = http.createServer(app.getHttpAdapter().getInstance());
   const wss = new WebSocketServer({ server, path: '/ws/realtime' });
 
   const rooms = new Map<string, Set<Sub>>();
+
   function joinRoom(sub: Sub) {
     const set = rooms.get(sub.roomId) ?? new Set<Sub>();
     set.add(sub);
     rooms.set(sub.roomId, set);
   }
+
   function leave(ws: WebSocket) {
     for (const set of rooms.values()) {
       for (const s of Array.from(set)) {
@@ -198,7 +210,9 @@ async function bootstrap() {
     }
   };
 
-  // ===== Listen =====
+  // ======================================
+  // Listen
+  // ======================================
   const port = Number(cfg.get<string>('PORT') ?? 3000);
   const publicBaseUrl = cfg.get<string>('PUBLIC_BASE_URL');
 
@@ -207,13 +221,11 @@ async function bootstrap() {
   );
 
   if (publicBaseUrl) {
-    // K3s / 실제 도메인 기준 로그
     Logger.log(
       `🚀 Server running at ${publicBaseUrl}/${apiPrefix}/v1 (PORT=${port})`,
     );
     Logger.log(`📘 Swagger:        ${publicBaseUrl}/${apiPrefix}/docs`);
   } else {
-    // 로컬 개발용 기본 로그
     Logger.log(`🚀 Server running at http://localhost:${port}/${apiPrefix}/v1`);
     Logger.log(
       `📘 Swagger:        http://localhost:${port}/${apiPrefix}/docs`,

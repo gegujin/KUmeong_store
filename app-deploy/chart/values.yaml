@@ -9,7 +9,7 @@ namespace: default
 backend:
   image:
     repository: gegujin/kumeong-api
-    tag: "0.4.1"
+    tag: "only-friend"
     pullPolicy: IfNotPresent
 
   replicaCount: 1
@@ -17,19 +17,26 @@ backend:
 
   env:
     NODE_ENV: "production"
-    API_PREFIX: "/api"
+
+    # ⭐ only-friend 브랜치는 /api prefix 없음
+    API_PREFIX: "/"
     API_VERSION: "1"
 
     DB_HOST: "mysql"
     DB_PORT: "3306"
     DB_USERNAME: "root"
-    DB_PASSWORD: "root"
+    DB_PASSWORD: "jin20503*"
     DB_DATABASE: "kumeong_store"
 
-    # 🔥 필수값
-    CORS_ORIGIN: "*"
-    JWT_ACCESS_SECRET: "kumeong_access_secret"
-    JWT_REFRESH_SECRET: "kumeong_refresh_secret"
+    CORS_ORIGIN: "http://kumeong-front.local"
+    PUBLIC_BASE_URL: "http://kumeong-api.local"
+
+    JWT_ACCESS_SECRET: "access_secret"
+    JWT_REFRESH_SECRET: "refresh_secret"
+
+  uploads:
+    enabled: true
+    size: 1Gi
 
   ingress:
     enabled: false
@@ -44,7 +51,7 @@ backend:
 frontend:
   image:
     repository: gegujin/kumeong-front
-    tag: "0.4.0"
+    tag: "only-friend"
     pullPolicy: IfNotPresent
 
   replicaCount: 1
@@ -69,13 +76,6 @@ mysql:
   database: "kumeong_store"
 
   persistence:
-    enabled: false
+    enabled: true
     size: 1Gi
-    storageClass: ""
-
-# -------------------------
-# Monitoring Settings
-# -------------------------
-monitoring:
-  prometheus:
-    enabled: false
+    storageClass: "local-path"

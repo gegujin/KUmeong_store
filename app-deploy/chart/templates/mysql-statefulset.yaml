@@ -18,35 +18,17 @@ spec:
         - name: mysql
           image: {{ .Values.mysql.image }}
           imagePullPolicy: IfNotPresent
-
           env:
             - name: MYSQL_ROOT_PASSWORD
               value: "{{ .Values.mysql.rootPassword }}"
             - name: MYSQL_DATABASE
               value: "{{ .Values.mysql.database }}"
-
           ports:
             - name: mysql
               containerPort: 3306
-
-          livenessProbe:
-            tcpSocket:
-              port: 3306
-            initialDelaySeconds: 30
-            periodSeconds: 10
-
-          readinessProbe:
-            exec:
-              command: ["mysqladmin", "ping", "-h", "127.0.0.1"]
-            initialDelaySeconds: 20
-            periodSeconds: 10
-
           volumeMounts:
             - name: mysql-storage
               mountPath: /var/lib/mysql
-
-      restartPolicy: Always
-
   volumeClaimTemplates:
     - metadata:
         name: mysql-storage
@@ -56,4 +38,5 @@ spec:
         resources:
           requests:
             storage: {{ .Values.mysql.persistence.size }}
+        storageClassName: {{ .Values.mysql.persistence.storageClass }}
 {{- end }}
