@@ -34,18 +34,18 @@ spec:
               mountPath: /usr/src/app/uploads
 
           # -----------------------
-          # 헬스 체크 (only-friend 브랜치 기준)
+          # 헬스 체크 수정됨 ( /v1/health → /api/v1/health )
           # -----------------------
           livenessProbe:
             httpGet:
-              path: /health
+              path: /api/v1/health
               port: {{ .Values.backend.port }}
             initialDelaySeconds: 20
             periodSeconds: 10
 
           readinessProbe:
             httpGet:
-              path: /health
+              path: /api/v1/health
               port: {{ .Values.backend.port }}
             initialDelaySeconds: 10
             periodSeconds: 5

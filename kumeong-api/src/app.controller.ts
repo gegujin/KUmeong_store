@@ -12,9 +12,8 @@ export class AppController {
 
   // -------------------------
   // Health Check Endpoint
-  // Kubernetes readiness/liveness probe
   // -------------------------
-  @Get('api/v1/health')
+  @Get('v1/health')
   health() {
     return { status: 'ok' };
   }

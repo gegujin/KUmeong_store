@@ -9,7 +9,7 @@ namespace: default
 backend:
   image:
     repository: gegujin/kumeong-api
-    tag: "only-friend"
+    tag: "0.4.5"
     pullPolicy: IfNotPresent
 
   replicaCount: 1
@@ -31,6 +31,8 @@ backend:
     CORS_ORIGIN: "http://kumeong-front.local"
     PUBLIC_BASE_URL: "http://kumeong-api.local"
 
+    # 🔥 NestJS가 필수로 요구하는 JWT_SECRET 추가
+    JWT_SECRET: "super_secret"        
     JWT_ACCESS_SECRET: "access_secret"
     JWT_REFRESH_SECRET: "refresh_secret"
 
@@ -51,7 +53,7 @@ backend:
 frontend:
   image:
     repository: gegujin/kumeong-front
-    tag: "only-friend"
+    tag: "0.4.2"
     pullPolicy: IfNotPresent
 
   replicaCount: 1
