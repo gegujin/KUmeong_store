@@ -1,4 +1,3 @@
-// src/main.ts
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Logger, VersioningType } from '@nestjs/common';
@@ -30,12 +29,12 @@ async function bootstrap() {
   // ======================================
   // Prefix & Versioning
   // ======================================
-  const apiPrefix = cfg.get<string>('API_PREFIX') ?? 'api';
+  const apiPrefix = cfg.get<string>('API_PREFIX') || 'api';
   app.setGlobalPrefix(apiPrefix);
 
   app.enableVersioning({
     type: VersioningType.URI,
-    defaultVersion: '1',
+    defaultVersion: 'v1',
   });
 
   // ======================================
@@ -55,13 +54,11 @@ async function bootstrap() {
       .map((x) => x.trim())
       .filter((x) => x.length > 0);
 
-    if (originsFromEnv.length > 0) {
-      corsOrigin = originsFromEnv;
-    } else if (isProd) {
-      corsOrigin = [];
-    } else {
-      corsOrigin = [/^http:\/\/localhost(?::\d+)?$/];
-    }
+    corsOrigin = originsFromEnv.length > 0
+      ? originsFromEnv
+      : isProd
+      ? []
+      : [/^http:\/\/localhost(?::\d+)?$/];
   }
 
   app.enableCors({
@@ -80,9 +77,8 @@ async function bootstrap() {
   app.use(methodOverride('_method'));
 
   // ======================================
-  // ⭐ 정적 파일 서빙 (uploads)
+  // Static uploads
   // ======================================
-  // dist/main.js 기준으로 uploads 는 dist/../uploads 에 존재
   const uploadsPath = join(__dirname, '..', 'uploads');
   app.use('/uploads', express.static(uploadsPath));
   Logger.log(`Static uploads path: ${uploadsPath}`);
@@ -114,7 +110,7 @@ async function bootstrap() {
     .build();
 
   const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup(`${apiPrefix}/docs`, app, swaggerDoc);
+  SwaggerModule.setup(`${apiPrefix}/v1/docs`, app, swaggerDoc);
 
   // ======================================
   // DB Check
@@ -221,15 +217,11 @@ async function bootstrap() {
   );
 
   if (publicBaseUrl) {
-    Logger.log(
-      `🚀 Server running at ${publicBaseUrl}/${apiPrefix}/v1 (PORT=${port})`,
-    );
-    Logger.log(`📘 Swagger:        ${publicBaseUrl}/${apiPrefix}/docs`);
+    Logger.log(`🚀 Server running at ${publicBaseUrl}/api/v1 (PORT=${port})`);
+    Logger.log(`📘 Swagger:        ${publicBaseUrl}/api/docs`);
   } else {
-    Logger.log(`🚀 Server running at http://localhost:${port}/${apiPrefix}/v1`);
-    Logger.log(
-      `📘 Swagger:        http://localhost:${port}/${apiPrefix}/docs`,
-    );
+    Logger.log(`🚀 Server running at http://localhost:${port}/api/v1`);
+    Logger.log(`📘 Swagger:        http://localhost:${port}/api/docs`);
   }
 }
 

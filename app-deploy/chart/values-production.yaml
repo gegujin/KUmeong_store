@@ -1,15 +1,16 @@
-# -------------------------
-# Global Values
-# -------------------------
-namespace: default
+# ==========================================
+# KUmeong Production Values (FINAL)
+# ==========================================
+
+namespace: kumeong
 
 # -------------------------
-# Backend API Settings
+# Backend Settings
 # -------------------------
 backend:
   image:
     repository: gegujin/kumeong-api
-    tag: "0.5.1"
+    tag: "0.5.1"                  # ← 최신 버전 사용
     pullPolicy: IfNotPresent
 
   replicaCount: 1
@@ -18,32 +19,34 @@ backend:
   env:
     NODE_ENV: "production"
 
+    # NestJS Prefix
     API_PREFIX: "/api"
-    API_VERSION: "1"
+    API_VERSION: "v1"
 
+    # DB 설정 (K3s Service 이름)
     DB_HOST: "mysql"
     DB_PORT: "3306"
     DB_USERNAME: "root"
     DB_PASSWORD: "jin20503*"
     DB_DATABASE: "kumeong_store"
 
-    # 로컬/개발 기본값
-    CORS_ORIGIN: "http://localhost:8080"
-    PUBLIC_BASE_URL: "http://localhost:3000"
+    # 🔥 프론트가 접속하는 실제 주소 (AWS NLB)
+    CORS_ORIGIN: "http://k3s-nlb-2a6f4c41753bf5b2.elb.ap-northeast-1.amazonaws.com"
+    PUBLIC_BASE_URL: "http://k3s-nlb-2a6f4c41753bf5b2.elb.ap-northeast-1.amazonaws.com"
 
+    # JWT
     JWT_SECRET: "super_secret"
     JWT_ACCESS_SECRET: "access_secret"
     JWT_REFRESH_SECRET: "refresh_secret"
 
   uploads:
     enabled: true
-    size: 1Gi
+    size: 10Gi
 
   ingress:
-    enabled: false
-    className: ""
-    host: "api.example.com"
-    path: /
+    enabled: true
+    className: "traefik"
+    path: /api
     tls: false
 
 # -------------------------
@@ -52,18 +55,19 @@ backend:
 frontend:
   image:
     repository: gegujin/kumeong-front
-    tag: "0.4.6"
+    tag: "0.4.6"                   # ← 최신 프론트 이미지
     pullPolicy: IfNotPresent
 
   replicaCount: 1
   port: 80
 
-  env: {}
+  env:
+    # 🔥 프론트가 호출하는 실제 API 주소
+    API_ORIGIN: "http://k3s-nlb-2a6f4c41753bf5b2.elb.ap-northeast-1.amazonaws.com/api/v1"
 
   ingress:
-    enabled: false
-    className: ""
-    host: "front.example.com"
+    enabled: true
+    className: "traefik"
     path: /
     tls: false
 
@@ -80,5 +84,5 @@ mysql:
 
   persistence:
     enabled: true
-    size: 1Gi
+    size: 10Gi
     storageClass: "local-path"

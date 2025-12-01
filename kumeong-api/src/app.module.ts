@@ -1,4 +1,5 @@
 // src/app.module.ts
+
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -19,6 +20,9 @@ import { DeliveryModule } from './modules/delivery/delivery.module';
 
 import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware';
 
+// ★ 추가된 부분
+import { HealthModule } from './features/health/health.module';
+
 @Module({
   imports: [
     // ===================================
@@ -29,9 +33,6 @@ import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware
       cache: true,
       expandVariables: true,
       validationSchema: envValidationSchema,
-      // ❗ K3s/Docker는 envFilePath 사용하면 안됨
-      //    → 이미 config.module.ts에서 env 처리
-      //    → 충돌 예방 위해 완전히 제거
     }),
 
     // ===================================
@@ -83,6 +84,9 @@ import { EnsureUserMiddleware } from './common/middleware/ensure-user.middleware
     SystemModule,
     FavoritesModule,
     DeliveryModule,
+
+    // ★ HealthModule 반드시 import해야 health endpoint가 생성됨
+    HealthModule,
   ],
 })
 export class AppModule implements NestModule {

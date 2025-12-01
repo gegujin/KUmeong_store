@@ -19,6 +19,14 @@ spec:
           ports:
             - containerPort: {{ .Values.frontend.port }}
 
+          # ============================
+          # ★ env.js 파일 마운트
+          # ============================
+          volumeMounts:
+            - name: env-config
+              mountPath: /usr/share/nginx/html/env.js
+              subPath: env.js
+
           livenessProbe:
             httpGet:
               path: /
@@ -32,3 +40,11 @@ spec:
               port: {{ .Values.frontend.port }}
             initialDelaySeconds: 5
             periodSeconds: 5
+
+      # ============================
+      # ★ ConfigMap 볼륨
+      # ============================
+      volumes:
+        - name: env-config
+          configMap:
+            name: kumeong-front-env

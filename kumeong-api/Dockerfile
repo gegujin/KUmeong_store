@@ -3,16 +3,20 @@
 # ========================
 FROM node:20-alpine AS builder
 
-WORKDIR /usr/src/app
+WORKDIR /app
+
+# NestJS 빌드에 필요한 파일 먼저 복사
+COPY package*.json ./
+COPY tsconfig*.json ./
+COPY nest-cli.json ./
 
 # 의존성 설치
-COPY package*.json ./
 RUN npm ci
 
-# 소스 복사
+# 전체 소스 복사
 COPY . .
 
-# NestJS build
+# NestJS 빌드 (src/migrations → dist/migrations 자동 생성)
 RUN npm run build
 
 
@@ -21,22 +25,21 @@ RUN npm run build
 # ========================
 FROM node:20-alpine
 
-WORKDIR /usr/src/app
+WORKDIR /app
 
+# 프로덕션 의존성 설치
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# dist 복사
-COPY --from=builder /usr/src/app/dist ./dist
+# 빌드 결과 복사 (dist + migrations 포함)
+COPY --from=builder /app/dist ./dist
 
-# ⛔ 너가 추가했던 templates 복사는 정상
-COPY --from=builder /usr/src/app/templates ./templates
-
-# ⭐⭐ 여기 추가가 핵심 ⭐⭐
-# 업로드된 이미지 제공을 위해 uploads 폴더 포함시키기
-COPY --from=builder /usr/src/app/uploads ./uploads
+# 템플릿 + 업로드 폴더 복사 (있으면)
+COPY --from=builder /app/templates ./templates
+COPY --from=builder /app/uploads ./uploads
 
 # 포트 노출
 EXPOSE 3000
 
+# 실행
 CMD ["node", "dist/main.js"]

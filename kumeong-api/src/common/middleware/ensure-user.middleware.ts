@@ -3,20 +3,33 @@ import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { normalizeId } from '../utils/ids';
 
-/**
- * 요청 헤더에 X-User-Id가 없으면 자동 생성하는 미들웨어
- * - 개발/테스트용: 실서비스에서는 JWT 인증 미들웨어로 대체됨
- */
 @Injectable()
 export class EnsureUserMiddleware implements NestMiddleware {
   use(req: Request, _res: Response, next: NextFunction) {
+
+    // ---------------------------------------------
+    // 🟢 Health Check는 미들웨어를 완전히 건너뛴다
+    // ---------------------------------------------
+    const url = req.originalUrl;
+
+    // /health, /v1/health, /api/v1/health 전부 허용
+    if (
+      url === '/health' ||
+      url === '/v1/health' ||
+      url.startsWith('/api/v1/health')
+    ) {
+      return next();
+    }
+
+    // ---------------------------------------------
+    // 기존 EnsureUserMiddleware 로직
+    // ---------------------------------------------
     let userId = req.headers['x-user-id'];
 
-    // 문자열로 강제 변환
     if (Array.isArray(userId)) userId = userId[0];
     userId = (userId ?? '').toString().trim();
 
-    // ✅ 없거나 비정상 값이면 디폴트 UUID 생성
+    // 없으면 무작위 UUID 부여
     if (!userId) {
       const random = Math.floor(Math.random() * 999_999_999_999).toString();
       userId = normalizeId(random);

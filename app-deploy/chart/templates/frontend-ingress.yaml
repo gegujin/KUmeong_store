@@ -6,10 +6,9 @@ metadata:
 spec:
   ingressClassName: {{ .Values.frontend.ingress.className }}
   rules:
-    - host: {{ .Values.frontend.ingress.host }}
-      http:
+    - http:
         paths:
-          - path: {{ .Values.frontend.ingress.path }}
+          - path: /
             pathType: Prefix
             backend:
               service:
